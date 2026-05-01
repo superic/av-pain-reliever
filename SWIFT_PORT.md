@@ -68,6 +68,17 @@ These are settled by Phase 1 use and can be assumed when we start Swift:
   is the right onboarding for non-power-users. The Swift app should not
   require config-file editing for normal use, but should allow it as escape
   hatch.
+- **No manual override.** Profile resolution is always driven by the
+  currently-attached USB devices. The user has no use case for "force
+  profile X regardless of what's plugged in." Implication: the menu bar
+  UI does NOT need a "Switch to ▶" submenu in v1. The status item is
+  display-only — current profile name + an icon, no profile picker.
+  Confirmed by user 2026-04-30.
+- **No per-app audio routing.** "Same as System" in every app is sufficient.
+  No use case for Slack mic ≠ Zoom mic. Implication: Swift never needs to
+  integrate with app-specific audio APIs (no Audio Hijack-style aggregate
+  device hacks, no per-app `defaults` plist editing). Engine only ever
+  touches system default input/output. Confirmed by user 2026-04-30.
 
 ---
 
@@ -124,18 +135,11 @@ the trigger condition that should prompt asking the user.
 - **Q: After a couple weeks of use, are the notifications useful or
   annoying?** Trigger: user complaint OR explicit ask after ~2 weeks.
   Options: silent / banner-only / banner+sound / configurable per-profile.
-- **Q: Do you ever want to manually override the auto-detected profile?**
-  Trigger: user reports they wanted X but engine fired Y, and they had to
-  hand-fix audio or OBS. Implication: Swift needs a "Switch to:" submenu in
-  the menu bar status item.
 - **Q: Should the menu bar icon show the current profile name?**
   Trigger: user asks how to tell which profile is active without opening
   the menu. Implication: status item title shows pretty profile name.
-- **Q: Per-app audio routing — does Slack ever need to differ from Zoom?**
-  Trigger: user mentions wanting different mic for different apps.
-  Implication: a much bigger feature; Swift would need to hook each app's
-  audio (probably via `defaults` plist edits or a CoreAudio aggregate device
-  hack). Defer unless explicitly requested.
+  *(Default: yes. Cheap to implement, useful at-a-glance signal. Revisit if
+  user finds the title bar noise distracting.)*
 
 ### Scope creep candidates
 
@@ -202,26 +206,21 @@ av-pain-reliever-mac/
 ```
 
 `StatusItem` is the central UI surface — most users never open the preferences
-window. Menu structure (provisional):
+window. Menu structure (locked — confirmed 2026-04-30 that no manual override
+is needed; menu is informational + admin only):
 
 ```
-🎧 Home Office             ← current profile, click for context
-─────────────
-Switch to ▶ ┌─────────────┐
-              │ ✓ Home Office │
-              │   Work Office │
-              │   Conference Room │
-              │   Laptop      │
-              ├─────────────┤
-              │ Auto-detect  │  ← restore auto-resolution
-              └─────────────┘
+🎧 Home Office             ← current profile (status item title)
 ─────────────
 Open OBS
-Open Hammerspoon log... (or our equivalent)
+Reveal log file in Finder
 ─────────────
 Preferences...            ← opens SwiftUI preferences window
 Quit AV Pain Reliever
 ```
+
+No "Switch to" submenu. No "Auto-detect" toggle. The engine is always in
+auto-resolve mode, deterministically driven by attached USB devices.
 
 ---
 
@@ -264,7 +263,7 @@ we've learned through Phase 1 / 1.5:
 - OBSController wrapping obs-cmd Process: 1-2h
 - ConfigLoader (TOML parser): 1-2h
 - ConfigImporter (parse profiles.lua → profiles.toml): 2-3h
-- StatusItem menu UI: 2-3h
+- StatusItem menu UI: 1-2h (smaller now that there's no Switch-to submenu)
 - DeviceCapture SwiftUI flow (replaces add-location subcommand): 3-5h
 - PreferencesWindow SwiftUI: 3-5h
 - FirstRunWizard SwiftUI: 2-3h
@@ -274,9 +273,10 @@ we've learned through Phase 1 / 1.5:
 - README + install docs: 2h
 - Real-world iteration: 4-6h
 
-Total: ~38-57h, 10-14 sessions. Larger than my original estimate, mostly
+Total: ~37-56h, 10-14 sessions. Larger than my original estimate, mostly
 because the original estimate didn't include a real config UI (DeviceCapture
-+ PreferencesWindow + FirstRunWizard = ~10h).
++ PreferencesWindow + FirstRunWizard = ~10h). Slightly trimmed by the
+locked "no manual override / no per-app routing" decisions.
 
 ---
 
