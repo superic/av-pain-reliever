@@ -366,6 +366,30 @@ These are things we figured out the hard way that should bias the Swift design.
   "Preview mode" toggle for advanced users who want to see what the
   next dock event WOULD trigger before letting it fire.
 
+- **TUI polish matters even before a real GUI exists.** The wizard's
+  bash + gum + ANSI palette is loud enough to feel like a real product:
+  ASCII-art logo, double-bordered banners, step counter with progress
+  bar (▰▰▰▱▱▱), gum spinners during long installs, color-coded ✓/⚠/✗.
+  Swift app should match or exceed this baseline — the Hammerspoon
+  wizard sets a floor, not a ceiling. Specifically:
+  - **Color palette is locked**: primary 212 (magenta/pink), highlight
+    51 (cyan), success 46 (green), warn 220 (yellow), error 196 (red),
+    chrome 245 (gray). Map these to NSColor constants for parity.
+  - **Progress bar is non-negotiable** — install/onboarding flows of
+    more than ~5 steps benefit from "STEP X of Y" with a visual bar.
+    Swift first-run wizard should have one.
+  - **Spinners during long ops** — same pattern, brew install / curl /
+    obs-cmd calls all spin. Swift equivalent: `ProgressView()` with
+    a custom title, never a frozen UI.
+  - **NO_COLOR env var support** — the wizard respects it (no-color.org
+    standard). Swift app probably won't need this since it's GUI-native,
+    but if we ever ship a CLI surface alongside the .app, respect it.
+- **macOS bash is byte-oriented for `tr`.** Counting multi-byte runes
+  with `tr -cd '▰' | wc -c` over-counts because `▰` and `▱` share UTF-8
+  prefix bytes. Use `grep -o '▰' | wc -l` for per-character counting.
+  Pure trivia for Swift (which has String.count returning real
+  characters), but a useful reminder of how thin the CLI layer is.
+
 ---
 
 ## How to use this document

@@ -8,12 +8,13 @@ set -euo pipefail
 LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 source "$LIB_DIR/lib.sh"
 
+logo
 dryrun_banner
 
 # ============================================================================
 # Step 1/15 — Pre-flight checks
 # ============================================================================
-step "Step 1/15 — Pre-flight checks"
+wizard_step 1 15 "Pre-flight checks"
 info "Verifying you're on macOS and have Homebrew + GitHub CLI installed and"
 info "authenticated. These are the only prerequisites the wizard can't install"
 info "for you. If any are missing, you'll get a link to install them and we'll"
@@ -27,7 +28,7 @@ success "macOS ✓  Homebrew ✓  gh (authenticated) ✓"
 # ============================================================================
 # Step 2/15 — Install gum (the wizard's UI toolkit)
 # ============================================================================
-step "Step 2/15 — Install gum (nicer prompts for this wizard)"
+wizard_step 2 15 "Install gum (nicer prompts for this wizard)"
 info "gum is a small TUI toolkit that gives this wizard its colored prompts,"
 info "menus, and confirmations. If you don't have it, I'll install it via"
 info "Homebrew now (one-time, takes a few seconds)."
@@ -59,7 +60,7 @@ fi
 # ============================================================================
 # Step 4/15 — Install Hammerspoon
 # ============================================================================
-step "Step 4/15 — Install Hammerspoon"
+wizard_step 4 15 "Install Hammerspoon"
 info "Hammerspoon is a free macOS automation framework. It's the engine that"
 info "watches USB events and switches your audio defaults. It runs as a small"
 info "menu bar app."
@@ -68,15 +69,18 @@ if [[ -d "/Applications/Hammerspoon.app" ]]; then
   hs_version=$(defaults read /Applications/Hammerspoon.app/Contents/Info.plist CFBundleShortVersionString 2>/dev/null || echo "?")
   success "Hammerspoon $hs_version already installed at /Applications/Hammerspoon.app"
 else
-  info "Installing via Homebrew (this can take 30-60 seconds)..."
-  runcmd brew install --cask hammerspoon
+  if [[ "$DRY_RUN" == "1" ]]; then
+    runcmd brew install --cask hammerspoon
+  else
+    spin "Installing Hammerspoon via Homebrew (~30-60 seconds)..." brew install --cask hammerspoon
+  fi
   success "Hammerspoon installed"
 fi
 
 # ============================================================================
 # Step 5/15 — Install OBS Studio (28+)
 # ============================================================================
-step "Step 5/15 — Install OBS Studio"
+wizard_step 5 15 "Install OBS Studio"
 info "OBS Studio is the camera scene switcher. We need version 28 or newer"
 info "because it ships with the obs-websocket server built in (which is how"
 info "we'll switch scenes from Hammerspoon)."
@@ -88,19 +92,26 @@ if [[ -d "/Applications/OBS.app" ]]; then
     success "OBS $obs_version already installed (28+, has obs-websocket built in)"
   else
     warn "OBS $obs_version is older than 28 — upgrading via Homebrew"
-    runcmd brew install --cask --force obs
+    if [[ "$DRY_RUN" == "1" ]]; then
+      runcmd brew install --cask --force obs
+    else
+      spin "Upgrading OBS Studio (~1-2 minutes)..." brew install --cask --force obs
+    fi
     success "OBS upgraded"
   fi
 else
-  info "Installing via Homebrew (this can take 1-2 minutes)..."
-  runcmd brew install --cask obs
+  if [[ "$DRY_RUN" == "1" ]]; then
+    runcmd brew install --cask obs
+  else
+    spin "Installing OBS Studio via Homebrew (~1-2 minutes)..." brew install --cask obs
+  fi
   success "OBS installed"
 fi
 
 # ============================================================================
 # Step 6/15 — Install obs-cmd
 # ============================================================================
-step "Step 6/15 — Install obs-cmd"
+wizard_step 6 15 "Install obs-cmd"
 info "obs-cmd is a small command-line tool that talks to OBS's WebSocket"
 info "server. The engine uses it to switch OBS scenes when you dock at a"
 info "different location. It's not in Homebrew so we download a pre-built"
@@ -118,10 +129,9 @@ else
     would "would extract obs-cmd binary from the tarball"
     would "would sudo-move the binary to $OBS_CMD_PATH and chmod +x"
   else
-    info "Downloading $ASSET from grigio/obs-cmd releases..."
     TMPDIR=$(mktemp -d)
     trap 'rm -rf "$TMPDIR"' EXIT
-    curl -sSL -o "$TMPDIR/obs-cmd.tar.gz" "$URL"
+    spin "Downloading $ASSET..." curl -sSL -o "$TMPDIR/obs-cmd.tar.gz" "$URL"
     tar -xzf "$TMPDIR/obs-cmd.tar.gz" -C "$TMPDIR"
     info "Installing to $OBS_CMD_PATH (sudo password may be required)..."
     sudo mv "$TMPDIR/obs-cmd" "$OBS_CMD_PATH"
@@ -135,7 +145,7 @@ fi
 # ============================================================================
 # Step 7/15 — Wire ~/.hammerspoon to this repo
 # ============================================================================
-step "Step 7/15 — Wire ~/.hammerspoon to this repo"
+wizard_step 7 15 "Wire ~/.hammerspoon to this repo"
 info "Hammerspoon expects its config at ~/.hammerspoon. We make that path a"
 info "symlink to this repo, so when you 'git pull' updates, Hammerspoon picks"
 info "them up on the next reload."
@@ -181,7 +191,7 @@ fi
 # ============================================================================
 # Step 8/15 — Launch Hammerspoon and grant Accessibility
 # ============================================================================
-step "Step 8/15 — Launch Hammerspoon and grant Accessibility permission"
+wizard_step 8 15 "Launch Hammerspoon and grant Accessibility permission"
 info "Hammerspoon needs macOS Accessibility permission so it can read USB"
 info "events (when you dock/undock) and change the system audio defaults."
 info "macOS only grants this once; you don't have to do it again."
@@ -215,7 +225,7 @@ fi
 # ============================================================================
 # Step 9/15 — Name your locations
 # ============================================================================
-step "Step 9/15 — Name your locations"
+wizard_step 9 15 "Name your locations"
 info "What physical setups do you switch between? Common examples:"
 info "  • Home Office       (your dock at home)"
 info "  • Work Office       (your dock at the office)"
@@ -261,7 +271,7 @@ done
 # ============================================================================
 # Step 10/15 — Generate profiles.lua
 # ============================================================================
-step "Step 10/15 — Generate profiles.lua (the engine's config file)"
+wizard_step 10 15 "Generate profiles.lua (the engine's config file)"
 info "profiles.lua is the file the engine reads to know which audio devices and"
 info "OBS scene to switch to at each location. I'll generate one with a block"
 info "for each location you named — empty placeholders for now, filled in"
@@ -298,7 +308,7 @@ fi
 # ============================================================================
 # Step 11/15 — Enable OBS WebSocket server
 # ============================================================================
-step "Step 11/15 — Enable OBS WebSocket server"
+wizard_step 11 15 "Enable OBS WebSocket server"
 info "OBS Studio has a built-in WebSocket server (since v28) that lets external"
 info "tools control it. We need to turn it on so obs-cmd can switch scenes."
 echo
@@ -341,7 +351,7 @@ fi
 # ============================================================================
 # Step 12/15 — Create OBS scenes
 # ============================================================================
-step "Step 12/15 — Create one OBS scene per location"
+wizard_step 12 15 "Create one OBS scene per location"
 info "Each location in profiles.lua maps to an OBS scene by name. I'll create"
 info "an empty scene for each one now. You'll add the actual camera source"
 info "to each scene in the next step (we can't do that automatically — OBS's"
@@ -373,7 +383,7 @@ fi
 # ============================================================================
 # Step 13/15 — Start OBS Virtual Camera + add sources
 # ============================================================================
-step "Step 13/15 — Start OBS Virtual Camera and add camera sources"
+wizard_step 13 15 "Start OBS Virtual Camera and add camera sources"
 if [[ "${SKIP_OBS:-0}" == "1" ]]; then
   warn "Skipping (OBS WebSocket not reachable)."
 else
@@ -402,7 +412,7 @@ fi
 # ============================================================================
 # Step 14/15 — Configure Zoom and Slack
 # ============================================================================
-step "Step 14/15 — Configure Zoom and Slack to follow the system + OBS"
+wizard_step 14 15 "Configure Zoom and Slack to follow the system + OBS"
 info "The whole point of this setup: Zoom and Slack inherit from system audio"
 info "(which the engine switches per location) and use the OBS Virtual Camera"
 info "(which OBS switches per location). So you set them to 'Same as System'"
@@ -433,7 +443,7 @@ configure_app "Slack"   "/Applications/Slack.app"
 # ============================================================================
 # Step 15/15 — Capture your first dock location
 # ============================================================================
-step "Step 15/15 — Capture your first dock location"
+wizard_step 15 15 "Capture your first dock location"
 info "Last step. We'll capture USB devices and audio for one of your docked"
 info "locations so you finish with at least one fully working profile."
 echo
@@ -454,7 +464,7 @@ else
   info "  $REPO_ROOT/wizard.sh add-location"
 fi
 
-banner "Setup complete"
+done_banner "Setup complete 🎉"
 info "What you've got now:"
 info "  • Hammerspoon engine running, watching USB events"
 info "  • OBS Studio with one scene per location, virtual camera live"
