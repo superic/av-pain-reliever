@@ -1283,6 +1283,21 @@ Profile-config discovery in priority order:
   `.menuBarExtraStyle(.menu)` modifier gets us the standard
   pull-down menu (vs. the popover form that we'd want for a
   full preferences pane).
+- **`@Published` + `@NSApplicationDelegateAdaptor` does NOT
+  propagate to `MenuBarExtra`'s label/content closures when the
+  closures access the property directly inside the App's `body`.**
+  The Scene-level body does re-evaluate when the AppDelegate's
+  ObservableObject publishes a change, but the new label closure
+  doesn't get re-rendered — the menu bar text stays stale.
+  Spent ~30 min thinking the engine wasn't running before
+  diagnosing this. **Fix**: wrap label + content in their own
+  `View` types with `@ObservedObject var delegate: AppDelegate`.
+  View-level dependency tracking does what we expect; Scene-level
+  doesn't (in this version of SwiftUI on macOS 26). Also added
+  stderr mirror to `ConsoleLogger` to make this kind of
+  app-vs-engine confusion easier to diagnose for unbundled SPM
+  builds — `os.Logger` capture under our subsystem turned out to
+  be unreliable from non-bundled binaries.
 - **Engine needed an `onProfileApplied` callback** to drive the
   status-item title. The applier's `lastAppliedName` is private
   and the applier dedups on it, so a public observation hook on

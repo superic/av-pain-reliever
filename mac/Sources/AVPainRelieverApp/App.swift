@@ -7,20 +7,35 @@ struct AVPainRelieverApp: SwiftUI.App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
 
     var body: some Scene {
+        // Both `label` and `content` MUST be Views that take the
+        // AppDelegate as @ObservedObject — referencing
+        // appDelegate.currentProfileTitle directly inside the Scene's
+        // body does NOT re-render the MenuBarExtra label when the
+        // @Published property changes. View-level dependency tracking
+        // is what makes the live update work.
         MenuBarExtra {
-            menuContent
+            MenuContentView(delegate: appDelegate)
         } label: {
-            // Status item title — pretty-cased current profile name,
-            // updated live by AppDelegate via @Published.
-            Image(systemName: "pills.fill")
-            Text(appDelegate.currentProfileTitle)
+            MenuLabelView(delegate: appDelegate)
         }
         .menuBarExtraStyle(.menu)
     }
+}
 
-    @ViewBuilder
-    private var menuContent: some View {
-        Text(appDelegate.currentProfileTitle)
+private struct MenuLabelView: View {
+    @ObservedObject var delegate: AppDelegate
+
+    var body: some View {
+        Image(systemName: "pills.fill")
+        Text(delegate.currentProfileTitle)
+    }
+}
+
+private struct MenuContentView: View {
+    @ObservedObject var delegate: AppDelegate
+
+    var body: some View {
+        Text(delegate.currentProfileTitle)
             .font(.headline)
         Divider()
 

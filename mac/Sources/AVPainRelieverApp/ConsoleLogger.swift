@@ -21,9 +21,19 @@ struct ConsoleLogger: ApplierLogger {
 
     func info(_ message: String) {
         Self.logger.info("\(message, privacy: .public)")
+        Self.writeStderr("[info] \(message)")
     }
 
     func warn(_ message: String) {
         Self.logger.warning("\(message, privacy: .public)")
+        Self.writeStderr("[warn] \(message)")
+    }
+
+    /// Mirror to stderr so `swift run` shows engine activity directly
+    /// in the terminal. Especially useful for unbundled SPM builds,
+    /// where `os.Logger` capture under the explicit subsystem isn't
+    /// always reliable.
+    private static func writeStderr(_ message: String) {
+        FileHandle.standardError.write(Data("\(message)\n".utf8))
     }
 }

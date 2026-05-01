@@ -14,6 +14,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
     private var engine: Engine?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        FileHandle.standardError.write(Data("[AVPR] applicationDidFinishLaunching fired\n".utf8))
+
         // Hide the Dock icon programmatically. The eventual signed
         // .app bundle will set LSUIElement = YES in Info.plist, which
         // is the same effect at launch time. For an SPM-built binary
