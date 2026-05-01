@@ -12,6 +12,7 @@ let package = Package(
     platforms: [.macOS(.v13)],
     products: [
         .library(name: "AVPainReliever", targets: ["AVPainReliever"]),
+        .executable(name: "AVPainRelieverApp", targets: ["AVPainRelieverApp"]),
     ],
     dependencies: [
         // TOML parser. Foundation has JSON/plist but no TOML; locked
@@ -24,6 +25,10 @@ let package = Package(
         .target(
             name: "AVPainReliever",
             dependencies: ["TOMLKit"]
+        ),
+        .executableTarget(
+            name: "AVPainRelieverApp",
+            dependencies: ["AVPainReliever"]
         ),
         .testTarget(
             name: "AVPainRelieverTests",

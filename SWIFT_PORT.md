@@ -12,12 +12,12 @@ real-world use, log it under "Open questions" so we remember to revisit it once
 we have data.
 
 **Status:** Phase 1.5 (wizard) in progress on `wizard-hardening` branch as of
-2026-04-30. Swift port pure-Swift work complete 2026-05-01:
-prototypes, engine (resolver, debouncer, applier, audio + OBS adapters,
-USB watcher, coordinator), config loader (TOML), and config importer
-(profiles.lua → TOML) all ported with 66 passing tests. Source lives
-in `mac/` as a Swift Package. Remaining: Xcode app target, menu-bar
-UI, code signing + Sparkle + GitHub Actions release.
+2026-04-30. Swift port end-to-end runnable as of 2026-05-01:
+prototypes, engine, config loader/importer, and a SwiftUI menu-bar
+app target all complete. `cd mac && swift run AVPainRelieverApp`
+launches a working menu-bar agent. 67 passing tests. Remaining work
+is signing/notarization/Sparkle/GitHub Actions distribution plumbing
++ first-run wizard / preferences UI.
 
 ---
 
@@ -295,6 +295,11 @@ Originally estimated 22-32h, 6-10 sessions. Updated estimate based on what
 we've learned through Phase 1 / 1.5:
 
 - Xcode project + SwiftUI menu bar skeleton: 2-3h
+  → DONE 2026-05-01 as an SPM executable target (no Xcode project
+    yet). `swift run AVPainRelieverApp` builds + launches a working
+    menu-bar agent app driven by the engine. Xcode wrapping deferred
+    to the code-signing/distribution phase since SPM can't produce a
+    proper signed .app bundle. ~30 min actual.
 - IOKit USB watcher (notification port + run loop): 4-6h (notoriously fiddly)
   → DONE 2026-05-01 as `IOKitUSBWatcher` in
     `mac/Sources/AVPainReliever/Engine/USBWatcher.swift`. Lifted from
@@ -322,6 +327,11 @@ we've learned through Phase 1 / 1.5:
     tests, end-to-end round-trip via ConfigLoader, and a real-world
     parse of the repo's profiles.lua.
 - StatusItem menu UI: 1-2h (smaller now that there's no Switch-to submenu)
+  → v1 DONE 2026-05-01 in `mac/Sources/AVPainRelieverApp/App.swift`.
+    SwiftUI `MenuBarExtra` with current profile title + Open OBS /
+    Reveal Log / Quit. Live profile updates wire through Engine's
+    new `onProfileApplied` callback into a `@Published` property on
+    AppDelegate.
 - DeviceCapture SwiftUI flow (replaces add-location subcommand): 3-5h
 - PreferencesWindow SwiftUI: 3-5h
 - FirstRunWizard SwiftUI: 2-3h
@@ -1202,22 +1212,126 @@ Pure-Swift / framework-independent work is complete. Tally:
 | Engine coordinator | (in applier budget) | ~25 min |
 | ConfigLoader | 1-2h | ~30 min |
 | ConfigImporter | 2-3h | ~45 min |
-| **Pure-Swift total** | **14-22h** | **~3.5h** |
+| App target + StatusItem | 2-3h + 1-2h | ~30 min |
+| **Through end-to-end runnable app** | **17-27h** | **~4h** |
 
-66 tests, all sub-millisecond. `cd mac && swift test` runs the full
-suite in ~6 ms.
+67 tests, all sub-millisecond. `cd mac && swift test` runs the full
+suite in ~6 ms. `cd mac && swift run AVPainRelieverApp` launches the
+menu-bar agent.
 
-The remaining ~25-39 h of original budget is all framework /
-distribution work where speedups are unlikely:
+Remaining work is all distribution / UI polish where speedups are
+unlikely:
 
-1. **Xcode project** wrapping the Swift Package + adding a SwiftUI
-   `App` target with `LSUIElement = true` (menu bar only, no Dock).
-2. **`StatusItem`** — `NSStatusItem` driven by Engine's current
-   profile name.
-3. **`Notifier`** — UserNotifications wrapper.
-4. **First-run wizard / preferences SwiftUI** — bulk of remaining work.
-5. **Code signing + notarization + Sparkle + GitHub Actions release** —
+1. **`Notifier`** — UserNotifications wrapper for "Switched to X" toasts.
+2. **First-run wizard / preferences SwiftUI** — bulk of remaining work.
+3. **Xcode project** to wrap the Swift Package — required for proper
+   `.app` bundle output, code signing, and notarization. Until then,
+   `swift run` works for development; only the distribution phase
+   needs the bundle.
+4. **Code signing + notarization + Sparkle + GitHub Actions release** —
    distribution plumbing.
+
+---
+
+## App target port (AVPainRelieverApp)
+
+The first runnable Swift menu-bar agent. Lives at
+`mac/Sources/AVPainRelieverApp/`. ~150 lines across four files. Run
+with `cd mac && swift run AVPainRelieverApp`.
+
+### Architecture
+
+```
+mac/Sources/AVPainRelieverApp/
+├── App.swift            # @main SwiftUI App with MenuBarExtra
+├── AppDelegate.swift    # NSApplicationDelegate, owns Engine, exposes
+│                        # @Published currentProfileTitle
+├── ConsoleLogger.swift  # ApplierLogger backed by os.Logger
+└── PrettyName.swift     # "home-office" → "Home Office"
+```
+
+The `App` declares a `MenuBarExtra` scene labeled with the
+current pretty profile name; AppDelegate's `@Published
+currentProfileTitle` updates trigger SwiftUI re-renders. Engine's
+new `onProfileApplied` callback (fires on every evaluation, even
+no-op re-applies) drives the property.
+
+Profile-config discovery in priority order:
+
+1. `~/Library/Application Support/AVPainReliever/profiles.toml` —
+   the canonical Swift-app config location (where the eventual
+   first-run wizard will write).
+2. `~/.hammerspoon/profiles.lua` — auto-imported via
+   `ConfigImporter` for users migrating from Phase 1. Zero-touch
+   migration for existing Hammerspoon users.
+3. Empty list — engine logs a warning and runs idle.
+
+### Lessons learned
+
+- **`NSApp.setActivationPolicy(.accessory)` at runtime substitutes
+  for `LSUIElement = YES` in Info.plist.** SPM-built executables
+  don't have an Info.plist; setting the activation policy in
+  `applicationDidFinishLaunching` hides the dock icon
+  near-immediately. The eventual signed `.app` bundle will set
+  `LSUIElement` declaratively (more reliable: prevents the
+  flash-in-dock at launch). For developer iteration via
+  `swift run`, the runtime call is fine.
+- **`MenuBarExtra` (SwiftUI, macOS 13+) is sufficient for our v1
+  menu surface.** No need to drop to `NSStatusItem`. The SwiftUI
+  declarative form composes cleanly with `@Published` for live
+  updates and `Button { }` for menu actions, and the
+  `.menuBarExtraStyle(.menu)` modifier gets us the standard
+  pull-down menu (vs. the popover form that we'd want for a
+  full preferences pane).
+- **Engine needed an `onProfileApplied` callback** to drive the
+  status-item title. The applier's `lastAppliedName` is private
+  and the applier dedups on it, so a public observation hook on
+  the *engine* (which fires after every evaluation, including
+  ones the applier no-op'd) is the right level. Adding this was
+  ~3 lines on Engine + 1 test + zero impact on the existing 38
+  engine/applier tests.
+- **`os.Logger` replaces the file appender from Phase 1.** The
+  Hammerspoon engine wrote a parallel log at
+  `~/.hammerspoon/logs/av-pain-reliever.log`. Console.app's
+  filtering and search make a separate file appender redundant —
+  `log stream --predicate 'subsystem ==
+  "com.ericwillis.avpainreliever"'` gives a live tail, and Console
+  itself indexes everything. Saves a Phase 1 lesson learned (file
+  rotation, mkdir-p of the log dir, etc.) from being re-implemented.
+- **Config auto-import from `~/.hammerspoon/profiles.lua` on
+  first launch is "free migration."** Users who installed Phase 1
+  pick up the new app, run `swift run AVPainRelieverApp` (or
+  later, double-click the `.app`), and it Just Works against
+  their existing config. No copy-paste, no wizard click-through
+  for migrating users. The eventual first-run wizard can offer to
+  *write* the imported config to the canonical TOML location, but
+  even before that lands, the runtime auto-import gets users
+  going.
+- **No-Xcode-project-yet is the right call for now.** Generating a
+  valid `.xcodeproj` from CLI requires either Tuist/XcodeGen as a
+  build dep or hand-crafting a file with hundreds of GUID-laden
+  internal references. Neither pays for itself until we need a
+  signed `.app` bundle. SPM's `executableTarget` produces a
+  runnable binary today, defers the bundle question to the
+  distribution phase, and keeps the project structure boringly
+  vanilla SPM.
+
+### Verification
+
+- **Build**: `swift build --product AVPainRelieverApp` — clean.
+- **Tests**: 67 passing (added one for `onProfileApplied`); engine,
+  applier, and existing tests untouched.
+- **Launch**: deferred to the user. `swift run` would invoke the
+  full audio + OBS apply pipeline, which modifies shared system
+  state — not the right thing to do automatically in a smoke test.
+
+### Effort estimate update
+
+Original estimate was **2-3 h** (Xcode project) + **1-2 h**
+(StatusItem) = **3-5 h**. Actual: ~30 min for the SPM-based app
+target with menu-bar UI. The Xcode project itself is deferred to
+the code-signing phase, where it's necessary for proper `.app`
+bundle output.
 
 ---
 

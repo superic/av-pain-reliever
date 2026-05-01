@@ -221,6 +221,24 @@ struct EngineTests {
         #expect(h.watcher.stopCount == 1)
     }
 
+    @Test("onProfileApplied fires after each evaluation, including no-op re-applies")
+    func onProfileAppliedFires() {
+        let h = makeHarness()
+        h.watcher.devices = [Self.caldigit, Self.lgCamera]
+        var observed: [String] = []
+        h.engine.onProfileApplied = { observed.append($0.name) }
+
+        h.engine.start() // initial: home-office
+        // Trigger a re-eval that resolves to the same profile (no-op apply).
+        h.watcher.triggerChange()
+        h.clock.advance(by: 1.5)
+
+        // Both passes saw the same profile; the callback fires both
+        // times (the StatusItem wants ALL evaluations, even no-ops,
+        // to refresh its display).
+        #expect(observed == ["home-office", "home-office"])
+    }
+
     @Test("engine reflects current state when restarted after a state change")
     func restartAfterStop() {
         let h = makeHarness()

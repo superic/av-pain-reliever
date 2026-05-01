@@ -35,6 +35,16 @@ public final class Engine {
     private var debouncer: Debouncer?
     private var started = false
 
+    /// Fires after every successful evaluate-and-apply pass with the
+    /// resolved profile, *including* passes the applier no-op'd
+    /// because the profile was unchanged. The status-bar UI uses this
+    /// to keep its title in sync — even no-op evaluations carry useful
+    /// signal (the user just plugged in a Yeti, evaluation still ran,
+    /// the profile didn't change). Always fires on the same thread the
+    /// debouncer/initial start were invoked on (main thread in
+    /// production).
+    public var onProfileApplied: ((Profile) -> Void)?
+
     public init(
         watcher: USBWatcher,
         resolver: ProfileResolver,
@@ -88,5 +98,6 @@ public final class Engine {
         }
         logger.info("evaluation → \(profile.name)")
         applier.apply(profile)
+        onProfileApplied?(profile)
     }
 }
