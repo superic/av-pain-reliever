@@ -16,6 +16,10 @@ local LOG_PATH = LOG_DIR .. "/av-pain-reliever.log"
 
 local log = hs.logger.new("av", "info")
 
+-- Allow `osascript -e 'tell application "Hammerspoon" to execute lua code ...'`
+-- so the wizard's add-location subcommand can reload us programmatically.
+hs.allowAppleScript(true)
+
 local function ensureLogDir()
   if not hs.fs.attributes(LOG_DIR) then
     hs.fs.mkdir(LOG_DIR)
