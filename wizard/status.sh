@@ -7,10 +7,22 @@ set -euo pipefail
 LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 source "$LIB_DIR/lib.sh"
 
-ok()    { printf '  \033[32m✓\033[0m %s\n' "$*"; }
-miss()  { printf '  \033[31m✗\033[0m %s\n' "$*"; }
-note()  { printf '    %s\n' "$*"; }
+ok() {
+  if [[ "$USE_COLOR" == "1" ]]; then
+    printf '  \033[38;5;%dm✓\033[0m %s\n' "$OK" "$*"
+  else
+    printf '  ✓ %s\n' "$*"
+  fi
+}
+miss() {
+  if [[ "$USE_COLOR" == "1" ]]; then
+    printf '  \033[38;5;%dm✗\033[0m %s\n' "$ERR" "$*"
+  else
+    printf '  ✗ %s\n' "$*"
+  fi
+}
 
+logo
 banner "av-pain-reliever status"
 
 # --- prerequisites ---
@@ -101,7 +113,7 @@ fi
 # --- log tail ---
 step "Recent log (last 10 lines)"
 if [[ -f "$LOG_FILE" ]]; then
-  tail -n 10 "$LOG_FILE" | sed -E 's/^.*av: /  /'
+  tail -n 10 "$LOG_FILE" | sed -E 's/^[0-9-]+ [0-9:]+ (INFO|WARN)[[:space:]]+/    /'
 else
   miss "Log file not found at $LOG_FILE"
 fi

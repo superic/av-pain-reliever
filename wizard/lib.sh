@@ -90,27 +90,186 @@ dryrun_banner() {
 
 # ---------- styling ----------
 
-# Print a styled banner. Falls back to plain text if gum isn't installed yet.
+# Color palette. Inspired by Claude Code's TUI: cool cyan/magenta accents,
+# warm yellow/orange for action, restrained grays for chrome.
+#   212 = bright magenta/pink (primary accent, headers, banners)
+#   51  = bright cyan (highlights, current step, progress)
+#   46  = bright green (success)
+#   220 = bright yellow (warn, dry-run)
+#   196 = bright red (errors, fail)
+#   245 = mid-gray (chrome, dividers, hints)
+#   8   = dim gray (deemphasized, completed steps)
+PRIMARY=212
+HIGHLIGHT=51
+OK=46
+WARN_C=220
+ERR=196
+CHROME=245
+DIM=8  # reserved for future "completed step" deemphasis
+export PRIMARY HIGHLIGHT OK WARN_C ERR CHROME DIM
+
+# Detect color support once. NO_COLOR env var disables colors per the
+# https://no-color.org/ standard. Non-TTY also disables (for piping).
+if [[ -z "${NO_COLOR:-}" ]] && [[ -t 1 ]]; then
+  USE_COLOR=1
+else
+  USE_COLOR=0
+fi
+export USE_COLOR
+
+# Print the AV Pain Reliever logo. Wide-bold uppercase title in a colored
+# double-bordered box, with the tagline as italic cyan underneath. Designed
+# to stay legible across terminal fonts (no ASCII-art letterforms that merge
+# into unreadable glyphs at smaller font sizes).
+logo() {
+  if command -v gum >/dev/null 2>&1 && [[ "$USE_COLOR" == "1" ]]; then
+    gum style \
+      --border double \
+      --margin "1 2" --padding "1 4" \
+      --border-foreground "$PRIMARY" \
+      --foreground "$PRIMARY" --bold \
+      --align center --width 56 \
+      "💊  A V   P A I N   R E L I E V E R"
+    gum style \
+      --foreground "$HIGHLIGHT" --italic \
+      --align center --width 60 \
+      "Stop fiddling with mic, speakers, and webcam."
+    echo
+  else
+    printf '\n  💊  AV PAIN RELIEVER\n'
+    printf '  Stop fiddling with mic, speakers, and webcam.\n\n'
+  fi
+}
+
+# Print a styled banner — used for major section markers like the welcome
+# and the final "setup complete" finale. Multi-line input ok.
 banner() {
-  if command -v gum >/dev/null 2>&1; then
-    gum style --border double --margin "1 0" --padding "0 2" --border-foreground 212 "$@"
+  if command -v gum >/dev/null 2>&1 && [[ "$USE_COLOR" == "1" ]]; then
+    gum style \
+      --border double \
+      --margin "1 2" --padding "1 3" \
+      --border-foreground "$PRIMARY" \
+      --foreground "$HIGHLIGHT" --bold \
+      "$@"
   else
-    printf '\n══ %s ══\n\n' "$*"
+    printf '\n╔═══ %s ═══╗\n\n' "$*"
   fi
 }
 
+# Print a horizontal rule for subtle visual separation between sub-sections.
+hr() {
+  if [[ "$USE_COLOR" == "1" ]]; then
+    printf '  \033[38;5;%dm─────────────────────────────────────────────────────────\033[0m\n' "$CHROME"
+  else
+    printf '  ─────────────────────────────────────────────────────────\n'
+  fi
+}
+
+# Step counter + progress bar. Args: <current> <total> <title>
+# Renders as:
+#
+#   ─────────────────────────────────────────────────────────
+#     STEP 4/15  ▰▰▰▱▱▱▱▱▱▱▱▱▱▱▱   Install Hammerspoon
+#   ─────────────────────────────────────────────────────────
+wizard_step() {
+  local current="$1" total="$2" title="$3"
+  local bar_width=20
+  local filled=$(( current * bar_width / total ))
+  local empty=$(( bar_width - filled ))
+  local bar=""
+  local i
+  for ((i=0; i<filled; i++)); do bar+="▰"; done
+  for ((i=0; i<empty;  i++)); do bar+="▱"; done
+
+  echo
+  if command -v gum >/dev/null 2>&1 && [[ "$USE_COLOR" == "1" ]]; then
+    gum style \
+      --border-foreground "$CHROME" \
+      --foreground "$HIGHLIGHT" --bold \
+      "STEP ${current}/${total}  ${bar}   ${title}"
+  elif [[ "$USE_COLOR" == "1" ]]; then
+    printf '  \033[1;38;5;%dmSTEP %s/%s\033[0m  \033[38;5;%dm%s\033[0m   \033[1m%s\033[0m\n' \
+      "$HIGHLIGHT" "$current" "$total" "$PRIMARY" "$bar" "$title"
+  else
+    printf '  STEP %s/%s  %s   %s\n' "$current" "$total" "$bar" "$title"
+  fi
+  echo
+}
+
+# Plain step header (no counter). Used in subcommands like add-location where
+# the steps aren't part of an overall install flow.
 step() {
-  if command -v gum >/dev/null 2>&1; then
-    gum style --foreground 212 --bold "▶ $*"
+  echo
+  if command -v gum >/dev/null 2>&1 && [[ "$USE_COLOR" == "1" ]]; then
+    gum style --foreground "$PRIMARY" --bold "▶ $*"
+  elif [[ "$USE_COLOR" == "1" ]]; then
+    printf '  \033[1;38;5;%dm▶ %s\033[0m\n' "$PRIMARY" "$*"
   else
-    printf '\n▶ %s\n' "$*"
+    printf '  ▶ %s\n' "$*"
   fi
 }
 
-info()    { printf '  %s\n' "$*"; }
-success() { printf '  ✓ %s\n' "$*"; }
-warn()    { printf '  ⚠ %s\n' "$*" >&2; }
-fail()    { printf '  ✗ %s\n' "$*" >&2; exit 1; }
+# Run a command with a spinner showing progress. Falls back to a plain run
+# if gum isn't available or in non-TTY contexts (CI, piped output).
+# Args: <title> <cmd> [args...]
+spin() {
+  local title="$1"; shift
+  if command -v gum >/dev/null 2>&1 && [[ "$USE_COLOR" == "1" ]]; then
+    gum spin --spinner dot --title "$title" --show-error -- "$@"
+  else
+    info "$title"
+    "$@"
+  fi
+}
+
+# Status messages, colored and aligned.
+info() {
+  if [[ "$USE_COLOR" == "1" ]]; then
+    printf '  \033[38;5;%dm│\033[0m %s\n' "$CHROME" "$*"
+  else
+    printf '  │ %s\n' "$*"
+  fi
+}
+
+success() {
+  if [[ "$USE_COLOR" == "1" ]]; then
+    printf '  \033[38;5;%dm✓\033[0m %s\n' "$OK" "$*"
+  else
+    printf '  ✓ %s\n' "$*"
+  fi
+}
+
+warn() {
+  if [[ "$USE_COLOR" == "1" ]]; then
+    printf '  \033[38;5;%dm⚠\033[0m %s\n' "$WARN_C" "$*" >&2
+  else
+    printf '  ⚠ %s\n' "$*" >&2
+  fi
+}
+
+fail() {
+  if [[ "$USE_COLOR" == "1" ]]; then
+    printf '  \033[38;5;%dm✗\033[0m %s\n' "$ERR" "$*" >&2
+  else
+    printf '  ✗ %s\n' "$*" >&2
+  fi
+  exit 1
+}
+
+# Final "you're done" banner. More celebratory than `banner`.
+done_banner() {
+  if command -v gum >/dev/null 2>&1 && [[ "$USE_COLOR" == "1" ]]; then
+    gum style \
+      --border double \
+      --margin "1 2" --padding "1 3" \
+      --border-foreground "$OK" \
+      --foreground "$OK" --bold \
+      --align center --width 50 \
+      "$@"
+  else
+    printf '\n╔═══ %s ═══╗\n\n' "$*"
+  fi
+}
 
 # ---------- prompts (gum wrappers) ----------
 

@@ -10,6 +10,7 @@ source "$LIB_DIR/lib.sh"
 
 bootstrap_gum
 
+logo
 dryrun_banner
 
 # ============================================================================
@@ -363,7 +364,7 @@ if [[ -d "$REPO_ROOT/.git" ]]; then
   fi
 fi
 
-banner "$pretty captured"
+done_banner "$pretty captured 🎉"
 info "Verify it's working:"
 info "  1. Unplug from the dock — engine should switch to 'laptop' within ~1.5s"
 info "     (you'll see a notification)."
