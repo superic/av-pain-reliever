@@ -313,6 +313,9 @@ we've learned through Phase 1 / 1.5:
 - OBSController wrapping obs-cmd Process: 1-2h
   → DONE 2026-05-01 in `mac/Sources/AVPainReliever/Adapters/OBSController.swift`.
 - ConfigLoader (TOML parser): 1-2h
+  → DONE 2026-05-01 in `mac/Sources/AVPainReliever/Config/ConfigLoader.swift`.
+    Codable DTO over TOMLKit (~125 lines). Actual: ~30 min including
+    14 tests covering schema, error paths, and resolver integration.
 - ConfigImporter (parse profiles.lua → profiles.toml): 2-3h
 - StatusItem menu UI: 1-2h (smaller now that there's no Switch-to submenu)
 - DeviceCapture SwiftUI flow (replaces add-location subcommand): 3-5h
@@ -746,8 +749,10 @@ mac/
 │   │   ├── AudioController.swift  # protocol + CoreAudioController
 │   │   └── OBSController.swift    # protocol + ProcessOBSController
 │   └── Config/
+│       ├── ConfigLoader.swift     # TOML → [Profile] via TOMLKit
 │       └── Profile.swift          # name + fingerprint + audio + scene
 └── Tests/AVPainRelieverTests/
+    ├── ConfigLoaderTests.swift         # 14 tests (schema + errors)
     ├── DebouncerTests.swift            # 7 tests
     ├── EngineTests.swift               # 10 integration-style tests
     ├── IOKitUSBWatcherTests.swift      # 3 smoke tests (real IOKit)
@@ -1011,23 +1016,116 @@ against an original 9-15 h budget for the same set.
 
 The engine is complete. Next phases (in rough order):
 
-1. **`ConfigLoader`** — parse a TOML profiles file into `[Profile]`.
-   Standalone, testable in isolation.
-2. **`ConfigImporter`** — one-shot read of an existing `profiles.lua`
+1. **`ConfigImporter`** — one-shot read of an existing `profiles.lua`
    to bootstrap a `profiles.toml` for users migrating from Phase 1.
-3. **Xcode project** wrapping the Swift Package + adding a SwiftUI
+2. **Xcode project** wrapping the Swift Package + adding a SwiftUI
    `App` target with `LSUIElement = true` (menu bar only, no Dock).
-4. **`StatusItem`** — `NSStatusItem` driven by Engine's current
+3. **`StatusItem`** — `NSStatusItem` driven by Engine's current
    profile name.
-5. **`Notifier`** — UserNotifications wrapper.
-6. **First-run wizard / preferences SwiftUI** — the bulk of the
+4. **`Notifier`** — UserNotifications wrapper.
+5. **First-run wizard / preferences SwiftUI** — the bulk of the
    remaining work.
-7. **Code signing + notarization + Sparkle + GitHub Actions release** —
+6. **Code signing + notarization + Sparkle + GitHub Actions release** —
    distribution plumbing.
 
-The pure-engine work was the unknown. Steps 1-2 are pure logic
-(should be quick). Steps 3-7 are the AppKit/SwiftUI/distribution
-slog where original estimates probably hold.
+The pure-engine + config work is done (~2.5 h actual against
+~10-17 h budgeted for the same set). Steps 2-6 are the AppKit /
+SwiftUI / distribution slog where original estimates probably
+hold.
+
+---
+
+## ConfigLoader port
+
+`ConfigLoader` parses TOML into `[Profile]`. Lives at
+`mac/Sources/AVPainReliever/Config/ConfigLoader.swift`. ~125 lines
+(including doc comments) over TOMLKit's Codable interface.
+
+### Schema
+
+The TOML schema parallels `profiles.lua`:
+
+```toml
+[profiles.laptop]
+audioInput  = "MacBook Pro Microphone"
+audioOutput = "MacBook Pro Speakers"
+obsScene    = "Laptop"
+# fingerprint omitted = empty list (always matches with specificity 0,
+# making this profile the implicit fallback)
+
+[profiles.home-office]
+audioInput  = "Yeti Stereo Microphone"
+audioOutput = "CalDigit Thunderbolt 3 Audio"
+obsScene    = "Home Office"
+fingerprint = [
+  { vendorID = 0x2188, productID = 0x6533, name = "CalDigit Thunderbolt 3 Audio (dock)" },
+  { vendorID = 0x043e, productID = 0x9a68, name = "LG UltraFine Display Camera" },
+]
+```
+
+The `[profiles.<name>]` namespace reserves the file's top level for
+future settings (debounce override, log path, etc.) without breaking
+the existing schema. Inside a fingerprint entry, `vendorID` and
+`productID` are required; `name` is for human reading and is ignored
+at match time (the resolver matches on `(vendorID, productID)` only).
+
+### Lessons learned
+
+- **TOMLKit picked for production over a hand-rolled parser.** TOML
+  has more edge cases than it looks (escapes, datetimes, multi-line
+  strings, mixed table syntaxes); rolling our own would have been a
+  distraction. TOMLKit wraps tomlplusplus (well-tested C++) and
+  exposes a clean Codable interface, so adoption is one SPM dep and
+  one `import` line. Worth the dep.
+- **Codable's "ignore unknown keys" default gets us forward
+  compatibility for free.** A future `[profiles.foo].wallpaper = ...`
+  added by a newer Swift app version is silently ignored by older
+  versions of the loader. Documented as a deliberate behavior in two
+  tests.
+- **The dictionary-keyed name pattern (`[profiles.<name>]`) requires
+  an intermediate DTO.** TOML's inline keying means the profile name
+  is the dict key, not a body field — so `Profile` itself can't be
+  directly Decodable. Three small private DTOs (`ConfigFile`,
+  `ProfileBody`, `FingerprintEntry`) decode cleanly, then the
+  `ConfigFile.toProfiles()` method maps `[String: ProfileBody]` →
+  `[Profile]` by injecting the key as `Profile.name`. Cleaner than
+  trying to hack name into the body.
+- **Map `DecodingError` cases onto a flat domain `enum` at the
+  loader boundary.** Codable surfaces `keyNotFound`,
+  `dataCorrupted`, `typeMismatch` etc. as separate cases of a
+  generic enum; the menu-bar app's first-run flow shouldn't have to
+  know about Codable. The `ConfigError.malformed` /
+  `.schemaViolation` split gives the UI a simple two-way branch
+  ("syntax issue" vs "field issue") with a `reason` string for the
+  details.
+- **End-to-end test that loaded profiles drive the resolver.** One
+  test (`config drives the resolver end-to-end`) parses TOML, builds
+  a `ProfileResolver`, and verifies that resolving a real attached
+  set picks the right profile. Catches integration breakage between
+  the loader and the engine that pure-loader tests miss.
+- **`Package.resolved` IS committed for this package.** The
+  `mac/` package is independently testable via `swift test` (we run
+  it on every commit), so reproducibility benefits from pinning the
+  TOMLKit version. Apple's "libraries don't commit Package.resolved"
+  guidance applies when downstream apps pin via their own resolved
+  files — that pattern still holds for the eventual Xcode app
+  target, but doesn't help anyone running `swift test` directly here.
+
+### Effort estimate update
+
+The original ConfigLoader estimate was **1-2 h**. Actual: ~30 min
+including 14 tests. The TOMLKit dep paid for itself within the first
+hour saved over a hand-roll.
+
+### What's next
+
+- **`ConfigImporter`** — one-shot Lua → TOML conversion. The Lua
+  table syntax is regular enough to parse with a small recursive
+  scanner; we don't need a full Lua interpreter, just the literal
+  table form `profiles.lua` uses. ~1-2 h budgeted, probably 30-45
+  min actual.
+- After that, the work shifts to the Xcode app target, where the
+  original estimates probably hold.
 
 ---
 

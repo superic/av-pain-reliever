@@ -1,0 +1,133 @@
+import Foundation
+import TOMLKit
+
+/// Errors thrown by `ConfigLoader`. All carry enough detail for the
+/// menu-bar app's first-run flow to surface a useful message to the
+/// user without dumping a stack trace.
+public enum ConfigError: Error, Equatable {
+    /// Couldn't read the file at the given path.
+    case unreadable(path: String, reason: String)
+    /// File contents weren't valid UTF-8.
+    case notUTF8(path: String)
+    /// The TOML couldn't be parsed at all.
+    case malformed(reason: String)
+    /// The TOML parsed but didn't match our schema.
+    case schemaViolation(reason: String)
+}
+
+/// Loads `[Profile]` from a TOML config file.
+///
+/// Schema (lives in `~/Library/Application Support/AVPainReliever/profiles.toml`
+/// once the app target ships):
+///
+/// ```toml
+/// [profiles.laptop]
+/// audioInput  = "MacBook Pro Microphone"
+/// audioOutput = "MacBook Pro Speakers"
+/// obsScene    = "Laptop"
+/// # fingerprint omitted = empty list (always matches with specificity 0,
+/// # making this profile the implicit fallback)
+///
+/// [profiles.home-office]
+/// audioInput  = "Yeti Stereo Microphone"
+/// audioOutput = "CalDigit Thunderbolt 3 Audio"
+/// obsScene    = "Home Office"
+/// fingerprint = [
+///   { vendorID = 0x2188, productID = 0x6533, name = "CalDigit Thunderbolt 3 Audio (dock)" },
+///   { vendorID = 0x043e, productID = 0x9a68, name = "LG UltraFine Display Camera" },
+/// ]
+/// ```
+///
+/// All body fields are optional. Inside a fingerprint entry, `vendorID`
+/// and `productID` are required; `name` is for human reading and is
+/// ignored at match time (the resolver matches on `(vendorID, productID)`
+/// only — see `SWIFT_PORT.md` → "Validated design decisions").
+///
+/// The top-level `[profiles.<name>]` namespace reserves the file's top
+/// level for future settings (debounce override, log path, etc.) without
+/// breaking the existing schema.
+public struct ConfigLoader {
+    public init() {}
+
+    /// Read and parse a TOML file at `url` into the engine's `Profile`
+    /// list. Throws `ConfigError` on any failure; never crashes.
+    public func loadProfiles(from url: URL) throws -> [Profile] {
+        let data: Data
+        do {
+            data = try Data(contentsOf: url)
+        } catch {
+            throw ConfigError.unreadable(path: url.path, reason: error.localizedDescription)
+        }
+        guard let toml = String(data: data, encoding: .utf8) else {
+            throw ConfigError.notUTF8(path: url.path)
+        }
+        return try parseProfiles(toml)
+    }
+
+    /// Parse a TOML string. Useful for tests and for in-memory
+    /// configurations (e.g., the wizard's "preview the config" step).
+    public func parseProfiles(_ toml: String) throws -> [Profile] {
+        let decoder = TOMLDecoder()
+        let file: ConfigFile
+        do {
+            file = try decoder.decode(ConfigFile.self, from: toml)
+        } catch let DecodingError.dataCorrupted(context) {
+            // TOMLKit surfaces parse errors as `dataCorrupted` with a
+            // useful debugDescription.
+            throw ConfigError.malformed(reason: context.debugDescription)
+        } catch let DecodingError.keyNotFound(key, context) {
+            throw ConfigError.schemaViolation(
+                reason: "missing required key '\(key.stringValue)' at \(context.codingPath.map(\.stringValue).joined(separator: "."))"
+            )
+        } catch let DecodingError.typeMismatch(_, context) {
+            throw ConfigError.schemaViolation(
+                reason: "type mismatch at \(context.codingPath.map(\.stringValue).joined(separator: ".")): \(context.debugDescription)"
+            )
+        } catch {
+            throw ConfigError.malformed(reason: String(describing: error))
+        }
+        return file.toProfiles()
+    }
+}
+
+// MARK: - Codable DTOs
+
+/// Top-level TOML shape. The `profiles` key holds a name → body
+/// dictionary. Other top-level keys are tolerated (Codable's default
+/// is to ignore unknown keys); this gives us forward compatibility
+/// when we add app-level settings later.
+private struct ConfigFile: Decodable {
+    let profiles: [String: ProfileBody]?
+
+    func toProfiles() -> [Profile] {
+        guard let profiles else { return [] }
+        return profiles.map { (name, body) in
+            Profile(
+                name: name,
+                fingerprint: body.fingerprint?.map(\.usbDevice) ?? [],
+                audioInput: body.audioInput,
+                audioOutput: body.audioOutput,
+                obsScene: body.obsScene
+            )
+        }
+    }
+}
+
+private struct ProfileBody: Decodable {
+    let audioInput: String?
+    let audioOutput: String?
+    let obsScene: String?
+    let fingerprint: [FingerprintEntry]?
+}
+
+private struct FingerprintEntry: Decodable {
+    let vendorID: Int
+    let productID: Int
+    /// For human reading in the config file. Ignored at match time —
+    /// the resolver matches by `(vendorID, productID)` only.
+    let name: String?
+
+    var usbDevice: USBDevice {
+        USBDevice(vendorID: vendorID, productID: productID)
+    }
+}

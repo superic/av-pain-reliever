@@ -13,8 +13,21 @@ let package = Package(
     products: [
         .library(name: "AVPainReliever", targets: ["AVPainReliever"]),
     ],
+    dependencies: [
+        // TOML parser. Foundation has JSON/plist but no TOML; locked
+        // architectural choice (see SWIFT_PORT.md) is TOML for the
+        // human-edited profiles config, so we pick this up.
+        // TOMLKit wraps tomlplusplus and exposes a Codable interface.
+        .package(url: "https://github.com/LebJe/TOMLKit.git", from: "0.5.5"),
+    ],
     targets: [
-        .target(name: "AVPainReliever"),
-        .testTarget(name: "AVPainRelieverTests", dependencies: ["AVPainReliever"]),
+        .target(
+            name: "AVPainReliever",
+            dependencies: ["TOMLKit"]
+        ),
+        .testTarget(
+            name: "AVPainRelieverTests",
+            dependencies: ["AVPainReliever"]
+        ),
     ]
 )

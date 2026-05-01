@@ -19,7 +19,8 @@ logs/
 .claude/settings.local.json
 .claude/worktrees/
 
-# Swift Package Manager
+# Swift Package Manager — ignore build/IDE artifacts but commit
+# Package.resolved so `swift test` pins the same dep versions across
+# checkouts.
 mac/.build/
 mac/.swiftpm/
-mac/Package.resolved
