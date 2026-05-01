@@ -24,8 +24,8 @@ return {
     -- Undocked laptop. Empty fingerprint = always matches (specificity 0).
     -- This is the fallback when nothing else matches.
     fingerprint = {},
-    audioInput  = "FILL ME IN", -- e.g. "MacBook Pro Microphone"
-    audioOutput = "FILL ME IN", -- e.g. "MacBook Pro Speakers"
+    audioInput  = "MacBook Pro Microphone",
+    audioOutput = "MacBook Pro Speakers",
     obsScene    = "Laptop",
   },
 
