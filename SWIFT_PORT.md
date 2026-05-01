@@ -25,10 +25,10 @@ do today, but:
 - Auto-updates via Sparkle 2
 - Has a real menu-bar UI for status, manual override, profile management
 - Doesn't require Hammerspoon, Lua, or shell scripts to install or use
-- Configurable for non-developers (a CEO should be able to install it without
-  ever opening a terminal — though we accept that the wizard's "open OBS and
-  click these settings" steps will probably remain manual until OBS adds API
-  surface for them)
+- Configurable for non-developers (a typical non-coder collaborator should be
+  able to install it without ever opening a terminal — though we accept that
+  the wizard's "open OBS and click these settings" steps will probably remain
+  manual until OBS adds API surface for them)
 
 Same external behavior as the Hammerspoon engine: USB-driven location detection
 → switch system audio defaults + OBS scene → notify.
@@ -157,11 +157,12 @@ they come up so we can prioritize for v2:
 
 ### Onboarding
 
-- **Q: Did the CEO get all the way through the Phase 1.5 wizard without
-  asking for help? Where did he stick?** Trigger: after CEO uses it for
-  the first time. Implication: directly informs whether the bash + gum
-  approach is scalable, OR if the Swift app needs a full GUI installer
-  (DMG with drag-to-Applications, then in-app first-run wizard).
+- **Q: Did the first external user get all the way through the Phase 1.5
+  wizard without asking for help? Where did they stick?** Trigger: after
+  the first non-author user runs the wizard. Implication: directly
+  informs whether the bash + gum approach is scalable, OR if the Swift
+  app needs a full GUI installer (DMG with drag-to-Applications, then
+  in-app first-run wizard).
 - **Q: How often does Hammerspoon get reloaded vs. the engine just running
   in the background?** Trigger: usage data over 2-3 weeks. Implication: if
   reloads are frequent, Swift needs a clean "reload config" menu item; if
@@ -315,9 +316,11 @@ These are things we figured out the hard way that should bias the Swift design.
   `/opt/homebrew/bin`. Swift will still need to install obs-cmd; consider
   bundling a copy inside the .app.
 - **Idempotency is everything.** Every wizard step needs to detect
-  already-done state and skip cleanly. The CEO will run the wizard
-  multiple times. Same applies to Swift's first-run UI — it should
-  detect existing config and offer to keep it.
+  already-done state and skip cleanly. Users will re-run the wizard
+  multiple times (after dependencies update, after they bail out
+  partway, after they install on a second machine). Same applies to
+  Swift's first-run UI — it should detect existing config and offer
+  to keep it.
 - **macOS Settings deep links are great.** `open
   "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility"`
   takes the user to the exact pane. Swift should use the same trick to
@@ -333,10 +336,12 @@ These are things we figured out the hard way that should bias the Swift design.
 
 ### From the README/UX work
 
-- **CEOs are the worst-case user.** Not because they're dumb but because
-  they're impatient and have no time to read. The README needs to be
-  scannable, with the install command in the first 3 lines and detailed
-  prose available but not required.
+- **Busy executives are the worst-case audience.** Not because they're
+  dumb but because they're impatient and have no time to read. The
+  README needs to be scannable, with the install instructions early and
+  detailed prose available but not required. Technical detail (file
+  reference, manual install, architecture) lives in a clearly-marked
+  "nerd zone" section at the bottom.
 - **Numbered steps with explicit click sequences beat prose.** "In OBS,
   go to Tools → WebSocket Server Settings, tick Enable, untick Auth, click
   OK" is better than "configure OBS websocket". Swift's first-run wizard
