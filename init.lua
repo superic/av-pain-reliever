@@ -40,6 +40,13 @@ local function logWarn(msg)
   appendLog("WARN  " .. msg)
 end
 
+-- "home-office" -> "Home Office"
+local function prettyName(name)
+  return (name:gsub("-", " "):gsub("(%a)(%w*)", function(first, rest)
+    return first:upper() .. rest:lower()
+  end))
+end
+
 local function findObsCmd()
   for _, path in ipairs(OBS_CMD_SEARCH_PATHS) do
     if hs.fs.attributes(path) then return path end
@@ -164,8 +171,8 @@ local function applyProfile(name)
   if p.obsScene then switchObsScene(p.obsScene) end
 
   hs.notify.new({
-    title = "AV Pain Reliever",
-    informativeText = "Switched to: " .. name,
+    title = prettyName(name),
+    subTitle = "AV profile activated",
   }):send()
 
   lastAppliedProfile = name
