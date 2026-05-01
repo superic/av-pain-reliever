@@ -199,6 +199,23 @@ avWatcher:start()
 
 logInfo("av-pain-reliever loaded (obs-cmd: " .. (OBS_CMD_PATH or "MISSING") .. ")")
 
+-- Snapshot audio devices and attached USB devices on load. Useful for
+-- (a) initial setup — copy device names into profiles.lua — and
+-- (b) post-mortem when a profile fails to find a device the user expected.
+logInfo("--- audio devices ---")
+for _, d in ipairs(hs.audiodevice.allDevices()) do
+  logInfo(string.format("  %q  in=%s out=%s",
+    d:name() or "?",
+    tostring(d:isInputDevice()),
+    tostring(d:isOutputDevice())))
+end
+logInfo("--- attached USB devices ---")
+for _, d in ipairs(hs.usb.attachedDevices() or {}) do
+  logInfo(string.format("  vid=0x%04x pid=0x%04x  %q",
+    d.vendorID or 0, d.productID or 0, d.productName or "?"))
+end
+logInfo("--- end snapshot ---")
+
 -- Apply current state immediately so reloads (cmd+ctrl+R) re-sync without
 -- waiting for the next USB event.
 applyProfile(resolveProfile())
