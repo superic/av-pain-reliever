@@ -10,6 +10,8 @@ source "$LIB_DIR/lib.sh"
 
 bootstrap_gum
 
+dryrun_banner
+
 # ============================================================================
 # Step 1 — Pick which location to capture
 # ============================================================================
@@ -52,6 +54,9 @@ if [[ "$picked" == "+ Add a brand new location" ]]; then
   pretty=$(to_pretty "$slug")
   if grep -q "WIZARD_PROFILE_${slug}_BEGIN" "$PROFILES_FILE"; then
     info "Location '$pretty' already exists in profiles.lua. Reusing it."
+  elif [[ "$DRY_RUN" == "1" ]]; then
+    would "would append a new placeholder block for '$pretty' to profiles.lua"
+    would "would create matching OBS scene '$pretty' (if OBS reachable)"
   else
     tmpfile=$(mktemp)
     awk -v slug="$slug" -v pretty="$pretty" '
@@ -102,9 +107,10 @@ if ! grep -q "WIZARD_PROFILE_${slug}_BEGIN" "$PROFILES_FILE"; then
       [[ -n "$_s" ]] && all_pretty+=("$(to_pretty "$_s")")
     done < <(grep -oE '\["[^"]+"\] = \{' "$PROFILES_FILE" | sed -E 's/^\["//; s/"\] = \{$//')
     backup="$PROFILES_FILE.backup-$(date +%Y%m%d-%H%M%S)"
-    cp "$PROFILES_FILE" "$backup"
+    runcmd cp "$PROFILES_FILE" "$backup"
     info "Backed up to $backup"
-    "$LIB_DIR/_generate-profiles.sh" "${all_pretty[@]}"
+    runstep "would regenerate profiles.lua (locations: ${all_pretty[*]})" \
+      "$LIB_DIR/_generate-profiles.sh" "${all_pretty[@]}"
     success "profiles.lua migrated to wizard format"
   else
     fail "Can't update profile without anchor markers. Aborting."
@@ -136,8 +142,14 @@ info "I'm asking the engine to enumerate all currently-attached USB devices"
 info "and audio devices, and write the list to its log file. We'll read the"
 info "list from there in the next step."
 echo
-hammerspoon_reload_with_fallback
-sleep 2
+if [[ "$DRY_RUN" == "1" ]]; then
+  would "would reload Hammerspoon to refresh the device snapshot in the log"
+  info "(In dry-run mode I'll use the most recent existing snapshot from the log,"
+  info " if there is one, so you can still see what the picker would look like.)"
+else
+  hammerspoon_reload_with_fallback
+  sleep 2
+fi
 
 # ============================================================================
 # Step 4 — Parse the snapshot
@@ -260,14 +272,23 @@ trap 'rm -f "$fp_block"' EXIT
   done
 } > "$fp_block"
 
-"$LIB_DIR/_update-profile.sh" "$slug" "$audio_in" "$audio_out" "$fp_block" "$PROFILES_FILE"
+if [[ "$DRY_RUN" == "1" ]]; then
+  would "would update profiles.lua block for '$slug' with:"
+  while IFS= read -r fpline; do
+    would "    $fpline"
+  done < "$fp_block"
+  would "    audioInput  = \"$audio_in\""
+  would "    audioOutput = \"$audio_out\""
+else
+  "$LIB_DIR/_update-profile.sh" "$slug" "$audio_in" "$audio_out" "$fp_block" "$PROFILES_FILE"
+fi
 rm -f "$fp_block"
 trap - EXIT
 
 success "profiles.lua updated"
 
-# Quick syntax check.
-if command -v luac >/dev/null 2>&1; then
+# Quick syntax check (skipped in dry-run since nothing was written).
+if [[ "$DRY_RUN" != "1" ]] && command -v luac >/dev/null 2>&1; then
   if ! luac -p "$PROFILES_FILE" 2>/dev/null; then
     fail "profiles.lua has a syntax error after the edit. Restore from backup."
   fi
@@ -282,8 +303,12 @@ step "Step 10 — Apply the new profile"
 info "Reloading Hammerspoon so the engine picks up the new profile and"
 info "re-evaluates which one matches your current state."
 echo
-hammerspoon_reload_with_fallback
-sleep 2
+if [[ "$DRY_RUN" == "1" ]]; then
+  would "would reload Hammerspoon to apply the new profile"
+else
+  hammerspoon_reload_with_fallback
+  sleep 2
+fi
 
 # ============================================================================
 # Step 11 — Show what happened
@@ -316,7 +341,11 @@ if [[ -d "$REPO_ROOT/.git" ]]; then
   info "and you can sync them to a different Mac."
   echo
   if confirm "Commit and push profiles.lua now?"; then
-    if git -C "$REPO_ROOT" diff --quiet --exit-code -- profiles.lua; then
+    if [[ "$DRY_RUN" == "1" ]]; then
+      would "would 'git add profiles.lua'"
+      would "would 'git commit -m \"Add/update $pretty profile via wizard\"'"
+      would "would 'git push' (if a remote is configured)"
+    elif git -C "$REPO_ROOT" diff --quiet --exit-code -- profiles.lua; then
       info "No actual changes to commit (file already matched git's copy)."
     else
       git -C "$REPO_ROOT" add profiles.lua

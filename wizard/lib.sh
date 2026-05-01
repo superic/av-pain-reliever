@@ -9,7 +9,84 @@ HAMMERSPOON_DIR="${HAMMERSPOON_DIR:-$HOME/.hammerspoon}"
 PROFILES_FILE="${PROFILES_FILE:-$REPO_ROOT/profiles.lua}"
 LOG_FILE="${LOG_FILE:-$HAMMERSPOON_DIR/logs/av-pain-reliever.log}"
 
-export LIB_DIR REPO_ROOT HAMMERSPOON_DIR PROFILES_FILE LOG_FILE
+# DRY_RUN=1 means "show what you would do, don't actually do it." Set by the
+# --dry-run flag parsed in wizard.sh. Default off.
+DRY_RUN="${DRY_RUN:-0}"
+
+export LIB_DIR REPO_ROOT HAMMERSPOON_DIR PROFILES_FILE LOG_FILE DRY_RUN
+
+# ---------- dry-run helpers ----------
+
+# Print a "would do X" line, color-coded yellow so it stands out.
+would() {
+  if [[ -t 1 ]] && [[ -z "${NO_COLOR:-}" ]]; then
+    printf '  \033[33m[dry-run]\033[0m %s\n' "$*"
+  else
+    printf '  [dry-run] %s\n' "$*"
+  fi
+}
+
+# runcmd <cmd> [args...]
+# In normal mode: runs the command. In dry-run mode: prints what it would
+# have run, returns 0. Use this for commands that have side effects.
+runcmd() {
+  if [[ "$DRY_RUN" == "1" ]]; then
+    would "would run: $*"
+    return 0
+  fi
+  "$@"
+}
+
+# runstep <description> <cmd> [args...]
+# Like runcmd but with a human-readable description for dry-run output.
+# Use when the underlying command is opaque (like a long sudo invocation
+# or a script call) and the user benefits from a clearer summary.
+runstep() {
+  local desc="$1"; shift
+  if [[ "$DRY_RUN" == "1" ]]; then
+    would "$desc"
+    return 0
+  fi
+  "$@"
+}
+
+# write_file <path> [content_via_stdin]
+# In normal mode: writes stdin to <path>. In dry-run mode: prints what would
+# have been written and a preview of the first few lines.
+write_file_dryrun_aware() {
+  local path="$1"
+  if [[ "$DRY_RUN" == "1" ]]; then
+    would "would write file: $path"
+    local content
+    content=$(cat)
+    local line_count
+    line_count=$(printf '%s' "$content" | wc -l | tr -d ' ')
+    would "  (${line_count} lines; first 5 below)"
+    printf '%s\n' "$content" | head -5 | sed 's/^/    │ /' | while IFS= read -r line; do
+      if [[ -t 1 ]] && [[ -z "${NO_COLOR:-}" ]]; then
+        printf '  \033[33m[dry-run]\033[0m %s\n' "$line"
+      else
+        printf '  [dry-run] %s\n' "$line"
+      fi
+    done
+    return 0
+  fi
+  cat > "$path"
+}
+
+# Bail-out helper: emit a one-line dry-run banner if active.
+dryrun_banner() {
+  [[ "$DRY_RUN" == "1" ]] || return 0
+  if [[ -t 1 ]] && [[ -z "${NO_COLOR:-}" ]]; then
+    printf '\n  \033[1;33m━━━ DRY-RUN MODE ━━━\033[0m\n'
+    printf '  \033[33mNo files will be written, no commands run, no apps installed.\n'
+    printf '  Prompts still appear so you can walk through the flow.\033[0m\n\n'
+  else
+    printf '\n  ━━━ DRY-RUN MODE ━━━\n'
+    printf '  No files will be written, no commands run, no apps installed.\n'
+    printf '  Prompts still appear so you can walk through the flow.\n\n'
+  fi
+}
 
 # ---------- styling ----------
 
@@ -124,6 +201,12 @@ require_gh() {
 bootstrap_gum() {
   if command -v gum >/dev/null 2>&1; then return 0; fi
   step "Installing gum (one-time, gives this wizard a nicer UI)"
+  if [[ "$DRY_RUN" == "1" ]]; then
+    would "would 'brew install gum'"
+    info "(gum isn't installed yet, so dry-run prompts will use plain bash"
+    info " fallbacks instead of gum's colored UI for this run.)"
+    return 0
+  fi
   brew install gum >/dev/null
   command -v gum >/dev/null 2>&1 || fail "gum install failed"
   success "gum installed"

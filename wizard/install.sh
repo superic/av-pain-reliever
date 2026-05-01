@@ -8,6 +8,8 @@ set -euo pipefail
 LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 source "$LIB_DIR/lib.sh"
 
+dryrun_banner
+
 # ============================================================================
 # Step 1/15 — Pre-flight checks
 # ============================================================================
@@ -67,7 +69,7 @@ if [[ -d "/Applications/Hammerspoon.app" ]]; then
   success "Hammerspoon $hs_version already installed at /Applications/Hammerspoon.app"
 else
   info "Installing via Homebrew (this can take 30-60 seconds)..."
-  brew install --cask hammerspoon
+  runcmd brew install --cask hammerspoon
   success "Hammerspoon installed"
 fi
 
@@ -86,12 +88,12 @@ if [[ -d "/Applications/OBS.app" ]]; then
     success "OBS $obs_version already installed (28+, has obs-websocket built in)"
   else
     warn "OBS $obs_version is older than 28 — upgrading via Homebrew"
-    brew install --cask --force obs
+    runcmd brew install --cask --force obs
     success "OBS upgraded"
   fi
 else
   info "Installing via Homebrew (this can take 1-2 minutes)..."
-  brew install --cask obs
+  runcmd brew install --cask obs
   success "OBS installed"
 fi
 
@@ -111,17 +113,23 @@ if [[ -x "$OBS_CMD_PATH" ]]; then
 else
   ASSET=$(obs_cmd_asset)
   URL="https://github.com/grigio/obs-cmd/releases/latest/download/$ASSET"
-  info "Downloading $ASSET from grigio/obs-cmd releases..."
-  TMPDIR=$(mktemp -d)
-  trap 'rm -rf "$TMPDIR"' EXIT
-  curl -sSL -o "$TMPDIR/obs-cmd.tar.gz" "$URL"
-  tar -xzf "$TMPDIR/obs-cmd.tar.gz" -C "$TMPDIR"
-  info "Installing to $OBS_CMD_PATH (sudo password may be required)..."
-  sudo mv "$TMPDIR/obs-cmd" "$OBS_CMD_PATH"
-  sudo chmod +x "$OBS_CMD_PATH"
-  trap - EXIT
-  rm -rf "$TMPDIR"
-  success "obs-cmd installed: $($OBS_CMD_PATH --version)"
+  if [[ "$DRY_RUN" == "1" ]]; then
+    would "would download $URL"
+    would "would extract obs-cmd binary from the tarball"
+    would "would sudo-move the binary to $OBS_CMD_PATH and chmod +x"
+  else
+    info "Downloading $ASSET from grigio/obs-cmd releases..."
+    TMPDIR=$(mktemp -d)
+    trap 'rm -rf "$TMPDIR"' EXIT
+    curl -sSL -o "$TMPDIR/obs-cmd.tar.gz" "$URL"
+    tar -xzf "$TMPDIR/obs-cmd.tar.gz" -C "$TMPDIR"
+    info "Installing to $OBS_CMD_PATH (sudo password may be required)..."
+    sudo mv "$TMPDIR/obs-cmd" "$OBS_CMD_PATH"
+    sudo chmod +x "$OBS_CMD_PATH"
+    trap - EXIT
+    rm -rf "$TMPDIR"
+    success "obs-cmd installed: $($OBS_CMD_PATH --version)"
+  fi
 fi
 
 # ============================================================================
@@ -141,8 +149,8 @@ if [[ -L "$HAMMERSPOON_DIR" ]]; then
     info "If you replace it, the existing link will be moved to a backup, not deleted."
     if confirm "Replace it with a link to this repo?"; then
       backup="$HAMMERSPOON_DIR.backup-$(date +%Y%m%d-%H%M%S)"
-      mv "$HAMMERSPOON_DIR" "$backup"
-      ln -s "$REPO_ROOT" "$HAMMERSPOON_DIR"
+      runcmd mv "$HAMMERSPOON_DIR" "$backup"
+      runcmd ln -s "$REPO_ROOT" "$HAMMERSPOON_DIR"
       success "Old link backed up to $backup"
       success "~/.hammerspoon -> $REPO_ROOT"
     else
@@ -158,15 +166,15 @@ elif [[ -e "$HAMMERSPOON_DIR" ]]; then
   info "Nothing is deleted; you can restore it later by removing the new symlink"
   info "and renaming the backup back to ~/.hammerspoon."
   if confirm "Move existing ~/.hammerspoon to backup and create the symlink?"; then
-    mv "$HAMMERSPOON_DIR" "$backup"
-    ln -s "$REPO_ROOT" "$HAMMERSPOON_DIR"
+    runcmd mv "$HAMMERSPOON_DIR" "$backup"
+    runcmd ln -s "$REPO_ROOT" "$HAMMERSPOON_DIR"
     success "Existing config backed up to $backup"
     success "~/.hammerspoon -> $REPO_ROOT"
   else
     fail "Can't proceed without ~/.hammerspoon pointing at this repo. Aborting."
   fi
 else
-  ln -s "$REPO_ROOT" "$HAMMERSPOON_DIR"
+  runcmd ln -s "$REPO_ROOT" "$HAMMERSPOON_DIR"
   success "~/.hammerspoon -> $REPO_ROOT (created fresh)"
 fi
 
@@ -182,16 +190,20 @@ if pgrep -x Hammerspoon >/dev/null 2>&1; then
   success "Hammerspoon is already running"
 else
   info "Launching Hammerspoon..."
-  open -a Hammerspoon
-  sleep 2
+  runcmd open -a Hammerspoon
+  [[ "$DRY_RUN" != "1" ]] && sleep 2
 fi
 echo
 info "I'll open the System Settings → Privacy & Security → Accessibility pane"
 info "for you. Find Hammerspoon in the list and toggle the switch ON."
 info "(You'll be prompted for your Mac password — that's normal.)"
 echo
-open "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility" >/dev/null 2>&1 || true
-sleep 1
+if [[ "$DRY_RUN" == "1" ]]; then
+  would 'would open System Settings → Privacy & Security → Accessibility pane'
+else
+  open "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility" >/dev/null 2>&1 || true
+  sleep 1
+fi
 if confirm "Done — Hammerspoon is toggled ON in Accessibility?"; then
   success "Accessibility permission granted"
 else
@@ -261,21 +273,27 @@ if grep -q '^-- WIZARD_PROFILE_' "$PROFILES_FILE" 2>/dev/null; then
   if ! confirm "Overwrite anyway?"; then
     info "Keeping existing profiles.lua. Skipping generation."
   else
-    "$LIB_DIR/_generate-profiles.sh" "${locations[@]}"
+    runstep "would generate profiles.lua with ${#locations[@]} location(s): ${locations[*]}" \
+      "$LIB_DIR/_generate-profiles.sh" "${locations[@]}"
     success "profiles.lua regenerated with ${#locations[@]} location(s)"
   fi
 else
   if [[ -f "$PROFILES_FILE" ]]; then
     backup="$PROFILES_FILE.backup-$(date +%Y%m%d-%H%M%S)"
-    cp "$PROFILES_FILE" "$backup"
+    runcmd cp "$PROFILES_FILE" "$backup"
     info "Backed up existing profiles.lua to $backup"
   fi
-  "$LIB_DIR/_generate-profiles.sh" "${locations[@]}"
+  runstep "would generate profiles.lua with ${#locations[@]} location(s): ${locations[*]}" \
+    "$LIB_DIR/_generate-profiles.sh" "${locations[@]}"
   success "profiles.lua written with ${#locations[@]} location(s)"
 fi
 echo
 info "Asking Hammerspoon to reload its config so the new profiles are live..."
-hammerspoon_reload_with_fallback
+if [[ "$DRY_RUN" == "1" ]]; then
+  would "would reload Hammerspoon (osascript reload)"
+else
+  hammerspoon_reload_with_fallback
+fi
 
 # ============================================================================
 # Step 11/15 — Enable OBS WebSocket server
@@ -286,11 +304,14 @@ info "tools control it. We need to turn it on so obs-cmd can switch scenes."
 echo
 if ! pgrep -x OBS >/dev/null 2>&1; then
   info "Launching OBS (give it a few seconds to start)..."
-  open -a OBS
-  sleep 4
+  runcmd open -a OBS
+  [[ "$DRY_RUN" != "1" ]] && sleep 4
 fi
 if obs-cmd info >/dev/null 2>&1; then
   success "OBS WebSocket already enabled and reachable on localhost:4455"
+elif [[ "$DRY_RUN" == "1" ]]; then
+  would "would prompt you to enable OBS WebSocket server in Tools → WebSocket Server Settings"
+  would "would verify connection with: obs-cmd info"
 else
   echo
   info "Click into the OBS window. Then in the OBS menu bar at the top:"
@@ -328,6 +349,11 @@ info "API doesn't let us enumerate your physical cameras)."
 echo
 if [[ "${SKIP_OBS:-0}" == "1" ]]; then
   warn "Skipping (OBS WebSocket not reachable)."
+elif [[ "$DRY_RUN" == "1" ]]; then
+  for loc in "${locations[@]}"; do
+    pretty=$(to_pretty "$(to_slug "$loc")")
+    would "would create OBS scene '$pretty' (skipped if it already exists)"
+  done
 else
   existing_scenes=$(obs-cmd scene list 2>/dev/null || echo "")
   for loc in "${locations[@]}"; do
@@ -355,7 +381,7 @@ else
   info "will see as your camera. It persists across OBS launches; you only"
   info "need to do this once."
   echo
-  obs-cmd virtual-camera start >/dev/null 2>&1 || true
+  runcmd obs-cmd virtual-camera start
   success "Virtual camera started"
   echo
   info "Now add a camera source to each scene (one-time, ~30 seconds per scene):"
@@ -389,7 +415,7 @@ configure_app() {
     return
   fi
   info "Opening $app for you to configure..."
-  open -a "$app" >/dev/null 2>&1 || true
+  runcmd open -a "$app"
   echo
   info "In $app's settings:"
   info "  • Microphone → Same as System"
@@ -416,7 +442,13 @@ info "locations RIGHT NOW with everything plugged in (dock, monitor, mic,"
 info "speakers, anything else that's part of that setup)."
 echo
 if confirm "Are you docked at a location and ready to capture it now?"; then
-  "$LIB_DIR/add-location.sh"
+  if [[ "$DRY_RUN" == "1" ]]; then
+    would "would launch the add-location subcommand to capture this dock setup"
+    info "(In a real run, this is where you'd pick USB devices, microphone,"
+    info " and speaker for your current location.)"
+  else
+    "$LIB_DIR/add-location.sh"
+  fi
 else
   info "No problem. Whenever you're ready, run:"
   info "  $REPO_ROOT/wizard.sh add-location"

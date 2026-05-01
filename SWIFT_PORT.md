@@ -346,6 +346,25 @@ These are things we figured out the hard way that should bias the Swift design.
   go to Tools → WebSocket Server Settings, tick Enable, untick Auth, click
   OK" is better than "configure OBS websocket". Swift's first-run wizard
   should follow the same pattern.
+- **Dry-run is a valuable affordance, not a power-user feature.** The
+  Hammerspoon wizard now ships with `--dry-run` that walks the user
+  through the entire install flow, showing every command/install that
+  would have happened, without actually doing any of it. Useful for:
+  (a) previewing before committing to changes, (b) showing a colleague
+  what their install will look like, (c) demoing the app. Implementation:
+  every side-effect call goes through a `runcmd` or `runstep` wrapper
+  that checks a `DRY_RUN` env var. Read-only commands (pgrep, defaults
+  read, command -v) always run. Confirms always run (they're asking the
+  user, not doing work).
+  *Implication for Swift:* the first-run UI should have a "preview only"
+  toggle that walks through every screen without writing anything to
+  `~/Library/Application Support/AVPainReliever/` or running `obs-cmd`.
+  Same wrapper pattern: every side-effect operation in
+  `ProfileApplier`/`ConfigLoader`/`OBSController` checks an injected
+  `dryRun: Bool`. Probably easiest as a property on the dependency
+  injection container. The status bar UI could even have a permanent
+  "Preview mode" toggle for advanced users who want to see what the
+  next dock event WOULD trigger before letting it fire.
 
 ---
 
