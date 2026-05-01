@@ -14,6 +14,7 @@ teach us something.
 | File | What it proves | Status |
 | --- | --- | --- |
 | [`usb-watcher.swift`](usb-watcher.swift) | IOKit USB watching produces output equivalent to Hammerspoon's `hs.usb.watcher` (initial snapshot + live add/remove events). | ✅ Working |
+| [`audio-defaults.swift`](audio-defaults.swift) | CoreAudio enumerates devices, reads system input/output defaults, and switches them by name — the full read+write surface `AudioController` will need. | ✅ Working |
 
 ## Running
 

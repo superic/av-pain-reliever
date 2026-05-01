@@ -91,8 +91,12 @@ These can be considered final unless we discover a blocker:
 - **Frameworks**:
   - `IOKit/usb` for USB device enumeration + notifications via notification
     port + run loop integration
-  - `CoreAudio` for default device get/set, wrapped with `SimplyCoreAudio`
-    SPM dep to hide the worst of the C APIs
+  - `CoreAudio` for default device get/set, called directly. The C APIs
+    are uniform enough that ~120 lines of `AudioController.swift` covers
+    the full enumerate + read-default + set-default surface the engine
+    needs. (Originally planned to wrap with `SimplyCoreAudio`; the
+    CoreAudio prototype proved that's unnecessary — see "CoreAudio
+    prototype findings" near the end of this doc.)
   - `Foundation.Process` to shell out to `obs-cmd` (reuse the Phase 1
     dependency rather than write a native WebSocket client)
   - `UserNotifications` for the toast (replaces `hs.notify`)
@@ -214,7 +218,7 @@ av-pain-reliever-mac/
 │   │   ├── Debouncer.swift           # 1.5s coalescing
 │   │   └── USBWatcher.swift          # IOKit notification port wrapper
 │   ├── Adapters/
-│   │   ├── AudioController.swift     # SimplyCoreAudio wrapper
+│   │   ├── AudioController.swift     # raw CoreAudio (no SimplyCoreAudio dep)
 │   │   ├── OBSController.swift       # obs-cmd Process wrapper
 │   │   └── Notifier.swift            # UserNotifications wrapper
 │   ├── Config/
@@ -287,7 +291,7 @@ we've learned through Phase 1 / 1.5:
 
 - Xcode project + SwiftUI menu bar skeleton: 2-3h
 - IOKit USB watcher (notification port + run loop): 4-6h (notoriously fiddly)
-- CoreAudio adapter via SimplyCoreAudio: 2-3h
+- CoreAudio adapter (raw CoreAudio, no SimplyCoreAudio): 2-3h
 - ProfileResolver + Debouncer (Swift port of init.lua logic): 2-3h
 - ProfileApplier + Notifier: 2h
 - OBSController wrapping obs-cmd Process: 1-2h
@@ -556,6 +560,147 @@ prototype — it was a feasibility check, not a UX experiment. But the
 "locked architectural choices" entry for **"`IOKit/usb` for USB device
 enumeration + notifications via notification port + run loop
 integration"** can now be considered **validated**, not just locked.
+
+---
+
+## CoreAudio prototype findings
+
+A second throwaway single-file Swift prototype lives at
+[`prototypes/audio-defaults.swift`](prototypes/audio-defaults.swift) and
+proves CoreAudio can do everything `hs.audiodevice` does for us in the
+engine: enumerate input/output devices, read the current system defaults,
+and switch defaults by `AudioDeviceID` (which `AudioController` will look
+up by name). Run it with `swift prototypes/audio-defaults.swift` — it
+prints a snapshot + current defaults + a non-destructive set-default
+verification (sets each default to its *current* value, exercising the
+write codepath without disrupting the user's audio).
+
+### Did it work first try?
+
+Yes. Snapshot output matches the engine's `--- audio devices ---` log
+block **line-for-line, in the same order** — including the cosmetic
+detail that some devices (CalDigit, Yeti, LG UltraFine) appear twice as
+separate `AudioDeviceID`s with `in=true/out=false` and
+`in=false/out=true`, while a few (Microsoft Teams Audio) appear once
+with `in=true out=true`. Unlike IOKit, CoreAudio's
+`kAudioHardwarePropertyDevices` returns devices in a stable order — no
+need to sort for log fidelity.
+
+Default-device set verification: `noErr` for both input and output. The
+production `AudioController` can use the same
+`AudioObjectSetPropertyData(kAudioObjectSystemObject,
+DefaultInput|OutputDevice, …)` call to actually switch when a profile
+applies.
+
+### Anything harder than expected?
+
+- **Generic property-read helper hits a Swift compiler warning.** The
+  obvious `func readProperty<T>(...) -> T?` that wraps
+  `AudioObjectGetPropertyData` produces *"forming
+  UnsafeMutableRawPointer to a variable of type 'T'; this is likely
+  incorrect because 'T' may contain an object reference."* The compiler
+  can't prove `T` is trivially copyable. For a production
+  `AudioController` we should either constrain to non-class types or
+  just write per-type helpers (`readUInt32(...)`,
+  `readCFString(...)`); the prototype takes the per-type route after
+  hitting the warning. Minor friction, not a blocker.
+- **`kAudioObjectPropertyName` returns `Unmanaged<CFString>`, not
+  `CFString`.** Easy to miss until you look at the readProperty signature.
+  Pattern: read into `Unmanaged<CFString>?`, then `takeRetainedValue() as
+  String`. The CoreAudio docs do say "the caller is responsible for
+  releasing", which is the Unmanaged hint.
+
+### Anything easier than expected?
+
+- **The C-style API is more uniform than I expected.** Every read is
+  `AudioObjectGetPropertyData(object, &address, 0, nil, &size, &out)` —
+  same shape regardless of what you're reading. Wrapping this in a
+  small `address(selector, scope:)` helper kills 80% of the boilerplate
+  and the rest reads almost like Swift. The "notoriously fiddly" part
+  of the original effort estimate was overblown — at least for the
+  default-device subset we need.
+- **The original plan to wrap CoreAudio behind `SimplyCoreAudio` may be
+  unnecessary** for the engine's actual needs. The full read+write
+  surface for `AudioController` is exactly four operations:
+  enumerate-devices, get-name, get-streams-by-scope, and
+  set-default-device-for-role. With ~80 lines of helpers we have all of
+  them in pure Swift + CoreAudio. SimplyCoreAudio adds an SPM dep, an
+  observation/notification surface we don't need (the engine doesn't
+  watch for audio device changes — only USB events trigger reapplies),
+  and a Combine layer that doesn't fit our otherwise-imperative
+  `ProfileApplier`. **Recommendation: drop SimplyCoreAudio from the
+  locked architectural choices**, write `AudioController.swift` as
+  ~120 lines of CoreAudio directly. Saves a dep and cuts a layer.
+- **Set-default verification with current value is a clean test
+  pattern.** Setting input→input and output→output exercises the entire
+  write path with zero user-visible side effect. Worth keeping for
+  `AudioController`'s init: a one-time self-set on launch as a
+  smoke-check that the codepath is healthy. (Or a unit test seam.)
+
+### Patterns worth keeping for the production port
+
+```swift
+// Address helper — kills CoreAudio's biggest source of boilerplate:
+private func address(
+    _ selector: AudioObjectPropertySelector,
+    scope: AudioObjectPropertyScope = kAudioObjectPropertyScopeGlobal
+) -> AudioObjectPropertyAddress {
+    AudioObjectPropertyAddress(
+        mSelector: selector,
+        mScope: scope,
+        mElement: kAudioObjectPropertyElementMain
+    )
+}
+
+// Capability check — does this device have streams in a given scope?
+private func hasStreams(_ id: AudioDeviceID, scope: AudioObjectPropertyScope) -> Bool {
+    var addr = address(kAudioDevicePropertyStreams, scope: scope)
+    var size: UInt32 = 0
+    AudioObjectGetPropertyDataSize(id, &addr, 0, nil, &size)
+    return size > 0
+}
+
+// Find a device by name + capability — what AudioController.setInput(name:)
+// will need. The prototype only iterates; the production version is the
+// same loop with `==` matching:
+func findDevice(named target: String, scope: AudioObjectPropertyScope) -> AudioDeviceID? {
+    for id in allDeviceIDs() where deviceName(id) == target && hasStreams(id, scope: scope) {
+        return id
+    }
+    return nil
+}
+```
+
+### Effort estimate update
+
+The original estimate had **CoreAudio adapter via SimplyCoreAudio: 2-3h**.
+After this prototype, the estimate is unchanged at **2-3h** but the work
+shifts: instead of wrapping SimplyCoreAudio, we wrap raw CoreAudio in
+`AudioController.swift`. Same amount of code, one fewer dep. The SPM
+manifest gets shorter.
+
+### Architectural choice update
+
+Update the "Locked architectural choices" section: replace
+> `CoreAudio` for default device get/set, wrapped with `SimplyCoreAudio`
+> SPM dep to hide the worst of the C APIs
+
+with:
+
+> `CoreAudio` for default device get/set, called directly. The C APIs
+> are uniform enough that ~120 lines of `AudioController.swift` covers
+> the full enumerate + read-default + set-default surface the engine
+> needs. **No SimplyCoreAudio dep** — see "CoreAudio prototype
+> findings" for why.
+
+(Done — this section already updated in the same change.)
+
+### Open questions resolved
+
+None — same as the IOKit prototype, this was a feasibility check, not a
+UX experiment. But two locked architectural choices were validated AND
+revised: CoreAudio direct (instead of via SimplyCoreAudio) is now the
+plan for `AudioController`.
 
 ---
 
