@@ -18,3 +18,8 @@ logs/
 # Claude Code per-machine state
 .claude/settings.local.json
 .claude/worktrees/
+
+# Swift Package Manager
+mac/.build/
+mac/.swiftpm/
+mac/Package.resolved

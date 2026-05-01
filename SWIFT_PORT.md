@@ -12,7 +12,9 @@ real-world use, log it under "Open questions" so we remember to revisit it once
 we have data.
 
 **Status:** Phase 1.5 (wizard) in progress on `wizard-hardening` branch as of
-2026-04-30. Swift port not yet started.
+2026-04-30. Swift port started 2026-05-01 — IOKit + CoreAudio prototypes
+landed, engine core (`ProfileResolver` + `Debouncer`) ported with tests.
+Source lives in `mac/` as a Swift Package.
 
 ---
 
@@ -293,6 +295,8 @@ we've learned through Phase 1 / 1.5:
 - IOKit USB watcher (notification port + run loop): 4-6h (notoriously fiddly)
 - CoreAudio adapter (raw CoreAudio, no SimplyCoreAudio): 2-3h
 - ProfileResolver + Debouncer (Swift port of init.lua logic): 2-3h
+  → DONE 2026-05-01 in `mac/`. Actual: ~30 min including 15 tests.
+    Revise category estimate down for similar pure-logic ports.
 - ProfileApplier + Notifier: 2h
 - OBSController wrapping obs-cmd Process: 1-2h
 - ConfigLoader (TOML parser): 1-2h
@@ -701,6 +705,92 @@ None — same as the IOKit prototype, this was a feasibility check, not a
 UX experiment. But two locked architectural choices were validated AND
 revised: CoreAudio direct (instead of via SimplyCoreAudio) is now the
 plan for `AudioController`.
+
+---
+
+## Engine core port (ProfileResolver + Debouncer)
+
+The first production Swift code lives in `mac/` as a Swift Package, set
+up to be wrapped by the eventual menu-bar app's Xcode project. Run
+`cd mac && swift test` to exercise the engine in isolation — no
+AppKit/IOKit/CoreAudio imports yet, so the package builds + tests in
+under 10 seconds on a cold cache.
+
+### What's there
+
+```
+mac/
+├── Package.swift
+├── Sources/AVPainReliever/
+│   ├── Engine/
+│   │   ├── Debouncer.swift        # 1.5s coalescing, injectable DebouncerClock
+│   │   ├── ProfileResolver.swift  # init.lua's resolveProfile()
+│   │   └── USBDevice.swift        # Hashable (vid, pid)
+│   └── Config/
+│       └── Profile.swift          # name + fingerprint (no audio/obs yet)
+└── Tests/AVPainRelieverTests/
+    ├── DebouncerTests.swift       # 7 tests
+    ├── ProfileResolverTests.swift # 8 tests
+    └── TestClock.swift            # virtual-time DebouncerClock
+```
+
+### Lessons learned
+
+- **The init.lua resolution algorithm ports to ~15 lines of Swift**
+  with no behavior changes. The Lua `>` (strictly greater specificity)
+  becomes Swift `>`; alphabetical-first iteration → first-match-wins
+  semantics is identical between Lua's `pairs` + `table.sort` and
+  Swift's `profiles.sorted { $0.name < $1.name }`. Don't be afraid to
+  port pure-logic engines verbatim — the line-count ratio is ~1:1, and
+  every "improvement" is risk.
+- **`DebouncerClock` injection makes the timer tests sub-millisecond
+  AND deterministic.** A naive `DispatchQueue.asyncAfter`-backed
+  Debouncer would either need `Thread.sleep` in tests (slow + flaky)
+  or `expectation(description:).fulfill()` plumbing. The protocol +
+  `TestClock` pattern adds ~30 lines and gives us 7 tests that all run
+  in <1ms total. Worth doing this for *any* Swift code that calls
+  `asyncAfter`/`DispatchSourceTimer` — the tests-first cost is
+  immediately repaid.
+- **Swift Testing (`@Suite` / `@Test` / `#expect`) is markedly cleaner
+  than XCTest** for new code on Swift 5.10+. Suite-level fixtures live
+  as `static let`s, no `setUp`/`tearDown`, no `XCTAssertEqual` noise.
+  Apple Silicon + Swift 6.3 toolchain runs both side by side in the
+  same target if we ever need to mix; for this package, it's pure
+  Swift Testing. Adopt for all new Swift test files.
+- **Profile fixture data is best drawn from the actual engine
+  snapshot** in `~/.hammerspoon/logs/av-pain-reliever.log` — using
+  real (vid, pid) pairs from the user's docked setup makes test
+  failures legible ("CalDigit + LG won't match home-office") instead
+  of "0xdeadbeef + 0xcafebabe doesn't match TestProfile1".
+- **Don't speculate on `Profile`'s schema beyond what
+  `ProfileResolver` needs.** Audio + OBS fields land alongside
+  `ProfileApplier`, not now — adding them speculatively would force
+  test fixtures to specify defaults for fields nothing here uses.
+
+### Effort estimate update
+
+Revising the estimate for similar pure-logic Swift ports:
+**4-6h was 2-3h was actually 30 min** for resolver + debouncer + 15
+tests + Swift Package bootstrap. Most of that was bootstrapping the
+package; the algorithm port itself was ~10 minutes. Implication: the
+remaining pure-Swift pieces in the original effort estimate
+(`ProfileApplier`, `ConfigLoader` TOML, `ConfigImporter` profiles.lua
+parser) are likely overestimated by 2-3x. Don't re-budget yet — wait
+until each lands to see if framework integration drags them back up.
+
+### What's next in the engine
+
+- **`ProfileApplier`** + extend `Profile` with `audioInput`,
+  `audioOutput`, `obsScene` (Codable, mirrors `profiles.lua` schema).
+  Needs adapters: `AudioController` (CoreAudio, see prototype findings)
+  and `OBSController` (`Foundation.Process` wrapping `obs-cmd`).
+- **`USBWatcher`** — wrap the IOKit prototype as a real class with a
+  delegate-style callback into `Debouncer.bump`.
+- **`Engine`** — top-level coordinator that wires
+  USBWatcher → Debouncer → ProfileResolver → ProfileApplier and
+  exposes the current profile to `StatusItem`.
+
+After those, the project shifts from engine to UI/distribution.
 
 ---
 
