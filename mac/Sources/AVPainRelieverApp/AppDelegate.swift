@@ -28,8 +28,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
     private var notifiedUnknownLocation = false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        FileHandle.standardError.write(Data("[AVPR] applicationDidFinishLaunching fired\n".utf8))
-
         // Hide the Dock icon programmatically. The eventual signed
         // .app bundle will set LSUIElement = YES in Info.plist, which
         // is the same effect at launch time. For an SPM-built binary
@@ -93,6 +91,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
 
     func applicationWillTerminate(_ notification: Notification) {
         engine?.stop()
+    }
+
+    /// Menu-bar entry point — force an immediate re-evaluation
+    /// without waiting for the next USB event or for the debounce
+    /// window to elapse. Useful when the user knows a state change
+    /// happened that the engine hasn't observed (e.g., editing
+    /// profiles.toml mid-session, plugging in something the watcher
+    /// missed, or just sanity-checking what the engine resolves to
+    /// right now).
+    func reevaluate() {
+        engine?.evaluate()
     }
 
     // MARK: - Bootstrap

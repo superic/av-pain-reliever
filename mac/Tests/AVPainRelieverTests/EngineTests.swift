@@ -221,6 +221,38 @@ struct EngineTests {
         #expect(h.watcher.stopCount == 1)
     }
 
+    // MARK: - Manual evaluate
+
+    @Test("evaluate() runs an immediate pass and cancels pending debounced ones")
+    func evaluateRunsImmediatelyAndCancelsPending() {
+        let h = makeHarness()
+        h.watcher.devices = []
+        h.engine.start() // initial: laptop
+        let baselineObsCalls = h.obs.calls.count
+
+        // Schedule a debounced eval, then immediately call evaluate().
+        h.watcher.devices = [Self.caldigit, Self.lgCamera]
+        h.watcher.triggerChange()
+        h.engine.evaluate() // should fire NOW
+
+        // home-office applied without advancing the clock.
+        #expect(h.obs.calls == ["Laptop", "Home Office"])
+
+        // Pending debounced eval should be cancelled — advancing the
+        // clock past the window should not produce another apply.
+        h.clock.advance(by: 5)
+        #expect(h.obs.calls.count == baselineObsCalls + 1)
+    }
+
+    @Test("evaluate() before start() is a no-op")
+    func evaluateBeforeStartIsNoop() {
+        let h = makeHarness()
+        h.watcher.devices = [Self.caldigit, Self.lgCamera]
+        h.engine.evaluate()
+        #expect(h.obs.calls.isEmpty)
+        #expect(h.audio.calls.isEmpty)
+    }
+
     // MARK: - Unknown-location detection
 
     @Test("onUnknownLocation fires when fallback profile resolves with devices attached")
