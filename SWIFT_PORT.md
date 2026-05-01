@@ -13,8 +13,9 @@ we have data.
 
 **Status:** Phase 1.5 (wizard) in progress on `wizard-hardening` branch as of
 2026-04-30. Swift port started 2026-05-01 — IOKit + CoreAudio prototypes
-landed, engine core (`ProfileResolver` + `Debouncer`) ported with tests.
-Source lives in `mac/` as a Swift Package.
+landed, engine core (`ProfileResolver` + `Debouncer`) and apply layer
+(`ProfileApplier` + `CoreAudioController` + `ProcessOBSController`)
+ported with tests. Source lives in `mac/` as a Swift Package.
 
 ---
 
@@ -294,11 +295,18 @@ we've learned through Phase 1 / 1.5:
 - Xcode project + SwiftUI menu bar skeleton: 2-3h
 - IOKit USB watcher (notification port + run loop): 4-6h (notoriously fiddly)
 - CoreAudio adapter (raw CoreAudio, no SimplyCoreAudio): 2-3h
+  → DONE 2026-05-01 as `CoreAudioController` in
+    `mac/Sources/AVPainReliever/Adapters/AudioController.swift`. Lifted
+    directly from the prototype; ~85 lines.
 - ProfileResolver + Debouncer (Swift port of init.lua logic): 2-3h
   → DONE 2026-05-01 in `mac/`. Actual: ~30 min including 15 tests.
     Revise category estimate down for similar pure-logic ports.
 - ProfileApplier + Notifier: 2h
+  → ProfileApplier DONE 2026-05-01 in `mac/`. Notifier still open (lands
+    with the menu-bar app target, since it depends on
+    `UserNotifications` registration at app startup).
 - OBSController wrapping obs-cmd Process: 1-2h
+  → DONE 2026-05-01 in `mac/Sources/AVPainReliever/Adapters/OBSController.swift`.
 - ConfigLoader (TOML parser): 1-2h
 - ConfigImporter (parse profiles.lua → profiles.toml): 2-3h
 - StatusItem menu UI: 1-2h (smaller now that there's no Switch-to submenu)
@@ -724,12 +732,17 @@ mac/
 ├── Sources/AVPainReliever/
 │   ├── Engine/
 │   │   ├── Debouncer.swift        # 1.5s coalescing, injectable DebouncerClock
+│   │   ├── ProfileApplier.swift   # orchestrates audio + OBS side effects
 │   │   ├── ProfileResolver.swift  # init.lua's resolveProfile()
 │   │   └── USBDevice.swift        # Hashable (vid, pid)
+│   ├── Adapters/
+│   │   ├── AudioController.swift  # protocol + CoreAudioController
+│   │   └── OBSController.swift    # protocol + ProcessOBSController
 │   └── Config/
-│       └── Profile.swift          # name + fingerprint (no audio/obs yet)
+│       └── Profile.swift          # name + fingerprint + audio + scene
 └── Tests/AVPainRelieverTests/
     ├── DebouncerTests.swift       # 7 tests
+    ├── ProfileApplierTests.swift  # 10 tests
     ├── ProfileResolverTests.swift # 8 tests
     └── TestClock.swift            # virtual-time DebouncerClock
 ```
@@ -780,17 +793,88 @@ until each lands to see if framework integration drags them back up.
 
 ### What's next in the engine
 
-- **`ProfileApplier`** + extend `Profile` with `audioInput`,
-  `audioOutput`, `obsScene` (Codable, mirrors `profiles.lua` schema).
-  Needs adapters: `AudioController` (CoreAudio, see prototype findings)
-  and `OBSController` (`Foundation.Process` wrapping `obs-cmd`).
 - **`USBWatcher`** — wrap the IOKit prototype as a real class with a
-  delegate-style callback into `Debouncer.bump`.
+  delegate-style callback into `Debouncer.bump`. (Last engine piece.)
 - **`Engine`** — top-level coordinator that wires
   USBWatcher → Debouncer → ProfileResolver → ProfileApplier and
   exposes the current profile to `StatusItem`.
 
 After those, the project shifts from engine to UI/distribution.
+
+---
+
+## Apply layer port (ProfileApplier + adapters)
+
+`ProfileApplier` is the side-effects half of the engine — given a
+resolved `Profile`, switch the system audio defaults and the OBS scene
+to match. Mirrors `init.lua`'s `applyProfile`, including its
+`lastAppliedProfile` no-op short-circuit. Two adapter protocols
+(`AudioController`, `OBSController`) keep the side effects mockable so
+the applier itself is fully unit-tested.
+
+### Lessons learned
+
+- **`AudioApplyResult` enum-with-payload preserves the engine's
+  three-way error log without dragging the protocol surface into a
+  Result/throws shape.** init.lua distinguishes "device not found" /
+  "device exists but is not an input" / "set call failed" — three
+  different log lines that point the user at three different
+  remediations (plug the device in / fix the profile config / file a
+  CoreAudio bug). Returning `enum AudioApplyResult { ok, notFound,
+  wrongScope, setFailed(OSStatus) }` from `setDefault(named:role:)`
+  lets `ProfileApplier` map each case to the correct log line without
+  the protocol leaking `AudioDeviceID`/`OSStatus`/CoreAudio at all to
+  callers. Result-with-cases beats `throws` when the cases ARE the
+  message.
+- **`OBSController` as `init?()` with executable auto-discovery
+  matches the engine's "obs-cmd not installed → log warning, keep
+  running" behavior cleanly.** `ProfileApplier` takes
+  `obs: OBSController?`; passing nil mirrors a missing `obs-cmd`. No
+  separate "OBS available?" boolean flag, no error case for "no OBS";
+  the optional-typed dependency carries the entire signal.
+- **The applier's `lastAppliedName` dedup is a property of the apply
+  layer, not the engine layer.** init.lua puts it inside
+  `applyProfile`. The Swift port follows that — keeps the engine's
+  `evaluate → resolve → apply` pipeline stateless except for the
+  applier itself. If we ever add a "force re-apply" command (e.g. for
+  a wizard step), it goes here as a `forceNextApply()` toggle.
+- **Recording-mocks beat protocol-witnesses for these tests.**
+  Function-witness style (a struct with a `setDefault` closure inside)
+  reads cleanly for one-shot tests but hides assertion targets behind
+  per-test capture variables. A reference-typed mock with `private(set)
+  var calls: [Call]` lets every test do `#expect(audio.calls == [...])`
+  in one line. 10 tests, ~1ms total, no flakes.
+- **`Process` + `Pipe` capture stderr/stdout for diagnostics
+  free-of-charge.** The OBSError.nonZeroExit case carries both — when
+  `obs-cmd` fails because OBS isn't running or auth is misconfigured,
+  the warning log gets the full error message instead of just an exit
+  code. Worth doing every time we shell out.
+
+### Effort estimate updates
+
+| Original | Actual | Notes |
+|---|---|---|
+| ProfileApplier + Notifier: **2 h** | ~30 min | Notifier still open. |
+| OBSController wrapping obs-cmd Process: **1-2 h** | ~10 min | One file, ~70 lines. |
+| CoreAudio adapter via SimplyCoreAudio: **2-3 h** | ~15 min | Lifted from prototype; ~85 lines, no SPM dep. |
+
+The pure-engine parts of the original 37-56h estimate (resolver,
+debouncer, applier, audio adapter, OBS adapter) totaled **9-15 h** in
+the budget; actual is **~70 min**. The remaining items (USBWatcher,
+config loader, importer, status item, preferences, first-run wizard,
+signing/notarization, GitHub Actions, README/install docs, real-world
+iteration) total **~28-41 h** in the original budget. Some of those
+will compress similarly (USBWatcher: prototype already done, expect
+~30 min for the class wrapper); the UI items probably won't.
+
+### What's next
+
+The engine is one class away from end-to-end. `USBWatcher` (wrapping
+the IOKit prototype) gives `Debouncer.bump()` a real input source;
+then a thin `Engine` coordinator wires
+USBWatcher → Debouncer → ProfileResolver → ProfileApplier. After that
+the work shifts to the menu-bar app target (Xcode project, status
+item, first-run wizard, code signing, distribution).
 
 ---
 
