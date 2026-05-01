@@ -4,6 +4,30 @@ Location-aware AV switcher for macOS. When you dock your MacBook, it automatical
 
 Set Zoom and Slack to "Same as System" for audio and "OBS Virtual Camera" for video, and they'll inherit the right devices automatically wherever you dock.
 
+## Quick start (guided wizard)
+
+The fastest path is the wizard — it installs everything, walks you through the OBS / Zoom / Slack setup, and helps you capture USB IDs at each location. Run:
+
+```sh
+gh repo clone superic/av-pain-reliever ~/av-pain-reliever && ~/av-pain-reliever/wizard.sh
+```
+
+You'll need [Homebrew](https://brew.sh) and an authenticated [GitHub CLI](https://cli.github.com) (`gh auth login`) installed first. About 10 minutes start to finish.
+
+After the initial install, capture additional dock locations later with:
+
+```sh
+~/av-pain-reliever/wizard.sh add-location
+```
+
+And check the system state any time with:
+
+```sh
+~/av-pain-reliever/wizard.sh status
+```
+
+The rest of this README covers the manual install and what's actually happening under the hood. Skip it if the wizard worked.
+
 ## How it works
 
 - A small Hammerspoon Lua engine (`init.lua`) listens for USB connect/disconnect events.
