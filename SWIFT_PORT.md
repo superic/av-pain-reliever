@@ -421,6 +421,144 @@ These are things we figured out the hard way that should bias the Swift design.
 
 ---
 
+## IOKit prototype findings
+
+A throwaway single-file Swift prototype lives at
+[`prototypes/usb-watcher.swift`](prototypes/usb-watcher.swift) and proves
+that IOKit USB watching produces output equivalent to Hammerspoon's
+`hs.usb.watcher`. Run it with `swift prototypes/usb-watcher.swift`.
+
+### Did it work first try?
+
+Almost. The IOKit pieces themselves (matching dict, notification port,
+run-loop wiring, drained iterators) worked first compile. The two surprises
+were both about Swift / Foundation behavior, not IOKit:
+
+- **stdout was block-buffered** when the script wasn't attached to a TTY,
+  so the snapshot output didn't appear until the process exited. Fix:
+  `setbuf(stdout, nil)` at startup. The production app logs through
+  `os.Logger`, so this is a script-only quirk — but worth remembering if
+  we ever ship a CLI surface alongside the `.app`.
+- **The IOKit registry entry name was the wrong fallback** for unnamed
+  devices. `IORegistryEntryGetName` returns the *class name*
+  (`"IOUSBHostDevice"`) when a device has no instance name set, not an
+  empty string. Hammerspoon renders these as `"?"`. Fix: drop the
+  `IORegistryEntryGetName` fallback entirely; just use `"?"` when
+  `kUSBProductString` (the `"USB Product Name"` property) is missing.
+  Affects ~2 devices on Eric's docked setup (LG UltraFine internal hub
+  legs).
+
+Snapshot output on Eric's machine matches the most recent Hammerspoon
+log's `--- attached USB devices ---` block one-for-one (every vid/pid
+present, every name match), plus an iPhone connected since the log was
+captured. IOKit iteration order differs from Hammerspoon's — not a
+problem for the engine since `ProfileResolver` works on a *set* of
+fingerprints, but worth knowing: **never assume a stable enumeration
+order from `IOServiceGetMatchingServices`**. If the Swift port ever
+needs deterministic output (logging, hashing for change detection),
+sort by `(vid, pid, name)` after enumeration.
+
+### Anything harder than expected?
+
+- **The Swift Clang importer doesn't surface IOUSBLib's `#define`
+  constants**. `kUSBVendorID`, `kUSBProductID`, `kUSBProductString`,
+  `kIOUSBDeviceClassName` — none of them are visible from Swift.
+  Hard-code the literals (`"idVendor"`, `"idProduct"`, `"USB Product
+  Name"`, `"IOUSBHostDevice"`). Stash these as named constants in
+  `USBWatcher.swift` so it's clear they're IOKit-defined and not
+  arbitrary.
+- **`IOServiceMatching` consumes one CF reference per call site**.
+  `IOServiceGetMatchingServices` and each `IOServiceAddMatchingNotification`
+  each consume one. So for snapshot + add-notification +
+  remove-notification = three calls to `IOServiceMatching`, not one.
+  Cheap and obvious in retrospect, but the symptom of getting it wrong
+  is `kIOReturnNoMemory` from the second consumer, which is misleading.
+
+### Anything easier than expected?
+
+- **The notification-port → run-loop integration is one line:**
+  `CFRunLoopAddSource(CFRunLoopGetMain(), IONotificationPortGetRunLoopSource(port).takeUnretainedValue(), .commonModes)`.
+  The `.takeUnretainedValue()` is the only Swift-vs-C ergonomic friction.
+- **Captureless Swift closures convert cleanly to `@convention(c)`
+  function pointers** as long as they only reference globals, not local
+  variables. `IOServiceMatchingCallback` is `@convention(c)`, and the
+  prototype's drain-state lives in a global `final class` so the closures
+  can mutate it without capturing. The production `USBWatcher` should
+  pass an `Unmanaged<Self>` via the `refCon` parameter instead — cleaner
+  than globals for a real class.
+- **The "first-match callback fires once per already-attached device on
+  registration" gotcha was easy to handle with a single boolean flag**
+  per iterator. The first manual drain after
+  `IOServiceAddMatchingNotification` is silent (those are devices we
+  already printed in the snapshot pass); subsequent drains print
+  `[add]` lines. Same shape for `[remove]` except the initial drain is
+  empty in practice.
+
+### Patterns worth keeping for the production port
+
+```swift
+// 1. Property reads — boilerplate-heavy, factor into helpers up front:
+private func intProperty(_ entry: io_object_t, _ key: String) -> Int? {
+    guard let raw = IORegistryEntryCreateCFProperty(
+        entry, key as CFString, kCFAllocatorDefault, 0
+    ) else { return nil }
+    return (raw.takeRetainedValue() as? NSNumber)?.intValue
+}
+
+// 2. Iterator drain — used in every callback; must run to exhaustion or
+//    the notification port stops delivering events:
+private func drain(_ iterator: io_iterator_t, body: (io_object_t) -> Void) {
+    var entry = IOIteratorNext(iterator)
+    while entry != 0 {
+        body(entry)
+        IOObjectRelease(entry)
+        entry = IOIteratorNext(iterator)
+    }
+}
+
+// 3. Manual first-call to arm the notification — easy to forget:
+let iter = subscribe(kIOFirstMatchNotification, addedCallback)
+addedCallback(nil, iter) // drains initial set + arms notification port
+```
+
+The production `USBWatcher` should also:
+
+- Hold the notification port in a property and `IONotificationPortDestroy`
+  it on deinit (not needed for a prototype, but a singleton in a
+  long-running app should clean up).
+- Sort the snapshot enumeration by `(vid, pid, name)` for log fidelity
+  if we want the Swift app's logs to diff cleanly across runs.
+- Pass `self` via `refCon` (`Unmanaged.passUnretained(self).toOpaque()`)
+  rather than relying on globals for callback state.
+- Match `IOUSBHostDevice` only — `IOUSBDevice` is the legacy XHCI class
+  and returns nothing on Apple Silicon. Confirmed empirically on
+  macOS 26 Tahoe.
+
+### Effort estimate update
+
+The original estimate had IOKit USB watcher at **4-6h** (with the
+"notoriously fiddly" caveat). After the prototype, revise down to
+**2-3h** for the production version: the heavy lifting (matching dict,
+notification port, run-loop integration, iterator draining, callback
+shape) is now de-risked. What's left is:
+
+- Wrapping the prototype's globals in a real class with `init`/`deinit`
+- Routing events through a Combine `PassthroughSubject` or
+  delegate-style callback to the `Debouncer` → `ProfileResolver`
+- `os.Logger` integration in place of `print`
+- Unit-testable seams (probably an injected `USBEnumerator` protocol so
+  `ProfileResolver` tests don't actually touch IOKit)
+
+### Open questions resolved
+
+None of the "Open questions" above were directly answered by this
+prototype — it was a feasibility check, not a UX experiment. But the
+"locked architectural choices" entry for **"`IOKit/usb` for USB device
+enumeration + notifications via notification port + run loop
+integration"** can now be considered **validated**, not just locked.
+
+---
+
 ## How to use this document
 
 - **When we ship a Phase 1 fix or feature**, ask: does this teach us
