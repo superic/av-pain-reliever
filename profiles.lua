@@ -31,11 +31,11 @@ return {
 
   ["home-office"] = {
     fingerprint = {
-      { vendorID = 0xDEAD, productID = 0xBEEF, name = "FILL ME IN — home office dock" },
-      { vendorID = 0xDEAD, productID = 0xBEEF, name = "FILL ME IN — home office audio interface or webcam" },
+      { vendorID = 0x2188, productID = 0x6533, name = "CalDigit Thunderbolt 3 Audio (dock)" },
+      { vendorID = 0x043e, productID = 0x9a68, name = "LG UltraFine Display Camera" },
     },
-    audioInput  = "FILL ME IN",
-    audioOutput = "FILL ME IN",
+    audioInput  = "Yeti Stereo Microphone",
+    audioOutput = "CalDigit Thunderbolt 3 Audio",
     obsScene    = "Home Office",
   },
 
