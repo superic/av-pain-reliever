@@ -6,10 +6,13 @@
 # shellcheck disable=SC1091
 set -euo pipefail
 
-LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 source "$LIB_DIR/lib.sh"
 
-[[ $# -ge 1 ]] || fail "Usage: _generate-profiles.sh <location1> [location2 ...]"
+if [[ $# -lt 1 ]]; then
+  echo "Usage: _generate-profiles.sh <location1> [location2 ...]" >&2
+  exit 64
+fi
 
 cat > "$PROFILES_FILE" <<'HEADER'
 -- profiles.lua

@@ -4,7 +4,7 @@
 # shellcheck disable=SC1091,SC2088
 set -euo pipefail
 
-LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 source "$LIB_DIR/lib.sh"
 
 ok()    { printf '  \033[32m✓\033[0m %s\n' "$*"; }

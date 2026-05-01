@@ -5,134 +5,219 @@
 # shellcheck disable=SC1091,SC2088
 set -euo pipefail
 
-LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 source "$LIB_DIR/lib.sh"
 
-# ---------- step 1: pre-flight ----------
+# ============================================================================
+# Step 1/15 — Pre-flight checks
+# ============================================================================
 step "Step 1/15 — Pre-flight checks"
+info "Verifying you're on macOS and have Homebrew + GitHub CLI installed and"
+info "authenticated. These are the only prerequisites the wizard can't install"
+info "for you. If any are missing, you'll get a link to install them and we'll"
+info "stop here so you can fix it."
+echo
 require_macos
 require_brew
 require_gh
-success "macOS, Homebrew, and authenticated gh present"
+success "macOS ✓  Homebrew ✓  gh (authenticated) ✓"
 
-# ---------- step 2: bootstrap gum ----------
-step "Step 2/15 — Setup the wizard's UI toolkit"
+# ============================================================================
+# Step 2/15 — Install gum (the wizard's UI toolkit)
+# ============================================================================
+step "Step 2/15 — Install gum (nicer prompts for this wizard)"
+info "gum is a small TUI toolkit that gives this wizard its colored prompts,"
+info "menus, and confirmations. If you don't have it, I'll install it via"
+info "Homebrew now (one-time, takes a few seconds)."
+echo
 bootstrap_gum
 
-# ---------- step 3: welcome banner ----------
+# ============================================================================
+# Step 3/15 — Welcome
+# ============================================================================
 banner "AV Pain Reliever — guided setup"
-info "This wizard installs Hammerspoon, OBS, and the av-pain-reliever engine,"
-info "then walks you through capturing one of your dock setups. About 10 minutes."
-info ""
-info "You'll need to be docked at one of your work locations for the last step."
-info ""
+info "Here's the plan:"
+info "  • Steps 1-7 are install-and-config (mostly automated, ~2 minutes)."
+info "  • Step 8 needs you to grant macOS Accessibility permission to Hammerspoon."
+info "  • Step 9 asks for the names of locations you switch between."
+info "  • Steps 10-13 set up OBS scenes and the virtual camera."
+info "  • Step 14 walks you through Zoom + Slack settings."
+info "  • Step 15 captures USB devices and audio for one of your locations,"
+info "    so you finish with at least one fully working profile."
+echo
+info "If anything goes sideways, you can re-run this wizard — it's idempotent"
+info "and skips work that's already done."
+echo
 if ! confirm "Ready to start?"; then
-  info "No problem — re-run this wizard whenever you're ready."
+  info "No problem — re-run this wizard whenever you're ready:"
+  info "  $REPO_ROOT/wizard.sh"
   exit 0
 fi
 
-# ---------- step 4: install Hammerspoon ----------
+# ============================================================================
+# Step 4/15 — Install Hammerspoon
+# ============================================================================
 step "Step 4/15 — Install Hammerspoon"
+info "Hammerspoon is a free macOS automation framework. It's the engine that"
+info "watches USB events and switches your audio defaults. It runs as a small"
+info "menu bar app."
+echo
 if [[ -d "/Applications/Hammerspoon.app" ]]; then
-  success "Hammerspoon already installed"
+  hs_version=$(defaults read /Applications/Hammerspoon.app/Contents/Info.plist CFBundleShortVersionString 2>/dev/null || echo "?")
+  success "Hammerspoon $hs_version already installed at /Applications/Hammerspoon.app"
 else
+  info "Installing via Homebrew (this can take 30-60 seconds)..."
   brew install --cask hammerspoon
   success "Hammerspoon installed"
 fi
 
-# ---------- step 5: install OBS Studio ----------
-step "Step 5/15 — Install OBS Studio (28+)"
+# ============================================================================
+# Step 5/15 — Install OBS Studio (28+)
+# ============================================================================
+step "Step 5/15 — Install OBS Studio"
+info "OBS Studio is the camera scene switcher. We need version 28 or newer"
+info "because it ships with the obs-websocket server built in (which is how"
+info "we'll switch scenes from Hammerspoon)."
+echo
 if [[ -d "/Applications/OBS.app" ]]; then
   obs_version=$(defaults read /Applications/OBS.app/Contents/Info.plist CFBundleShortVersionString 2>/dev/null || echo "0")
   obs_major=$(echo "$obs_version" | cut -d. -f1)
   if [[ "$obs_major" -ge 28 ]]; then
-    success "OBS $obs_version present (28+ has obs-websocket built in)"
+    success "OBS $obs_version already installed (28+, has obs-websocket built in)"
   else
     warn "OBS $obs_version is older than 28 — upgrading via Homebrew"
     brew install --cask --force obs
+    success "OBS upgraded"
   fi
 else
+  info "Installing via Homebrew (this can take 1-2 minutes)..."
   brew install --cask obs
   success "OBS installed"
 fi
 
-# ---------- step 6: install obs-cmd ----------
+# ============================================================================
+# Step 6/15 — Install obs-cmd
+# ============================================================================
 step "Step 6/15 — Install obs-cmd"
+info "obs-cmd is a small command-line tool that talks to OBS's WebSocket"
+info "server. The engine uses it to switch OBS scenes when you dock at a"
+info "different location. It's not in Homebrew so we download a pre-built"
+info "binary directly from its GitHub releases."
+echo
 INSTALL_DIR=$(obs_cmd_install_dir)
 OBS_CMD_PATH="$INSTALL_DIR/obs-cmd"
 if [[ -x "$OBS_CMD_PATH" ]]; then
-  success "obs-cmd already installed at $OBS_CMD_PATH"
+  success "obs-cmd already installed at $OBS_CMD_PATH ($($OBS_CMD_PATH --version))"
 else
   ASSET=$(obs_cmd_asset)
   URL="https://github.com/grigio/obs-cmd/releases/latest/download/$ASSET"
-  info "Downloading $ASSET from grigio/obs-cmd releases"
+  info "Downloading $ASSET from grigio/obs-cmd releases..."
   TMPDIR=$(mktemp -d)
   trap 'rm -rf "$TMPDIR"' EXIT
   curl -sSL -o "$TMPDIR/obs-cmd.tar.gz" "$URL"
   tar -xzf "$TMPDIR/obs-cmd.tar.gz" -C "$TMPDIR"
-  info "Installing to $OBS_CMD_PATH (sudo password may be required)"
+  info "Installing to $OBS_CMD_PATH (sudo password may be required)..."
   sudo mv "$TMPDIR/obs-cmd" "$OBS_CMD_PATH"
   sudo chmod +x "$OBS_CMD_PATH"
   trap - EXIT
   rm -rf "$TMPDIR"
-  success "obs-cmd $($OBS_CMD_PATH --version)"
+  success "obs-cmd installed: $($OBS_CMD_PATH --version)"
 fi
 
-# ---------- step 7: symlink ~/.hammerspoon -> repo ----------
+# ============================================================================
+# Step 7/15 — Wire ~/.hammerspoon to this repo
+# ============================================================================
 step "Step 7/15 — Wire ~/.hammerspoon to this repo"
+info "Hammerspoon expects its config at ~/.hammerspoon. We make that path a"
+info "symlink to this repo, so when you 'git pull' updates, Hammerspoon picks"
+info "them up on the next reload."
+echo
 if [[ -L "$HAMMERSPOON_DIR" ]]; then
   current=$(readlink "$HAMMERSPOON_DIR")
   if [[ "$current" == "$REPO_ROOT" ]]; then
-    success "~/.hammerspoon already symlinked to $REPO_ROOT"
+    success "~/.hammerspoon already symlinked to this repo"
   else
-    warn "~/.hammerspoon currently points at $current"
-    if confirm "Replace with a link to $REPO_ROOT?"; then
+    warn "~/.hammerspoon currently symlinks to $current (a different location)."
+    info "If you replace it, the existing link will be moved to a backup, not deleted."
+    if confirm "Replace it with a link to this repo?"; then
       backup="$HAMMERSPOON_DIR.backup-$(date +%Y%m%d-%H%M%S)"
       mv "$HAMMERSPOON_DIR" "$backup"
       ln -s "$REPO_ROOT" "$HAMMERSPOON_DIR"
       success "Old link backed up to $backup"
+      success "~/.hammerspoon -> $REPO_ROOT"
     else
-      fail "Can't proceed without ~/.hammerspoon pointing at this repo."
+      fail "Can't proceed without ~/.hammerspoon pointing at this repo. Aborting."
     fi
   fi
 elif [[ -e "$HAMMERSPOON_DIR" ]]; then
   warn "~/.hammerspoon exists as a real directory (not a symlink)."
+  warn "It probably has someone else's Hammerspoon config in it."
   backup="$HAMMERSPOON_DIR.backup-$(date +%Y%m%d-%H%M%S)"
-  if confirm "Move it to $backup and create the symlink?"; then
+  info "If you continue, your existing config will be moved to:"
+  info "  $backup"
+  info "Nothing is deleted; you can restore it later by removing the new symlink"
+  info "and renaming the backup back to ~/.hammerspoon."
+  if confirm "Move existing ~/.hammerspoon to backup and create the symlink?"; then
     mv "$HAMMERSPOON_DIR" "$backup"
     ln -s "$REPO_ROOT" "$HAMMERSPOON_DIR"
-    success "Backed up to $backup; new symlink in place"
+    success "Existing config backed up to $backup"
+    success "~/.hammerspoon -> $REPO_ROOT"
   else
-    fail "Can't proceed without ~/.hammerspoon pointing at this repo."
+    fail "Can't proceed without ~/.hammerspoon pointing at this repo. Aborting."
   fi
 else
   ln -s "$REPO_ROOT" "$HAMMERSPOON_DIR"
-  success "~/.hammerspoon -> $REPO_ROOT"
+  success "~/.hammerspoon -> $REPO_ROOT (created fresh)"
 fi
 
-# ---------- step 8: launch Hammerspoon + Accessibility ----------
-step "Step 8/15 — Launch Hammerspoon and grant Accessibility"
+# ============================================================================
+# Step 8/15 — Launch Hammerspoon and grant Accessibility
+# ============================================================================
+step "Step 8/15 — Launch Hammerspoon and grant Accessibility permission"
+info "Hammerspoon needs macOS Accessibility permission so it can read USB"
+info "events (when you dock/undock) and change the system audio defaults."
+info "macOS only grants this once; you don't have to do it again."
+echo
 if pgrep -x Hammerspoon >/dev/null 2>&1; then
-  success "Hammerspoon already running"
+  success "Hammerspoon is already running"
 else
+  info "Launching Hammerspoon..."
   open -a Hammerspoon
-  sleep 1
+  sleep 2
 fi
-info "Hammerspoon needs Accessibility permission to read USB events and switch audio."
-info "I'll open the right System Settings pane — toggle Hammerspoon on, enter your password if prompted."
+echo
+info "I'll open the System Settings → Privacy & Security → Accessibility pane"
+info "for you. Find Hammerspoon in the list and toggle the switch ON."
+info "(You'll be prompted for your Mac password — that's normal.)"
+echo
 open "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility" >/dev/null 2>&1 || true
-if confirm "Done — Hammerspoon is toggled on in Accessibility?"; then
-  success "Accessibility granted"
+sleep 1
+if confirm "Done — Hammerspoon is toggled ON in Accessibility?"; then
+  success "Accessibility permission granted"
 else
-  warn "Skipping for now. Audio + USB switching won't work until you grant it."
+  warn "You skipped the Accessibility step. The engine will partially work but"
+  warn "won't be able to switch system audio defaults until you grant it. Open"
+  warn "System Settings → Privacy & Security → Accessibility and toggle Hammerspoon on."
 fi
 
-# ---------- step 9: collect locations ----------
+# ============================================================================
+# Step 9/15 — Name your locations
+# ============================================================================
 step "Step 9/15 — Name your locations"
-info "Enter the locations you switch between. Examples: Home Office, Work Office,"
-info "Conference Room, Coffee Shop, Client Site. (You can add more later.)"
-info ""
-raw_locations=$(input_lines "Locations (one per line, blank to finish)")
+info "What physical setups do you switch between? Common examples:"
+info "  • Home Office       (your dock at home)"
+info "  • Work Office       (your dock at the office)"
+info "  • Conference Room   (a meeting room with its own dock or peripherals)"
+info "  • Coffee Shop       (just laptop + earbuds)"
+info "  • Client Site       (anywhere with a different mic/speaker setup)"
+echo
+info "Don't worry about getting it perfect — you can add more locations later"
+info "with: ~/av-pain-reliever/wizard.sh add-location"
+echo
+info "Type one location name per line. Press Ctrl+D (or leave a blank line"
+info "and Enter) when you're done."
+echo
+raw_locations=$(input_lines "Locations (one per line)")
 declare -a locations=()
 while IFS= read -r line; do
   line=$(printf '%s' "$line" | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//')
@@ -145,24 +230,39 @@ for l in "${locations[@]}"; do
   [[ "$(to_slug "$l")" == "laptop" ]] && have_laptop=true
 done
 if ! $have_laptop; then
-  info "Adding 'Laptop' as the undocked fallback profile."
+  echo
+  info "Adding 'Laptop' to your list — that's the fallback profile for when"
+  info "nothing's plugged in (just your MacBook on its own)."
   locations=("Laptop" "${locations[@]}")
 fi
 
 if [[ ${#locations[@]} -lt 2 ]]; then
-  fail "Need at least one docked location in addition to Laptop."
+  fail "Need at least one docked location in addition to Laptop. Re-run the wizard."
 fi
 
-info "Locations: ${locations[*]}"
+echo
+info "Your locations:"
+for l in "${locations[@]}"; do
+  info "  • $l"
+done
 
-# ---------- step 10: generate profiles.lua ----------
-step "Step 10/15 — Generate profiles.lua"
+# ============================================================================
+# Step 10/15 — Generate profiles.lua
+# ============================================================================
+step "Step 10/15 — Generate profiles.lua (the engine's config file)"
+info "profiles.lua is the file the engine reads to know which audio devices and"
+info "OBS scene to switch to at each location. I'll generate one with a block"
+info "for each location you named — empty placeholders for now, filled in"
+info "later by the add-location step."
+echo
 if grep -q '^-- WIZARD_PROFILE_' "$PROFILES_FILE" 2>/dev/null; then
-  if ! confirm "profiles.lua already wizard-managed. Overwrite (you'll lose any unsaved manual edits)?"; then
-    info "Keeping existing profiles.lua."
+  warn "profiles.lua already exists in wizard format. Overwriting will reset all"
+  warn "captured device data — you'll need to re-run add-location at each spot."
+  if ! confirm "Overwrite anyway?"; then
+    info "Keeping existing profiles.lua. Skipping generation."
   else
     "$LIB_DIR/_generate-profiles.sh" "${locations[@]}"
-    success "profiles.lua regenerated"
+    success "profiles.lua regenerated with ${#locations[@]} location(s)"
   fi
 else
   if [[ -f "$PROFILES_FILE" ]]; then
@@ -171,103 +271,168 @@ else
     info "Backed up existing profiles.lua to $backup"
   fi
   "$LIB_DIR/_generate-profiles.sh" "${locations[@]}"
-  success "profiles.lua written"
+  success "profiles.lua written with ${#locations[@]} location(s)"
 fi
+echo
+info "Asking Hammerspoon to reload its config so the new profiles are live..."
+hammerspoon_reload_with_fallback
 
-# Reload Hammerspoon so it picks up the new profiles.
-osascript -e 'tell application "Hammerspoon" to reload' >/dev/null 2>&1 || true
-
-# ---------- step 11: configure obs-websocket ----------
+# ============================================================================
+# Step 11/15 — Enable OBS WebSocket server
+# ============================================================================
 step "Step 11/15 — Enable OBS WebSocket server"
+info "OBS Studio has a built-in WebSocket server (since v28) that lets external"
+info "tools control it. We need to turn it on so obs-cmd can switch scenes."
+echo
 if ! pgrep -x OBS >/dev/null 2>&1; then
+  info "Launching OBS (give it a few seconds to start)..."
   open -a OBS
-  info "Launching OBS..."
-  sleep 3
+  sleep 4
 fi
 if obs-cmd info >/dev/null 2>&1; then
-  success "OBS WebSocket already enabled and reachable"
+  success "OBS WebSocket already enabled and reachable on localhost:4455"
 else
-  info "In OBS: Tools → WebSocket Server Settings"
-  info "  1. Tick 'Enable WebSocket server'"
-  info "  2. UNTICK 'Enable Authentication' (local-only, low risk)"
-  info "  3. Click Apply / OK"
+  echo
+  info "Click into the OBS window. Then in the OBS menu bar at the top:"
+  info "  1. Click 'Tools' → 'WebSocket Server Settings'"
+  info "  2. ✓ Check 'Enable WebSocket server'"
+  info "  3. ✗ UNCHECK 'Enable Authentication' (only listens on localhost,"
+  info "       so a local-only password adds friction without real benefit)"
+  info "  4. Leave the Server Port at the default (4455)"
+  info "  5. Click 'Apply' or 'OK'"
+  echo
   while true; do
-    confirm "Done?" || true
+    confirm "Done with the OBS WebSocket settings?" || true
     if obs-cmd info >/dev/null 2>&1; then
-      success "OBS WebSocket reachable"
+      success "OBS WebSocket reachable on localhost:4455"
       break
     fi
-    warn "Couldn't reach OBS WebSocket. Make sure OBS is open and the server is enabled."
+    warn "Still can't reach the OBS WebSocket. Is OBS open? Did you check"
+    warn "'Enable WebSocket server'? Did you click Apply?"
     if ! confirm "Try again?"; then
-      warn "Skipping OBS scene creation. You can re-run the wizard later."
+      warn "Skipping OBS scene setup. You can re-run this wizard later to retry."
       SKIP_OBS=1
       break
     fi
   done
 fi
 
-# ---------- step 12: create OBS scenes ----------
-step "Step 12/15 — Create OBS scenes"
+# ============================================================================
+# Step 12/15 — Create OBS scenes
+# ============================================================================
+step "Step 12/15 — Create one OBS scene per location"
+info "Each location in profiles.lua maps to an OBS scene by name. I'll create"
+info "an empty scene for each one now. You'll add the actual camera source"
+info "to each scene in the next step (we can't do that automatically — OBS's"
+info "API doesn't let us enumerate your physical cameras)."
+echo
 if [[ "${SKIP_OBS:-0}" == "1" ]]; then
-  warn "Skipping (OBS WebSocket not reachable)"
+  warn "Skipping (OBS WebSocket not reachable)."
 else
   existing_scenes=$(obs-cmd scene list 2>/dev/null || echo "")
   for loc in "${locations[@]}"; do
     pretty=$(to_pretty "$(to_slug "$loc")")
     if echo "$existing_scenes" | grep -qF "$pretty"; then
-      success "Scene '$pretty' already exists"
+      success "Scene '$pretty' already exists — left as-is"
     else
       if obs-cmd scene create "$pretty" >/dev/null 2>&1; then
-        success "Created OBS scene: $pretty"
+        success "Created scene: $pretty"
       else
-        warn "Failed to create scene '$pretty' — create it manually in OBS"
+        warn "Couldn't create scene '$pretty'. Add it manually in OBS later."
       fi
     fi
   done
 fi
 
-# ---------- step 13: start virtual camera ----------
-step "Step 13/15 — Start OBS Virtual Camera"
+# ============================================================================
+# Step 13/15 — Start OBS Virtual Camera + add sources
+# ============================================================================
+step "Step 13/15 — Start OBS Virtual Camera and add camera sources"
 if [[ "${SKIP_OBS:-0}" == "1" ]]; then
-  warn "Skipping (OBS WebSocket not reachable)"
+  warn "Skipping (OBS WebSocket not reachable)."
 else
+  info "Starting the OBS Virtual Camera output. This is what Zoom and Slack"
+  info "will see as your camera. It persists across OBS launches; you only"
+  info "need to do this once."
+  echo
   obs-cmd virtual-camera start >/dev/null 2>&1 || true
-  success "Virtual camera output started (it persists across OBS launches)"
-  info ""
-  info "Now in OBS, click each scene in turn and add your camera as a Video"
-  info "Capture Device source. We can't pick the camera for you."
-  confirm "Done with at least one scene? (You can finish the rest later)" || true
+  success "Virtual camera started"
+  echo
+  info "Now add a camera source to each scene (one-time, ~30 seconds per scene):"
+  info "  1. In OBS, click on a scene name in the 'Scenes' panel (lower-left)."
+  info "  2. In the 'Sources' panel (next to it), click '+'."
+  info "  3. Pick 'Video Capture Device'."
+  info "  4. Name it (any name) and click OK."
+  info "  5. Pick the camera you use at that location from the 'Device' dropdown."
+  info "  6. Repeat for each scene."
+  echo
+  info "Tip: at locations you don't physically reach today, you can add the"
+  info "camera source later. The scene just needs to exist now so the engine"
+  info "doesn't error when it tries to switch."
+  echo
+  confirm "Done with at least one scene? (You can finish the others later)" || true
 fi
 
-# ---------- step 14: configure Zoom + Slack ----------
-step "Step 14/15 — Configure Zoom and Slack"
+# ============================================================================
+# Step 14/15 — Configure Zoom and Slack
+# ============================================================================
+step "Step 14/15 — Configure Zoom and Slack to follow the system + OBS"
+info "The whole point of this setup: Zoom and Slack inherit from system audio"
+info "(which the engine switches per location) and use the OBS Virtual Camera"
+info "(which OBS switches per location). So you set them to 'Same as System'"
+info "and 'OBS Virtual Camera' once, and never touch them again."
+echo
 configure_app() {
   local app="$1" path="$2"
   if [[ ! -d "$path" ]]; then
-    info "$app not installed — skipping"
+    info "$app isn't installed on this Mac — skipping"
     return
   fi
+  info "Opening $app for you to configure..."
   open -a "$app" >/dev/null 2>&1 || true
-  info "In $app:"
-  info "  • Mic = Same as System"
-  info "  • Speaker = Same as System"
-  info "  • Camera = OBS Virtual Camera"
-  confirm "Done with $app?" || true
+  echo
+  info "In $app's settings:"
+  info "  • Microphone → Same as System"
+  info "  • Speaker → Same as System"
+  info "  • Camera → OBS Virtual Camera"
+  echo
+  info "(The exact wording varies. Anything like 'System Default' or 'Default'"
+  info "for audio works. For camera, look for 'OBS Virtual Camera' in the list.)"
+  echo
+  confirm "Done with $app's settings?" || true
 }
 configure_app "zoom.us" "/Applications/zoom.us.app"
 configure_app "Slack"   "/Applications/Slack.app"
 
-# ---------- step 15: capture first location ----------
+# ============================================================================
+# Step 15/15 — Capture your first dock location
+# ============================================================================
 step "Step 15/15 — Capture your first dock location"
-if confirm "Capture USB devices and audio for a location now? (You can do more later with: $REPO_ROOT/wizard.sh add-location)"; then
+info "Last step. We'll capture USB devices and audio for one of your docked"
+info "locations so you finish with at least one fully working profile."
+echo
+info "For this to work, you need to be physically AT one of your docked"
+info "locations RIGHT NOW with everything plugged in (dock, monitor, mic,"
+info "speakers, anything else that's part of that setup)."
+echo
+if confirm "Are you docked at a location and ready to capture it now?"; then
   "$LIB_DIR/add-location.sh"
+else
+  info "No problem. Whenever you're ready, run:"
+  info "  $REPO_ROOT/wizard.sh add-location"
 fi
 
 banner "Setup complete"
-info "Reload Hammerspoon any time with the menu bar icon → Reload Config."
-info ""
-info "Add another location later:"
-info "  $REPO_ROOT/wizard.sh add-location"
-info ""
-info "Diagnostic snapshot:"
-info "  $REPO_ROOT/wizard.sh status"
+info "What you've got now:"
+info "  • Hammerspoon engine running, watching USB events"
+info "  • OBS Studio with one scene per location, virtual camera live"
+info "  • Zoom and Slack pointing at 'Same as System' + OBS Virtual Camera"
+info "  • profiles.lua wired up for your locations"
+echo
+info "Useful commands:"
+info "  ~/av-pain-reliever/wizard.sh add-location   # capture another location"
+info "  ~/av-pain-reliever/wizard.sh status         # diagnostic snapshot"
+info "  ~/av-pain-reliever/wizard.sh help           # all options"
+echo
+info "If something stops working, check the live log:"
+info "  tail -f ~/.hammerspoon/logs/av-pain-reliever.log"

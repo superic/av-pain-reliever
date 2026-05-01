@@ -3,11 +3,11 @@
 
 set -euo pipefail
 
-LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(dirname "$LIB_DIR")"
-HAMMERSPOON_DIR="$HOME/.hammerspoon"
-PROFILES_FILE="$REPO_ROOT/profiles.lua"
-LOG_FILE="$HAMMERSPOON_DIR/logs/av-pain-reliever.log"
+LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
+REPO_ROOT="${REPO_ROOT:-$(dirname "$LIB_DIR")}"
+HAMMERSPOON_DIR="${HAMMERSPOON_DIR:-$HOME/.hammerspoon}"
+PROFILES_FILE="${PROFILES_FILE:-$REPO_ROOT/profiles.lua}"
+LOG_FILE="${LOG_FILE:-$HAMMERSPOON_DIR/logs/av-pain-reliever.log}"
 
 export LIB_DIR REPO_ROOT HAMMERSPOON_DIR PROFILES_FILE LOG_FILE
 
@@ -156,5 +156,29 @@ obs_cmd_install_dir() {
     echo "/opt/homebrew/bin"
   else
     echo "/usr/local/bin"
+  fi
+}
+
+# ---------- Hammerspoon control ----------
+
+# Reload the engine. init.lua calls hs.allowAppleScript(true) on load so this
+# works after at least one initial load. Returns 0 on success, nonzero on
+# failure (e.g. Hammerspoon not running, AppleScript not enabled yet).
+hammerspoon_reload() {
+  osascript -e 'tell application "Hammerspoon" to execute lua code "hs.reload()"' >/dev/null 2>&1
+}
+
+# Reload Hammerspoon and gracefully fall back to a manual prompt if AppleScript
+# isn't enabled yet (which happens on the very first install before init.lua's
+# hs.allowAppleScript(true) has run). Always returns 0 — caller assumes reload
+# happened by the time it returns.
+hammerspoon_reload_with_fallback() {
+  if hammerspoon_reload; then return 0; fi
+  warn "Couldn't reload Hammerspoon programmatically (AppleScript not enabled yet)."
+  info "Please click the Hammerspoon menu bar icon (the hammer) and choose 'Reload Config' now."
+  if command -v gum >/dev/null 2>&1; then
+    gum confirm "Done?" || true
+  else
+    read -r -p "Press Enter once you've clicked Reload Config: " _
   fi
 }
