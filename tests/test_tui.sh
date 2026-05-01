@@ -10,7 +10,10 @@ source "$REPO_ROOT/wizard/lib.sh"
 test_logo_runs_without_error() {
   local out
   out=$(logo 2>&1)
-  assert_contains "$out" "AV Pain Reliever"
+  # Match either "AV PAIN RELIEVER" (the gum-styled title) or the fallback
+  # plain "AV PAIN RELIEVER" — both should always appear regardless of TTY.
+  assert_contains "$out" "PAIN"
+  assert_contains "$out" "RELIEVER"
 }
 
 test_logo_renders_in_no_color_mode() {
@@ -22,7 +25,7 @@ test_logo_renders_in_no_color_mode() {
     source "$REPO_ROOT/wizard/lib.sh"
     logo
   )
-  assert_contains "$out" "AV Pain Reliever"
+  assert_contains "$out" "AV PAIN RELIEVER"
   # In no-color mode, no ANSI escapes should leak through.
   if [[ "$out" == *$'\033'* ]]; then
     echo "ANSI escape codes leaked in NO_COLOR mode" >&2

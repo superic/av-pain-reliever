@@ -117,20 +117,26 @@ else
 fi
 export USE_COLOR
 
-# Print the AV Pain Reliever logo. Compact enough to render in a small terminal,
-# colorful via gum if available.
+# Print the AV Pain Reliever logo. Wide-bold uppercase title in a colored
+# double-bordered box, with the tagline as italic cyan underneath. Designed
+# to stay legible across terminal fonts (no ASCII-art letterforms that merge
+# into unreadable glyphs at smaller font sizes).
 logo() {
   if command -v gum >/dev/null 2>&1 && [[ "$USE_COLOR" == "1" ]]; then
     gum style \
+      --border double \
+      --margin "1 2" --padding "1 4" \
+      --border-foreground "$PRIMARY" \
       --foreground "$PRIMARY" --bold \
-      "    ╔═╗╔╗╔  ╔═╗┌─┐┬┌┐┌  ╦═╗┌─┐┬  ┬┌─┐┬  ┬┌─┐┬─┐  ┌┬┐┌─┐" \
-      "    ╠═╣╚╗╔╝  ╠═╝├─┤││││  ╠╦╝├┤ │  │├┤ └┐┌┘├┤ ├┬┘   │ │ │" \
-      "    ╩ ╩ ╚╝   ╩  ┴ ┴┴┘└┘  ╩╚═└─┘┴─┘┴└─┘ └┘ └─┘┴└─   ┴ └─┘"
-    gum style --foreground "$HIGHLIGHT" --align center --width 60 \
-      "💊  Stop fiddling with mic, speakers, and webcam."
+      --align center --width 56 \
+      "💊  A V   P A I N   R E L I E V E R"
+    gum style \
+      --foreground "$HIGHLIGHT" --italic \
+      --align center --width 60 \
+      "Stop fiddling with mic, speakers, and webcam."
     echo
   else
-    printf '\n  AV Pain Reliever 💊\n'
+    printf '\n  💊  AV PAIN RELIEVER\n'
     printf '  Stop fiddling with mic, speakers, and webcam.\n\n'
   fi
 }
