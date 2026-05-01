@@ -7,7 +7,7 @@
 --      attached (matched by vendorID + productID).
 --   2. Among matching profiles, the one with the most fingerprint entries
 --      wins ("most specific"). Alphabetical name breaks ties.
---   3. If nothing matches, the engine falls back to "laptop-only".
+--   3. If nothing matches, the engine falls back to "laptop" (undocked).
 --
 -- All fields except `fingerprint` are optional. nil means "skip that switch".
 --
@@ -20,22 +20,23 @@
 -- Placeholders are deliberately greppable: 0xDEAD, 0xBEEF, "FILL ME IN".
 
 return {
-  ["laptop-only"] = {
-    -- Empty fingerprint = always matches (specificity 0). This is the fallback.
+  ["laptop"] = {
+    -- Undocked laptop. Empty fingerprint = always matches (specificity 0).
+    -- This is the fallback when nothing else matches.
     fingerprint = {},
     audioInput  = "FILL ME IN", -- e.g. "MacBook Pro Microphone"
     audioOutput = "FILL ME IN", -- e.g. "MacBook Pro Speakers"
-    obsScene    = nil,          -- no scene switch when undocked
+    obsScene    = "Laptop",
   },
 
-  ["home"] = {
+  ["home-office"] = {
     fingerprint = {
-      { vendorID = 0xDEAD, productID = 0xBEEF, name = "FILL ME IN — home dock" },
-      { vendorID = 0xDEAD, productID = 0xBEEF, name = "FILL ME IN — home audio interface or webcam" },
+      { vendorID = 0xDEAD, productID = 0xBEEF, name = "FILL ME IN — home office dock" },
+      { vendorID = 0xDEAD, productID = 0xBEEF, name = "FILL ME IN — home office audio interface or webcam" },
     },
     audioInput  = "FILL ME IN",
     audioOutput = "FILL ME IN",
-    obsScene    = "Home",
+    obsScene    = "Home Office",
   },
 
   ["work-office"] = {

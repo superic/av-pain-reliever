@@ -5,7 +5,7 @@
 -- the engine here doesn't need editing for new locations.
 
 local DEBOUNCE_SECONDS = 1.5
-local FALLBACK_PROFILE = "laptop-only"
+local FALLBACK_PROFILE = "laptop"
 local OBS_CMD_SEARCH_PATHS = {
   "/opt/homebrew/bin/obs-cmd",
   "/usr/local/bin/obs-cmd",

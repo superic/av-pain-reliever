@@ -9,7 +9,7 @@ Set Zoom and Slack to "Same as System" for audio and "OBS Virtual Camera" for vi
 - A small Hammerspoon Lua engine (`init.lua`) listens for USB connect/disconnect events.
 - USB events arrive in bursts when a dock connects, so the engine waits 1.5s after the last event before evaluating.
 - It then enumerates currently-attached USB devices and compares them against the profiles you've defined in `profiles.lua`.
-- Each profile is a list of required USB devices (vendor ID + product ID). A profile matches if all its required devices are present. The most specific match (most devices) wins. If nothing matches, it falls back to `laptop-only`.
+- Each profile is a list of required USB devices (vendor ID + product ID). A profile matches if all its required devices are present. The most specific match (most devices) wins. If nothing matches, it falls back to `laptop`.
 - On a profile *change*, it sets the system audio defaults, switches the OBS scene via `obs-cmd`, and shows a notification. Same profile resolving twice in a row is a no-op.
 
 ## Prerequisites
@@ -37,8 +37,8 @@ The engine looks for `obs-cmd` at `/opt/homebrew/bin/obs-cmd`, `/usr/local/bin/o
 4. Click the Hammerspoon menu bar icon → "Console". You should see lines like:
    ```
    av-pain-reliever loaded (obs-cmd: /opt/homebrew/bin/obs-cmd)
-   evaluation → laptop-only
-   applying profile: laptop-only
+   evaluation → laptop
+   applying profile: laptop
    ```
 
 ## One-time OBS setup
@@ -47,7 +47,7 @@ The engine looks for `obs-cmd` at `/opt/homebrew/bin/obs-cmd`, `/usr/local/bin/o
 2. Tools → WebSocket Server Settings:
    - Tick "Enable WebSocket server".
    - For local-only use, untick "Enable Authentication" (everything is on `127.0.0.1:4455`, low risk on a personal machine). If you'd rather keep auth on, see "obs-cmd with authentication" in Troubleshooting.
-3. Create one OBS scene per location (Scenes panel, "+"). Name them exactly the same as the `obsScene` value in `profiles.lua` — e.g. `Home`, `Work Office`, `Conference Room`. Add to each scene:
+3. Create one OBS scene per location (Scenes panel, "+"). Name them exactly the same as the `obsScene` value in `profiles.lua` — `Laptop`, `Home Office`, `Work Office`, `Conference Room`. Add to each scene:
    - A **Video Capture Device** source pointing at the camera you use at that location.
    - Any overlays (Image, Text, Browser sources) you want for that look.
 4. Verify from a terminal that the integration round-trips:
