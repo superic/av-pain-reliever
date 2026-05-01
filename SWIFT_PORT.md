@@ -12,12 +12,12 @@ real-world use, log it under "Open questions" so we remember to revisit it once
 we have data.
 
 **Status:** Phase 1.5 (wizard) in progress on `wizard-hardening` branch as of
-2026-04-30. Swift port started 2026-05-01 — IOKit + CoreAudio prototypes
-landed, engine core (`ProfileResolver` + `Debouncer`) and apply layer
-(`ProfileApplier` + `CoreAudioController` + `ProcessOBSController`)
-ported with tests. `USBWatcher` (`IOKitUSBWatcher`) wraps the IOKit
-prototype as a real class with `start`/`stop` lifecycle. Source lives
-in `mac/` as a Swift Package.
+2026-04-30. Swift port started 2026-05-01 — engine is end-to-end as of
+2026-05-01: IOKit + CoreAudio prototypes landed, full engine (resolver,
+debouncer, applier, audio + OBS adapters, USB watcher, top-level
+`Engine` coordinator) ported with 38 passing tests. Next phase shifts
+to the menu-bar app target (Xcode project, status item, signing,
+distribution). Source lives in `mac/` as a Swift Package.
 
 ---
 
@@ -737,6 +737,7 @@ mac/
 ├── Sources/AVPainReliever/
 │   ├── Engine/
 │   │   ├── Debouncer.swift        # 1.5s coalescing, injectable DebouncerClock
+│   │   ├── Engine.swift           # top-level coordinator (start/stop)
 │   │   ├── ProfileApplier.swift   # orchestrates audio + OBS side effects
 │   │   ├── ProfileResolver.swift  # init.lua's resolveProfile()
 │   │   ├── USBDevice.swift        # Hashable (vid, pid)
@@ -748,9 +749,11 @@ mac/
 │       └── Profile.swift          # name + fingerprint + audio + scene
 └── Tests/AVPainRelieverTests/
     ├── DebouncerTests.swift            # 7 tests
+    ├── EngineTests.swift               # 10 integration-style tests
     ├── IOKitUSBWatcherTests.swift      # 3 smoke tests (real IOKit)
     ├── ProfileApplierTests.swift       # 10 tests
     ├── ProfileResolverTests.swift      # 8 tests
+    ├── RecordingUSBWatcher.swift       # in-memory USBWatcher fake
     └── TestClock.swift                 # virtual-time DebouncerClock
 ```
 
@@ -944,6 +947,87 @@ production refactor was straight transcription. Subsequent IOKit work
 Roughly 50 lines + tests using protocol-based fakes for the watcher
 and applier. After that, the engine is end-to-end and we move to the
 menu-bar app target.
+
+---
+
+## Engine coordinator port
+
+`Engine` is the last engine piece — a thin (~70 line) class that wires
+USBWatcher → Debouncer → ProfileResolver → ProfileApplier together and
+exposes a `start()` / `stop()` lifecycle. With this in, the
+framework-independent half of the Swift port is complete.
+
+### Lessons learned
+
+- **The "fallback profile" model is implicit, not explicit.** init.lua
+  has `FALLBACK_PROFILE = "laptop"` baked in, but profiles.lua already
+  has a `laptop` entry with empty fingerprint that always matches with
+  specificity 0. The hardcoded constant is redundant. The Swift Engine
+  drops it: if the resolver returns nil, log a warning and skip; if the
+  caller wants a fallback, they include an empty-fingerprint profile in
+  the list. One less concept, same behavior.
+- **Initial evaluate-and-apply on `start()` is non-negotiable.**
+  Without it, reloading the engine (or relaunching the app) leaves the
+  system in whatever state the previous run last applied, NOT the
+  state that matches the currently-attached devices. init.lua does
+  this at the bottom of the file (`applyProfile(resolveProfile())`);
+  the Swift Engine does it at the end of `start()`. Test:
+  `start applies the matching profile immediately, no debounce`.
+- **The applier's `lastAppliedName` dedup is preserved across
+  engine restarts** because the applier instance survives the
+  Engine.stop()/start() cycle. This bit me in the first cut of the
+  "engine can be restarted" test — I expected a re-apply, but the
+  dedup correctly no-op'd it. Fixed the test to actually change the
+  attached set between stop and start, which DOES trigger an
+  observable apply. The dedup behavior is correct: if nothing
+  changed, nothing should reapply, even across restarts.
+- **Integration-style tests beat layered unit tests for the
+  coordinator.** Each test sets up a real `Debouncer` (with
+  `TestClock`), a real `ProfileResolver` (with fixture profiles), and
+  a real `ProfileApplier` (against recording-mock `AudioController` /
+  `OBSController`). Only `USBWatcher` is faked. Each test reads as a
+  scenario: "given a docked setup, when X happens, the engine applies
+  Y". This catches wiring bugs across all four layers without
+  re-testing each layer's algorithms (which already have dedicated
+  unit tests). 10 tests, all sub-millisecond.
+- **The 14-event burst test is the only test that mirrors real
+  hardware behavior.** Iterates 14 watcher.triggerChange() calls at
+  ~70 ms intervals (the actual cadence of a CalDigit dock burst per
+  the engine logs), advances the test clock past the debounce window,
+  and asserts exactly one apply. Worth keeping as a regression guard
+  if anyone ever tunes the debounce interval — too short and the
+  burst fires multiple applies; too long and quick changes feel
+  laggy.
+
+### Effort estimate update
+
+The original engine-coordinator estimate wasn't broken out separately
+(rolled into "ProfileApplier + Notifier: 2 h"). Actual: ~25 min for
+the class + 10 tests. The full engine (resolver, debouncer, applier,
+audio + OBS adapters, USB watcher, coordinator) totaled **~2 h**
+against an original 9-15 h budget for the same set.
+
+### What's next
+
+The engine is complete. Next phases (in rough order):
+
+1. **`ConfigLoader`** — parse a TOML profiles file into `[Profile]`.
+   Standalone, testable in isolation.
+2. **`ConfigImporter`** — one-shot read of an existing `profiles.lua`
+   to bootstrap a `profiles.toml` for users migrating from Phase 1.
+3. **Xcode project** wrapping the Swift Package + adding a SwiftUI
+   `App` target with `LSUIElement = true` (menu bar only, no Dock).
+4. **`StatusItem`** — `NSStatusItem` driven by Engine's current
+   profile name.
+5. **`Notifier`** — UserNotifications wrapper.
+6. **First-run wizard / preferences SwiftUI** — the bulk of the
+   remaining work.
+7. **Code signing + notarization + Sparkle + GitHub Actions release** —
+   distribution plumbing.
+
+The pure-engine work was the unknown. Steps 1-2 are pure logic
+(should be quick). Steps 3-7 are the AppKit/SwiftUI/distribution
+slog where original estimates probably hold.
 
 ---
 
