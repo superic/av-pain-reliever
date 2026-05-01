@@ -34,6 +34,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         // we don't have an Info.plist, so we set the activation
         // policy at runtime.
         NSApp.setActivationPolicy(.accessory)
+        bootEngine()
+    }
+
+    /// Tear down any existing engine, re-read the config from disk,
+    /// and start a fresh engine. Called on launch and on the menu's
+    /// "Reload Config" action. Notification state
+    /// (lastNotifiedName, notifiedUnknownLocation) is intentionally
+    /// preserved across reloads — a reload that lands on the same
+    /// profile is silent, while one that lands on a different profile
+    /// toasts (the user's edit took effect).
+    private func bootEngine() {
+        engine?.stop()
 
         let logger = ConsoleLogger()
         let profiles = loadProfiles(logger: logger)
@@ -96,12 +108,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
     /// Menu-bar entry point — force an immediate re-evaluation
     /// without waiting for the next USB event or for the debounce
     /// window to elapse. Useful when the user knows a state change
-    /// happened that the engine hasn't observed (e.g., editing
-    /// profiles.toml mid-session, plugging in something the watcher
-    /// missed, or just sanity-checking what the engine resolves to
-    /// right now).
+    /// happened that the engine hasn't observed (e.g., plugging in
+    /// something the watcher missed, or just sanity-checking what the
+    /// engine resolves to right now).
     func reevaluate() {
         engine?.evaluate()
+    }
+
+    /// Menu-bar entry point — re-read the config file from disk and
+    /// rebuild the engine with the new profile list. The user clicks
+    /// this after editing profiles.toml (or .lua) and wants the
+    /// changes picked up without a full app restart.
+    func reloadConfig() {
+        bootEngine()
     }
 
     // MARK: - Bootstrap

@@ -43,6 +43,12 @@ private struct MenuContentView: View {
             delegate.reevaluate()
         }
         .keyboardShortcut("r")
+        Button("Reload Config") {
+            delegate.reloadConfig()
+        }
+        .keyboardShortcut("l")
+
+        Divider()
 
         Button("Open OBS") {
             NSWorkspace.shared.open(URL(fileURLWithPath: "/Applications/OBS.app"))
