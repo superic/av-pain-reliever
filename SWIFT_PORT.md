@@ -12,12 +12,12 @@ real-world use, log it under "Open questions" so we remember to revisit it once
 we have data.
 
 **Status:** Phase 1.5 (wizard) in progress on `wizard-hardening` branch as of
-2026-04-30. Swift port started 2026-05-01 — engine is end-to-end as of
-2026-05-01: IOKit + CoreAudio prototypes landed, full engine (resolver,
-debouncer, applier, audio + OBS adapters, USB watcher, top-level
-`Engine` coordinator) ported with 38 passing tests. Next phase shifts
-to the menu-bar app target (Xcode project, status item, signing,
-distribution). Source lives in `mac/` as a Swift Package.
+2026-04-30. Swift port pure-Swift work complete 2026-05-01:
+prototypes, engine (resolver, debouncer, applier, audio + OBS adapters,
+USB watcher, coordinator), config loader (TOML), and config importer
+(profiles.lua → TOML) all ported with 66 passing tests. Source lives
+in `mac/` as a Swift Package. Remaining: Xcode app target, menu-bar
+UI, code signing + Sparkle + GitHub Actions release.
 
 ---
 
@@ -317,6 +317,10 @@ we've learned through Phase 1 / 1.5:
     Codable DTO over TOMLKit (~125 lines). Actual: ~30 min including
     14 tests covering schema, error paths, and resolver integration.
 - ConfigImporter (parse profiles.lua → profiles.toml): 2-3h
+  → DONE 2026-05-01 in `mac/Sources/AVPainReliever/Config/ConfigImporter.swift`.
+    Targeted Lua scanner (~350 lines). Actual: ~45 min including 14
+    tests, end-to-end round-trip via ConfigLoader, and a real-world
+    parse of the repo's profiles.lua.
 - StatusItem menu UI: 1-2h (smaller now that there's no Switch-to submenu)
 - DeviceCapture SwiftUI flow (replaces add-location subcommand): 3-5h
 - PreferencesWindow SwiftUI: 3-5h
@@ -749,9 +753,11 @@ mac/
 │   │   ├── AudioController.swift  # protocol + CoreAudioController
 │   │   └── OBSController.swift    # protocol + ProcessOBSController
 │   └── Config/
+│       ├── ConfigImporter.swift   # profiles.lua → TOML / [Profile]
 │       ├── ConfigLoader.swift     # TOML → [Profile] via TOMLKit
 │       └── Profile.swift          # name + fingerprint + audio + scene
 └── Tests/AVPainRelieverTests/
+    ├── ConfigImporterTests.swift       # 14 tests (incl. real profiles.lua)
     ├── ConfigLoaderTests.swift         # 14 tests (schema + errors)
     ├── DebouncerTests.swift            # 7 tests
     ├── EngineTests.swift               # 10 integration-style tests
@@ -1119,13 +1125,99 @@ hour saved over a hand-roll.
 
 ### What's next
 
-- **`ConfigImporter`** — one-shot Lua → TOML conversion. The Lua
-  table syntax is regular enough to parse with a small recursive
-  scanner; we don't need a full Lua interpreter, just the literal
-  table form `profiles.lua` uses. ~1-2 h budgeted, probably 30-45
-  min actual.
-- After that, the work shifts to the Xcode app target, where the
-  original estimates probably hold.
+The pure-Swift portion of the port is complete. Remaining work is
+all in the Xcode app target — see "Phase 2 status" at the bottom
+of this section.
+
+---
+
+## ConfigImporter port
+
+`ConfigImporter` is the one-shot Lua → TOML conversion path the
+menu-bar app's first-run wizard will offer to users with an existing
+Hammerspoon setup. Lives at
+`mac/Sources/AVPainReliever/Config/ConfigImporter.swift`. ~350 lines
+including doc comments.
+
+### Lessons learned
+
+- **A targeted Lua scanner beats a general parser for this scope.**
+  The wizard's `profiles.lua` follows a tight, well-defined shape:
+  a single `return { ["name"] = { ... }, ... }` table. Building a
+  full Lua tokenizer + parser would have been ~500-700 lines for
+  edge cases the wizard never produces (block comments, multi-line
+  strings, function calls, metatables). The scanner here uses
+  brace-balanced block extraction + per-block regex-style field
+  extraction, in ~250 working lines of Swift, and rejects any
+  off-shape input with a `.syntax` error so the wizard can fall
+  through to the "create from scratch" path.
+- **Comment stripping must respect string boundaries.** Naive
+  `--.*$` line-comment removal corrupts profile fields like
+  `audioInput = "My Mic -- with dashes"`. The scanner walks the
+  source character-by-character, tracking string-literal state, and
+  drops comments only when not inside a string. ~30 lines, one
+  dedicated test (`string values containing -- are not treated as
+  comments`).
+- **Two output paths, not one.** The engine's `Profile` model has
+  `[USBDevice]` for fingerprints (no device names — the resolver
+  doesn't use them). But `profiles.lua`'s fingerprint entries DO
+  carry `name = "..."` strings, and they're the only readable
+  signal for users editing the TOML by hand. Solution: the importer
+  uses a private richer model (`ImportedProfile` /
+  `ImportedDevice`) internally, then offers two public emit paths:
+    - `convertToTOML(_ luaSource:)` — preserves names from the Lua
+      source
+    - `encodeTOML(_ profiles:)` — takes the engine's lossy `Profile`
+      model, emits without names
+  The first is the user-facing wizard path; the second is for any
+  programmatic write-out from the engine model later.
+- **Real-world input as a permanent test fixture.** One test reads
+  the actual `profiles.lua` from this repo's root via `#filePath`
+  navigation (`mac/Tests/...` → `mac/` → repo root) and parses it.
+  Catches any wizard format change that breaks the importer in CI
+  before users hit it. The four expected profile names + the
+  home-office vid/pid pairs are asserted explicitly so the failure
+  message is legible if the format drifts.
+- **TOML output sorted by profile name for deterministic diffs.**
+  When users re-import (e.g., after the wizard updates a profile in
+  Hammerspoon) the emitted TOML diff should be small and readable.
+  Sorting by name guarantees consistent ordering even when Lua's
+  table order changes between runs.
+
+### Effort estimate update
+
+The original ConfigImporter estimate was **2-3 h**. Actual: ~45 min
+including 14 tests, the round-trip-via-ConfigLoader test, and the
+real-profiles.lua parse test.
+
+### Phase 2 status
+
+Pure-Swift / framework-independent work is complete. Tally:
+
+| Component | Original | Actual |
+|---|---|---|
+| ProfileResolver + Debouncer | 2-3h | ~30 min |
+| ProfileApplier + Audio adapter + OBS adapter | 5-8h | ~70 min |
+| USBWatcher | 4-6h | ~25 min |
+| Engine coordinator | (in applier budget) | ~25 min |
+| ConfigLoader | 1-2h | ~30 min |
+| ConfigImporter | 2-3h | ~45 min |
+| **Pure-Swift total** | **14-22h** | **~3.5h** |
+
+66 tests, all sub-millisecond. `cd mac && swift test` runs the full
+suite in ~6 ms.
+
+The remaining ~25-39 h of original budget is all framework /
+distribution work where speedups are unlikely:
+
+1. **Xcode project** wrapping the Swift Package + adding a SwiftUI
+   `App` target with `LSUIElement = true` (menu bar only, no Dock).
+2. **`StatusItem`** — `NSStatusItem` driven by Engine's current
+   profile name.
+3. **`Notifier`** — UserNotifications wrapper.
+4. **First-run wizard / preferences SwiftUI** — bulk of remaining work.
+5. **Code signing + notarization + Sparkle + GitHub Actions release** —
+   distribution plumbing.
 
 ---
 
