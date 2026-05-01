@@ -71,6 +71,22 @@ This downloads the repo into a folder called `av-pain-reliever` in your home dir
 
 You don't need to read any further unless you want to know exactly what to expect.
 
+### Want to see what would happen first?
+
+Add `--dry-run` to preview the install without actually doing anything. Nothing is downloaded, nothing is installed, no files are written. You'll still see every prompt and every step header — every "would do X" line tells you exactly what a real run would do at that point.
+
+```sh
+~/av-pain-reliever/wizard.sh --dry-run
+```
+
+You can also dry-run any other subcommand, like `add-location`:
+
+```sh
+~/av-pain-reliever/wizard.sh --dry-run add-location
+```
+
+Use this if you want to walk through the flow once before committing to it, or if you want to show a colleague what the install will look like on their Mac.
+
 ---
 
 ## What the wizard does (a walkthrough)
