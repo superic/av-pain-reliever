@@ -15,7 +15,9 @@ we have data.
 2026-04-30. Swift port started 2026-05-01 — IOKit + CoreAudio prototypes
 landed, engine core (`ProfileResolver` + `Debouncer`) and apply layer
 (`ProfileApplier` + `CoreAudioController` + `ProcessOBSController`)
-ported with tests. Source lives in `mac/` as a Swift Package.
+ported with tests. `USBWatcher` (`IOKitUSBWatcher`) wraps the IOKit
+prototype as a real class with `start`/`stop` lifecycle. Source lives
+in `mac/` as a Swift Package.
 
 ---
 
@@ -294,6 +296,9 @@ we've learned through Phase 1 / 1.5:
 
 - Xcode project + SwiftUI menu bar skeleton: 2-3h
 - IOKit USB watcher (notification port + run loop): 4-6h (notoriously fiddly)
+  → DONE 2026-05-01 as `IOKitUSBWatcher` in
+    `mac/Sources/AVPainReliever/Engine/USBWatcher.swift`. Lifted from
+    the prototype; ~150 lines. Actual: ~25 min including 3 smoke tests.
 - CoreAudio adapter (raw CoreAudio, no SimplyCoreAudio): 2-3h
   → DONE 2026-05-01 as `CoreAudioController` in
     `mac/Sources/AVPainReliever/Adapters/AudioController.swift`. Lifted
@@ -734,17 +739,19 @@ mac/
 │   │   ├── Debouncer.swift        # 1.5s coalescing, injectable DebouncerClock
 │   │   ├── ProfileApplier.swift   # orchestrates audio + OBS side effects
 │   │   ├── ProfileResolver.swift  # init.lua's resolveProfile()
-│   │   └── USBDevice.swift        # Hashable (vid, pid)
+│   │   ├── USBDevice.swift        # Hashable (vid, pid)
+│   │   └── USBWatcher.swift       # protocol + IOKitUSBWatcher
 │   ├── Adapters/
 │   │   ├── AudioController.swift  # protocol + CoreAudioController
 │   │   └── OBSController.swift    # protocol + ProcessOBSController
 │   └── Config/
 │       └── Profile.swift          # name + fingerprint + audio + scene
 └── Tests/AVPainRelieverTests/
-    ├── DebouncerTests.swift       # 7 tests
-    ├── ProfileApplierTests.swift  # 10 tests
-    ├── ProfileResolverTests.swift # 8 tests
-    └── TestClock.swift            # virtual-time DebouncerClock
+    ├── DebouncerTests.swift            # 7 tests
+    ├── IOKitUSBWatcherTests.swift      # 3 smoke tests (real IOKit)
+    ├── ProfileApplierTests.swift       # 10 tests
+    ├── ProfileResolverTests.swift      # 8 tests
+    └── TestClock.swift                 # virtual-time DebouncerClock
 ```
 
 ### Lessons learned
@@ -875,6 +882,68 @@ then a thin `Engine` coordinator wires
 USBWatcher → Debouncer → ProfileResolver → ProfileApplier. After that
 the work shifts to the menu-bar app target (Xcode project, status
 item, first-run wizard, code signing, distribution).
+
+---
+
+## USBWatcher port
+
+`USBWatcher` is the input source for the engine — it surfaces both
+"current attached set" snapshots and "something changed" notifications.
+The prototype already proved the C-API dance (matching dict,
+notification port, run-loop wiring, drained iterators); the production
+class wraps that as `IOKitUSBWatcher` with a `start`/`stop` lifecycle
+and a closure-based `onChange` callback that calls into
+`Debouncer.bump()` at the engine layer.
+
+### Lessons learned
+
+- **The protocol's mockability lives in `start(onChange:)` + an
+  injectable `currentDevices()`** — not in trying to fake IOKit's
+  notification port. A `RecordingUSBWatcher` test fake (when the
+  Engine class lands) just stores the closure, exposes a
+  `triggerChange()` method that invokes it, and a `setDevices(_:)`
+  method that updates what `currentDevices()` returns. Trying to fake
+  a real `IONotificationPort` would need a whole shim layer that no
+  other engine piece needs.
+- **`Unmanaged.passUnretained(self).toOpaque()` in the `refCon` is the
+  clean way to bridge `self` into the C-style callbacks.** `self`
+  owns the notification port and iterators, so the iterators can't
+  outlive `self` — a retained reference would be redundant. The C
+  callback unwraps via `Unmanaged<IOKitUSBWatcher>.fromOpaque(refcon)
+  .takeUnretainedValue()`. Worth lifting this pattern into other
+  CoreFoundation/IOKit wrappers when they arrive.
+- **`stop()` must be idempotent.** The class calls `stop()` from
+  `deinit` AND exposes it publicly so the menu-bar app can stop the
+  watcher when the user quits. A second `stop()` is a no-op;
+  start-after-stop works cleanly. Tested via the third smoke test —
+  catches lifecycle bugs that `leaks(1)` would otherwise be the only
+  detector for.
+- **Smoke tests beat unit tests for thin IOKit wrappers.** "Does
+  `currentDevices()` return what `IOServiceGetMatchingServices`
+  delivered, parsed into Swift types?" is a question the Swift
+  compiler doesn't fully verify. A test that just calls the method on
+  the host's real IOKit graph and checks for non-empty + stable
+  output catches the realistic regression modes (wrong matching dict
+  string, wrong property keys, type-bridging breakage) without
+  inventing a fake IOKit. Cheaper to write, more honest.
+
+### Effort estimate update
+
+The original IOKit USB watcher estimate was **4-6 h** with the
+"notoriously fiddly" caveat. After both the prototype (~30 min) AND
+the production wrapper (~25 min), the total is **~1 h**. The "fiddly"
+part was real but front-loaded into the prototype phase — the
+production refactor was straight transcription. Subsequent IOKit work
+(if any) should track closer to **30-60 min per piece**, not 4-6 h.
+
+### What's next
+
+`Engine` — the top-level coordinator class. Wires
+`USBWatcher.start { debouncer.bump() }` →
+`debouncer = Debouncer { applier.apply(resolver.resolve(attached: watcher.currentDevices()) ?? fallback) }`.
+Roughly 50 lines + tests using protocol-based fakes for the watcher
+and applier. After that, the engine is end-to-end and we move to the
+menu-bar app target.
 
 ---
 
