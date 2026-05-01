@@ -1,0 +1,16 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Hammerspoon runtime artifacts
+logs/
+*.log
+
+# Editor junk
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
