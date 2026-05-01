@@ -38,30 +38,4 @@ return {
     obsScene    = "Home Office",
   },
   -- WIZARD_PROFILE_home-office_END
-
-  -- WIZARD_PROFILE_work-office_BEGIN
-  ["work-office"] = {
-    fingerprint = {
-      -- WIZARD_FINGERPRINT_BEGIN
-      -- Run `./wizard.sh add-location` while docked here to fill these in.
-      -- WIZARD_FINGERPRINT_END
-    },
-    audioInput  = "FILL ME IN",
-    audioOutput = "FILL ME IN",
-    obsScene    = "Work Office",
-  },
-  -- WIZARD_PROFILE_work-office_END
-
-  -- WIZARD_PROFILE_conference-room_BEGIN
-  ["conference-room"] = {
-    fingerprint = {
-      -- WIZARD_FINGERPRINT_BEGIN
-      -- Run `./wizard.sh add-location` while docked here to fill these in.
-      -- WIZARD_FINGERPRINT_END
-    },
-    audioInput  = "FILL ME IN",
-    audioOutput = "FILL ME IN",
-    obsScene    = "Conference Room",
-  },
-  -- WIZARD_PROFILE_conference-room_END
 }

@@ -43,23 +43,53 @@ public enum ImporterError: Error, Equatable {
 /// }
 /// ```
 public struct ConfigImporter {
+    /// Literal placeholder string the Phase 1 wizard writes for
+    /// audio fields when generating a profile stub the user hasn't
+    /// configured yet (work-office, conference-room, etc.).
+    /// Profiles with this value in either audio field are filtered
+    /// out by `parse(_:)` and `convertToTOML(_:)` so they don't
+    /// shadow real profiles in the resolver's alphabetical
+    /// tiebreak.
+    private static let unconfiguredPlaceholder = "FILL ME IN"
+
     public init() {}
 
     /// Parse Lua into the engine's `Profile` model. Drops fingerprint
-    /// device names (the resolver doesn't use them). For the
-    /// name-preserving path, use `convertToTOML` instead.
+    /// device names (the resolver doesn't use them) AND drops profiles
+    /// the wizard generated as `FILL ME IN` stubs that the user hasn't
+    /// filled in yet — those would otherwise shadow `laptop`
+    /// alphabetically when undocked, since both have empty
+    /// fingerprints with specificity 0.
+    /// For the name-preserving path, use `convertToTOML` instead.
+    /// Use `parseAll(_:)` if you specifically want unconfigured stubs
+    /// included (tests, diagnostic tools).
     public func parse(_ luaSource: String) throws -> [Profile] {
+        try parseImported(luaSource)
+            .filter(Self.isConfigured)
+            .map(\.profile)
+    }
+
+    /// Like `parse(_:)` but does NOT filter `FILL ME IN` stubs.
+    /// Useful for diagnostics ("which profiles in the config are
+    /// unconfigured?") and for tests.
+    public func parseAll(_ luaSource: String) throws -> [Profile] {
         try parseImported(luaSource).map(\.profile)
     }
 
     /// Convert Lua source into a TOML string matching `ConfigLoader`'s
     /// schema. Preserves fingerprint device names (the schema's
-    /// optional `name` field), since users edit the TOML by hand and
-    /// they're the only readable signal pointing each `(vid, pid)`
-    /// pair at a real-world device.
+    /// optional `name` field). Drops `FILL ME IN` stubs, same as
+    /// `parse(_:)` — emitting them into the TOML would just propagate
+    /// the bug to the new format.
     public func convertToTOML(_ luaSource: String) throws -> String {
-        let profiles = try parseImported(luaSource)
+        let profiles = try parseImported(luaSource).filter(Self.isConfigured)
         return encodeTOML(profiles)
+    }
+
+    private static func isConfigured(_ profile: ImportedProfile) -> Bool {
+        if profile.audioInput == unconfiguredPlaceholder { return false }
+        if profile.audioOutput == unconfiguredPlaceholder { return false }
+        return true
     }
 
     /// Render a `[Profile]` list as TOML matching `ConfigLoader`'s

@@ -12,6 +12,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
     @Published var currentProfileTitle: String = "AV Pain Reliever"
 
     private var engine: Engine?
+    private let notifier: Notifier = AppleScriptNotifier()
+
+    /// The most recent profile name we surfaced through
+    /// `onProfileApplied`. Used to suppress a notification for the
+    /// initial evaluation on launch (the menu-bar title is already
+    /// up-to-date) and for re-applies of the same profile.
+    private var lastNotifiedName: String?
+
+    /// One-shot gate: we only toast about an unknown location once
+    /// per "stretch of unknown-ness". Reset to false when the engine
+    /// resolves to a profile with a real fingerprint, so docking at a
+    /// new unconfigured place after configuring one re-arms the
+    /// notification.
+    private var notifiedUnknownLocation = false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         FileHandle.standardError.write(Data("[AVPR] applicationDidFinishLaunching fired\n".utf8))
@@ -31,10 +45,50 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
             // debouncer/initial-start ran on (main, in production).
             // SwiftUI requires @Published mutations from the main
             // thread, which is satisfied here.
-            self?.currentProfileTitle = PrettyName.format(profile.name)
+            self?.handleProfileApplied(profile)
+        }
+        engine.onUnknownLocation = { [weak self] devices in
+            self?.handleUnknownLocation(devices: devices)
         }
         engine.start()
         self.engine = engine
+    }
+
+    private func handleProfileApplied(_ profile: Profile) {
+        let pretty = PrettyName.format(profile.name)
+        currentProfileTitle = pretty
+
+        // Toast only on actual changes (different profile name from
+        // the previous evaluation). The initial evaluation on launch
+        // is intentionally silent — the menu-bar title is already
+        // showing the correct profile, so a duplicate toast would
+        // just be noise.
+        if let last = lastNotifiedName, last != profile.name {
+            notifier.notify(title: pretty, body: "AV profile activated")
+        }
+        lastNotifiedName = profile.name
+
+        // Re-arm the unknown-location toast if the user just resolved
+        // to a profile with a real fingerprint (i.e., they configured
+        // the location they were at, or moved to a known one).
+        if !profile.fingerprint.isEmpty {
+            notifiedUnknownLocation = false
+        }
+    }
+
+    private func handleUnknownLocation(devices: Set<USBDevice>) {
+        // One toast per "stretch of unknown-ness" — re-armed when the
+        // user resolves to a specific profile. Avoids spamming when
+        // multiple USB events fire at the same unconfigured location.
+        guard !notifiedUnknownLocation else { return }
+        notifiedUnknownLocation = true
+
+        let count = devices.count
+        let unitNoun = count == 1 ? "device" : "devices"
+        notifier.notify(
+            title: "New location detected",
+            body: "\(count) USB \(unitNoun) attached. Add it to your profiles so AV Pain Reliever can switch automatically."
+        )
     }
 
     func applicationWillTerminate(_ notification: Notification) {

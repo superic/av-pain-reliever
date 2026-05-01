@@ -230,15 +230,13 @@ struct ConfigImporterTests {
         let lua = try String(contentsOf: profilesLua, encoding: .utf8)
         let profiles = try importer.parse(lua)
 
-        // The wizard ships with four named profile slots; verify they
-        // all arrived. (Some have empty fingerprints — those are
-        // user-pending entries the wizard generated, not data
-        // corruption.)
+        // The repo's profiles.lua currently has two configured
+        // entries (laptop + home-office). Earlier `FILL ME IN`
+        // stubs (work-office, conference-room) were removed once
+        // the importer started filtering them.
         let names = Set(profiles.map(\.name))
         #expect(names.contains("laptop"))
         #expect(names.contains("home-office"))
-        #expect(names.contains("work-office"))
-        #expect(names.contains("conference-room"))
 
         // home-office should carry the dock + camera fingerprint that
         // matches Eric's actual setup (per the engine's snapshot log).
@@ -250,6 +248,77 @@ struct ConfigImporterTests {
         #expect(homeOffice.audioInput == "Yeti Stereo Microphone")
         #expect(homeOffice.audioOutput == "CalDigit Thunderbolt 3 Audio")
         #expect(homeOffice.obsScene == "Home Office")
+    }
+
+    // MARK: - Unconfigured-profile filtering
+
+    @Test("parse drops profiles whose audio fields are 'FILL ME IN' stubs")
+    func filtersFillMeInStubs() throws {
+        let lua = """
+        return {
+          ["laptop"] = {
+            fingerprint = { },
+            audioInput  = "MacBook Pro Microphone",
+            audioOutput = "MacBook Pro Speakers",
+            obsScene    = "Laptop",
+          },
+          ["work-office"] = {
+            fingerprint = { },
+            audioInput  = "FILL ME IN",
+            audioOutput = "FILL ME IN",
+            obsScene    = "Work Office",
+          },
+          ["conference-room"] = {
+            fingerprint = { },
+            audioInput  = "FILL ME IN",
+            audioOutput = "FILL ME IN",
+            obsScene    = "Conference Room",
+          },
+        }
+        """
+        let configured = try importer.parse(lua)
+        let all = try importer.parseAll(lua)
+        #expect(Set(configured.map(\.name)) == ["laptop"])
+        #expect(Set(all.map(\.name)) == ["laptop", "work-office", "conference-room"])
+    }
+
+    @Test("a profile with one FILL ME IN field is still considered unconfigured")
+    func filtersHalfConfiguredStubs() throws {
+        let lua = """
+        return {
+          ["half"] = {
+            fingerprint = { },
+            audioInput  = "Yeti",
+            audioOutput = "FILL ME IN",
+            obsScene    = "Half",
+          },
+        }
+        """
+        #expect(try importer.parse(lua).isEmpty)
+        #expect(try importer.parseAll(lua).count == 1)
+    }
+
+    @Test("convertToTOML drops FILL ME IN stubs the same way parse does")
+    func tomlOutputDropsStubs() throws {
+        let lua = """
+        return {
+          ["laptop"] = {
+            fingerprint = { },
+            audioInput  = "MacBook Pro Microphone",
+            audioOutput = "MacBook Pro Speakers",
+            obsScene    = "Laptop",
+          },
+          ["work-office"] = {
+            fingerprint = { },
+            audioInput  = "FILL ME IN",
+            audioOutput = "FILL ME IN",
+            obsScene    = "Work Office",
+          },
+        }
+        """
+        let toml = try importer.convertToTOML(lua)
+        #expect(toml.contains("[profiles.laptop]"))
+        #expect(!toml.contains("[profiles.work-office]"))
     }
 
     // MARK: - encodeTOML directly (no Lua input)

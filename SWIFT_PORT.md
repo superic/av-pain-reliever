@@ -312,9 +312,9 @@ we've learned through Phase 1 / 1.5:
   → DONE 2026-05-01 in `mac/`. Actual: ~30 min including 15 tests.
     Revise category estimate down for similar pure-logic ports.
 - ProfileApplier + Notifier: 2h
-  → ProfileApplier DONE 2026-05-01 in `mac/`. Notifier still open (lands
-    with the menu-bar app target, since it depends on
-    `UserNotifications` registration at app startup).
+  → BOTH DONE 2026-05-01. Notifier landed as `AppleScriptNotifier`
+    (osascript via Process) for unbundled SPM dev builds; will swap
+    for `UNUserNotificationCenter` when the .app bundle ships.
 - OBSController wrapping obs-cmd Process: 1-2h
   → DONE 2026-05-01 in `mac/Sources/AVPainReliever/Adapters/OBSController.swift`.
 - ConfigLoader (TOML parser): 1-2h
@@ -1334,11 +1334,87 @@ Profile-config discovery in priority order:
 ### Verification
 
 - **Build**: `swift build --product AVPainRelieverApp` — clean.
-- **Tests**: 67 passing (added one for `onProfileApplied`); engine,
-  applier, and existing tests untouched.
-- **Launch**: deferred to the user. `swift run` would invoke the
-  full audio + OBS apply pipeline, which modifies shared system
-  state — not the right thing to do automatically in a smoke test.
+- **Tests**: 73 passing.
+- **Launch**: confirmed working — `swift run AVPainRelieverApp` boots
+  the engine, auto-imports `~/.hammerspoon/profiles.lua`, resolves
+  the docked profile (home-office), sets system audio defaults,
+  switches OBS scene, and renders the live profile name in the menu
+  bar. Real-world smoke test on Eric's docked setup 2026-05-01.
+
+---
+
+## Real-launch findings (post-first-run)
+
+The first real launch surfaced two bugs and one behavior gap. All
+three fixed in the same commit.
+
+### Bug: unconfigured wizard stubs shadowing `laptop` alphabetically
+
+**Symptom**: Undocking caused the menu-bar title to flip to
+"Conference Room" instead of "Laptop".
+
+**Root cause**: The Phase 1 wizard generates `profiles.lua` with
+four template profiles (laptop, home-office, work-office,
+conference-room). The latter two have empty fingerprints and
+`audioInput = "FILL ME IN"` placeholders the user is supposed to
+fill in. With three profiles all having empty fingerprints
+(specificity 0), the resolver's alphabetical tiebreak picks the
+first one — `conference-room`. The Hammerspoon engine has the same
+bug; user just hadn't noticed because they're usually docked.
+
+**Fix**: `ConfigImporter.parse` now drops any profile whose
+audioInput or audioOutput equals the literal string `"FILL ME IN"`.
+A new `parseAll` method preserves the unfiltered behavior for
+diagnostic tools and tests. Three new tests in
+`ConfigImporterTests` cover the filter, including the half-
+configured case (one field FILL ME IN, the other real). The
+real-world `profiles.lua` test was updated to expect filtered
+output.
+
+Also cleaned the user's actual `profiles.lua` to remove the two
+stubs entirely, since they were never going to be filled in (the
+user only operates from home-office and undocked-laptop).
+
+### Feature gap: no signal when user docks somewhere unfamiliar
+
+**Symptom**: User feedback during the real-launch session — "the
+app should notice a new configuration and ask to set it up when it
+happens."
+
+**Implementation**: `Engine.onUnknownLocation: ((Set<USBDevice>) ->
+Void)?` callback fires when the resolver picks the empty-fingerprint
+fallback profile (i.e., specificity 0, matches anything) AND there
+ARE devices currently attached. Doesn't fire on plain undocked
+state (empty attached set + fallback resolution = "I'm at the
+laptop", that's normal). Doesn't fire on specific-fingerprint
+matches (those are known locations, not new). Three Engine tests
+cover the three cases.
+
+`AppDelegate` wires this to a one-shot toast: "New location
+detected: N USB devices attached. Add it to your profiles so AV
+Pain Reliever can switch automatically." The "one-shot" gating
+re-arms when the user next resolves to a real-fingerprint profile,
+so docking at a second new location after configuring the first
+gets a fresh toast.
+
+### Notifier (UserNotifications stand-in)
+
+`UserNotifications` (`UNUserNotificationCenter`) requires a real
+bundle identifier, which our SPM-built dev binary doesn't have.
+Stop-gap: `AppleScriptNotifier` shells out to `osascript -e
+'display notification ... with title ...'` via `Foundation.Process`.
+Works without a bundle, surfaces under whatever app `osascript`
+runs as. Will swap for `UNUserNotificationCenter` when the signed
+`.app` ships. Recorded as a TODO in the file's doc comment.
+
+`AppDelegate` fires the notifier:
+- On profile change (different name from the previous evaluation)
+- On unknown-location detection (one-shot per stretch of
+  unknown-ness, see above)
+
+The initial-evaluation toast on launch is intentionally
+suppressed — the menu-bar title is already showing the correct
+profile, so a duplicate toast would be noise.
 
 ### Effort estimate update
 

@@ -221,6 +221,50 @@ struct EngineTests {
         #expect(h.watcher.stopCount == 1)
     }
 
+    // MARK: - Unknown-location detection
+
+    @Test("onUnknownLocation fires when fallback profile resolves with devices attached")
+    func onUnknownLocationFiresOnUnrecognizedDock() {
+        let h = makeHarness()
+        let unknownDevice = USBDevice(vendorID: 0x1111, productID: 0x2222)
+        h.watcher.devices = [unknownDevice]
+        var observed: [Set<USBDevice>] = []
+        h.engine.onUnknownLocation = { observed.append($0) }
+
+        h.engine.start()
+
+        // Resolved to laptop (empty fingerprint) but devices ARE
+        // attached → unknown location.
+        #expect(observed == [[unknownDevice]])
+    }
+
+    @Test("onUnknownLocation does NOT fire when undocked")
+    func onUnknownLocationSkipsUndocked() {
+        let h = makeHarness()
+        h.watcher.devices = []
+        var observed = 0
+        h.engine.onUnknownLocation = { _ in observed += 1 }
+
+        h.engine.start()
+
+        // Empty attached set + fallback resolution = normal "at the
+        // laptop" state, not a new location.
+        #expect(observed == 0)
+    }
+
+    @Test("onUnknownLocation does NOT fire when a specific fingerprint matches")
+    func onUnknownLocationSkipsKnownDock() {
+        let h = makeHarness()
+        h.watcher.devices = [Self.caldigit, Self.lgCamera]
+        var observed = 0
+        h.engine.onUnknownLocation = { _ in observed += 1 }
+
+        h.engine.start()
+
+        // home-office matches → known location, not new.
+        #expect(observed == 0)
+    }
+
     @Test("onProfileApplied fires after each evaluation, including no-op re-applies")
     func onProfileAppliedFires() {
         let h = makeHarness()

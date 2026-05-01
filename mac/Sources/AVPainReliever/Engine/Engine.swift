@@ -45,6 +45,20 @@ public final class Engine {
     /// production).
     public var onProfileApplied: ((Profile) -> Void)?
 
+    /// Fires when the resolver picks the empty-fingerprint fallback
+    /// profile (specificity 0, matches anything) but the user has USB
+    /// devices attached. That state means the user is plugged into
+    /// SOME hardware we don't have a profile for — a "new location"
+    /// the menu-bar app should prompt the user to set up. The closure
+    /// receives the current set of attached devices so the UI can
+    /// describe what was seen.
+    ///
+    /// Does not fire when undocked (empty attached set + fallback
+    /// resolution is the normal "I'm at the laptop" state, not new).
+    /// Does not fire when a specific-fingerprint profile matches
+    /// (that's a known location, not a new one).
+    public var onUnknownLocation: ((Set<USBDevice>) -> Void)?
+
     public init(
         watcher: USBWatcher,
         resolver: ProfileResolver,
@@ -99,5 +113,12 @@ public final class Engine {
         logger.info("evaluation → \(profile.name)")
         applier.apply(profile)
         onProfileApplied?(profile)
+
+        // Empty-fingerprint resolution + non-empty attached set =
+        // "user is at a dock we don't have a profile for". See
+        // `onUnknownLocation` doc comment.
+        if profile.fingerprint.isEmpty && !attached.isEmpty {
+            onUnknownLocation?(attached)
+        }
     }
 }
