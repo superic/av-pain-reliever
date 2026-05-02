@@ -14,10 +14,14 @@ we have data.
 **Status:** Phase 1.5 (wizard) in progress on `wizard-hardening` branch as of
 2026-04-30. Swift port end-to-end runnable as of 2026-05-01:
 prototypes, engine, config loader/importer, and a SwiftUI menu-bar
-app target all complete. `cd mac && swift run AVPainRelieverApp`
-launches a working menu-bar agent. 67 passing tests. Remaining work
-is signing/notarization/Sparkle/GitHub Actions distribution plumbing
-+ first-run wizard / preferences UI.
+app target all complete. **V1 design pass landed 2026-05-01** —
+brand-aware Theme, Settings + About + Welcome scenes, slug-mapped
+profile icons, edit/delete plumbing, warm notification copy, save-
+success animation, and an Option-key easter egg. `cd mac && swift run
+AVPainRelieverApp` launches a working menu-bar agent. **130 passing
+tests.** Remaining work is signing/notarization/Sparkle/GitHub
+Actions distribution plumbing — see "V1 design pass" near the bottom
+of this doc for what's still deferred.
 
 ---
 
@@ -1423,6 +1427,190 @@ Original estimate was **2-3 h** (Xcode project) + **1-2 h**
 target with menu-bar UI. The Xcode project itself is deferred to
 the code-signing phase, where it's necessary for proper `.app`
 bundle output.
+
+---
+
+## V1 design pass (2026-05-01)
+
+The functional engine + wizard was complete (94 tests, end-to-end
+working) before this pass. The brief: take the app from "trustworthy
+native utility that works" to "trustworthy native utility you'd want
+on your machine." Raycast-clean SwiftUI defaults with brand-color
+pops, warm copy, a few moments of tasteful delight.
+
+### What shipped
+
+**Brand foundation**
+
+- `Theme` namespace owns the locked palette (magenta `#FF87D7` primary,
+  cyan `#00FFFF` highlight, success/warn/error/chrome) plus standard
+  SF Symbols (`pills.fill` app icon, `tag.fill` / `cable.connector` /
+  `speaker.wave.2.fill` / `camera.fill` for wizard sections). Views
+  never hard-code hex values — a future palette tweak (or a real
+  dark-mode override) is one file.
+- `ProfileIcon` maps slugs → SF Symbols with prefix/contains
+  heuristics. `home*` → `house.fill`, `work*`/`office` →
+  `building.2.fill`, `conference`/`meeting` → `person.3.fill`,
+  `studio`/`podcast` → `music.mic`, `cafe`/`coffee` →
+  `cup.and.saucer.fill`, plus `library`, `garage`, `lab`, `hotel`,
+  `school`. Unknown slugs fall through to `mappin.and.ellipse`.
+  Specificity ordering matters: `conference-home` lands on people
+  before house, `home-office` lands on house before building (the
+  more-specific predicate runs first).
+
+**Wizard polish**
+
+- Hero header: pill icon + magenta title + cyan subhead.
+- Section headers carry SF Symbol icons in primary magenta.
+- Save button is brand-magenta primary with a brief green-checkmark
+  "Saved" affordance for ~0.45 s before the window closes — the
+  smoother feedback the brief asked for.
+- Auto-suggest profile name from attached devices: a CalDigit dock
+  pre-fills "Home Office", an LG monitor pre-fills "Office", a
+  Yeti/Shure mic pre-fills "Studio". Suggestion only, fully editable.
+  No-op when editing an existing profile.
+
+**Menu enrichment**
+
+- Each profile in the "Switch to" submenu shows its slug-mapped SF
+  Symbol next to the name (or a checkmark when active).
+- Each profile is itself a sub-submenu with Switch to / Edit… /
+  Delete… entries. Right-click contextMenu would be cleaner but
+  SwiftUI's `MenuBarExtra` doesn't propagate it to its child entries
+  in the macOS 14 SDK; the sub-submenu chain achieves the same
+  affordance.
+- Optional one-line caption per profile shows the audio + camera
+  it would apply (`🎙 Yeti  •  🔈 CalDigit  •  📷 Built-in`), gated
+  by Settings → "Show audio + camera details in menu".
+- Settings… (⌘,) and About AV Pain Reliever menu items added below
+  the existing admin block.
+
+**Notification copy with personality**
+
+- `NotificationCopy.title(forSlug:)` rotates 2-4 alternates per
+  common slug family. Selection is deterministic on day-of-year so
+  the title varies between days but doesn't whiplash within a single
+  docking cycle. Body is constant: "Audio + camera switched".
+- Notifications are now gated by Settings → "Send notifications when
+  profiles change" (default on).
+
+**Settings scene** (`Settings { }`, opens with ⌘,)
+
+- General tab: notifications toggle, audio+camera-in-menu toggle,
+  debounce-window slider (0.5–5.0 s, default 1.5 s — engine rebuilds
+  with the new value on next reload).
+- Profiles tab: full list with magenta-tinted icons, "Active" pill
+  on the resolved profile, Edit and Delete buttons per row. Empty
+  state has a friendly tray icon + warm copy.
+- Deliberately no mention of Hammerspoon, OBS, or any third-party
+  tool. Per `feedback_app_self_contained`.
+
+**About window**
+
+- Replaces `NSApp.orderFrontStandardAboutPanel` with a SwiftUI scene:
+  pulsing pill hero in magenta, title in big rounded magenta type,
+  cyan tagline, version string, "Made to stop the fiddling" italic
+  line.
+
+**First-run welcome**
+
+- Shown when no profile has a real fingerprint AND the user hasn't
+  previously dismissed the welcome. Hero pill, magenta title, cyan
+  tagline, warm one-paragraph explainer, magenta "Add Your First
+  Location" CTA, cyan "Skip — I'll set up later" link. Suppressed
+  forever once either button is clicked or any profile saves.
+- Implemented as a SwiftUI `Window` scene whose visibility is
+  triggered by an `@Published shouldShowWelcome` flag on
+  `AppDelegate` — read by a hidden `WelcomeOpener` view inside the
+  `MenuBarExtra` so it can call SwiftUI's `openWindow` (which is
+  environment-only and not reachable from `AppDelegate` directly).
+
+**Edit + delete plumbing**
+
+- `ProfileWriter.delete(named:in:)` excises a `[profiles.<name>]`
+  section while preserving surrounding content, comments, and
+  header banners. Tidies trailing blank lines.
+- `AddProfileViewModel` takes an optional `editing: Profile?` —
+  pre-fills name (pretty-cased), audio, camera, and the selected
+  fingerprint. Save dispatches to replace mode when the slug is
+  unchanged; renaming during edit cleans up the prior section
+  automatically.
+- Native `NSAlert` confirms before delete.
+
+**Persistent settings**
+
+- `SettingsStore` (`UserDefaults`-backed): notificationsEnabled,
+  debounceInterval, showAudioCameraInMenu, profileSwitchCount,
+  suppressedWelcome. Defaults treat `object(forKey:) == nil` as
+  "never set" so default-on toggles stay on across launches.
+- `AppDelegate` republishes `settings.objectWillChange` through its
+  own `objectWillChange` so views observing the AppDelegate (the
+  menu, the About scene) re-render on a settings flip without each
+  having to observe the store directly.
+
+**Easter egg**
+
+- Hold Option while the menu is open to reveal a cyan stats line
+  under the title: "Switched 47 times. Saving your sanity since
+  plug-in #1." Bumped from every actual profile change. Pluralizes
+  correctly at counts 0/1/2+.
+
+### Lessons learned
+
+- **`MenuBarExtra` doesn't propagate `contextMenu(for:)` to its
+  child Buttons.** Right-click on a profile entry in the "Switch to"
+  submenu doesn't surface anything. Workaround: nest each profile
+  inside its own `Menu` so Switch / Edit / Delete read as a sub-
+  submenu. Discoverability is slightly worse than right-click but
+  the affordance survives. Re-evaluate when SwiftUI's MenuBar APIs
+  pick up `contextMenu` support (FB-pending).
+- **`@MainActor`-isolating `SettingsStore` blocks the AppDelegate
+  from reading from non-main contexts.** `buildEngine` is called from
+  `bootEngine`, which the docs reach but which isn't yet `@MainActor`
+  itself; rather than annotate the entire AppDelegate, drop the
+  isolation from `SettingsStore` (`UserDefaults` is thread-safe and
+  the `@Published` mutations in the wizard happen from main anyway).
+  Same trick applies to any future small persistence helper.
+- **Republishing one ObservableObject through another is one line
+  of Combine.** `settings.objectWillChange.sink { [weak self] in
+  self?.objectWillChange.send() }.store(in: &cancellables)` lets the
+  SwiftUI graph treat AppDelegate as the canonical source for both
+  engine state AND user preferences. Saves passing `SettingsStore`
+  into every view via `@ObservedObject`.
+- **First-run welcome can't open a window from the AppDelegate.**
+  SwiftUI's `openWindow` is environment-only; AppDelegate has no
+  `EnvironmentValues`. Workaround: AppDelegate publishes
+  `shouldShowWelcome: Bool`, and a hidden helper view inside the
+  `MenuBarExtra` scene watches it via `.onChange` and calls
+  `openWindow` from its own environment. Clean, no AppKit cycling.
+- **A pure-logic test target for the App module is worth it.**
+  ProfileIcon, NotificationCopy, StatsCopy, SettingsStore, and the
+  AddProfileViewModel are all unit-testable without AppKit. SPM's
+  `executableTarget` can be `@testable`-imported by a sibling
+  `testTarget` — no Xcode project required for coverage.
+- **Save-success feedback wants 0.45 s, not 0.2 s and not 1.0 s.**
+  At 0.2 s the green flash is gone before the eye registers. At 1.0 s
+  the modal feels sluggish. 0.45 s reads as a confirmed beat without
+  blocking flow.
+
+### Effort estimate update
+
+The pass touched ~1500 lines across 8 new files + 5 modified files,
+plus 36 new tests. ~3 hours actual against an open-ended brief. Most
+of that was the Settings + About + Welcome scenes (each is ~80–150
+lines). The pure-logic helpers (ProfileIcon, NotificationCopy,
+StatsCopy) took minutes each because the surface is a single function
++ a small mapping table.
+
+### Deferred to v2
+
+- Custom app icon (still `pills.fill` SF Symbol — fine for v1).
+- User-customizable per-profile icons (auto from slug for v1).
+- OBS scene routing as a Settings tab.
+- Sparkle / signing / GitHub Actions release pipeline (the
+  distribution slog still pending; not a UX item).
+- "Show Welcome Again" menu/affordance — easy to add later if
+  someone asks.
 
 ---
 
