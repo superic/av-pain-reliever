@@ -227,49 +227,84 @@ private struct MenuContentView: View {
 
     /// Each profile entry inside the "Switch to" submenu. Clicking
     /// switches immediately — single-click is the right interaction
-    /// for "switch to" (the prior sub-submenu pattern needed three
-    /// clicks). Edit/Delete live in Settings → Profiles, which is
-    /// where users go to manage anyway.
+    /// for "switch to". Edit/Delete live in Settings → Profiles.
     ///
-    /// The active profile gets a checkmark; everything else shows its
-    /// slug-mapped SF Symbol. When `showAudioCameraInMenu` is on, a
-    /// quiet sub-line under the name summarises the audio + camera
-    /// the profile would apply.
+    /// Layout: name on the top line, audio/camera summary on a
+    /// smaller secondary line below. The active profile gets a
+    /// checkmark in a fixed-width leading slot; inactive rows
+    /// reserve the same slot empty so all names line up.
+    ///
+    /// No leading SF Symbol icon — the user only wanted iconography
+    /// on top-level items, and the submenu was getting way too wide
+    /// with both the icon and the inlined summary on the same row.
+    /// Pulling the summary onto a sub-line + dropping the icon keeps
+    /// the submenu tight.
     @ViewBuilder
     private func profileMenuEntry(_ profile: Profile) -> some View {
         let pretty = PrettyName.format(profile.name)
         let isActive = profile.name == delegate.activeProfileSlug
-        let symbol = isActive ? "checkmark" : ProfileIcon.symbol(for: profile.name)
         Button {
             delegate.applyManually(profile)
         } label: {
-            Label {
-                if let summary = profileSummary(profile),
-                   delegate.showAudioCameraInMenu {
-                    // Inline the summary so AppKit's Menu renderer keeps
-                    // the row to a single line — multi-line VStack
-                    // labels look fine in SwiftUI previews but render
-                    // as just the first line in MenuBarExtra menus.
-                    Text("\(pretty) — \(summary)")
-                } else {
-                    Text(pretty)
-                }
-            } icon: {
-                Image(systemName: symbol)
-            }
+            // SwiftUI's MenuBarExtra menu collapses Buttons to single-
+            // line items by default. Embedding a newline in an
+            // `AttributedString` is the reliable way to get a real
+            // two-line entry — Text(AttributedString) bridges to
+            // NSMenuItem.attributedTitle on macOS, which respects
+            // newlines and per-run font/color attributes.
+            Text(menuLabel(for: profile, pretty: pretty, isActive: isActive))
         }
     }
 
-    /// One-line summary of the audio / camera the profile would apply.
-    /// Uses bullet separators when both are present. Returns nil when
-    /// the profile doesn't change anything (rare — usually a stub).
+    /// Build the AttributedString shown in a "Switch to" submenu row.
+    /// First line = profile name (semibold when active, with a
+    /// leading checkmark in a fixed-width slot to keep names aligned
+    /// across active + inactive rows). Second line = subtext with
+    /// audio + camera in caption-size secondary color.
+    private func menuLabel(
+        for profile: Profile,
+        pretty: String,
+        isActive: Bool
+    ) -> AttributedString {
+        // Leading slot: checkmark on active, two spaces of width on
+        // inactive rows so the names line up. Using "✓ " on active +
+        // "   " on inactive keeps things simple in a plain string;
+        // attributed-string columns can't be set in NSMenu titles.
+        let prefix = isActive ? "✓ " : "   "
+        var first = AttributedString(prefix + pretty)
+        if isActive {
+            first.font = .body.weight(.semibold)
+        }
+        guard
+            delegate.showAudioCameraInMenu,
+            let summary = profileSummary(profile)
+        else {
+            return first
+        }
+        // Subtext is indented to align under the name (past the
+        // leading checkmark slot). Smaller font + secondary color
+        // visually demotes it.
+        var second = AttributedString("\n   " + summary)
+        second.font = .caption
+        second.foregroundColor = .secondary
+        first.append(second)
+        return first
+    }
+
+    /// One-line summary of the audio / camera the profile would
+    /// apply. Plain bullet-separated names — no per-item emoji,
+    /// since the row itself provides enough context (the user just
+    /// drilled into "Switch to" so they know they're looking at AV
+    /// behaviour). Returns nil for profiles with no apply fields.
     private func profileSummary(_ profile: Profile) -> String? {
         var parts: [String] = []
-        if let mic = profile.audioInput { parts.append("🎙 \(mic)") }
-        if let out = profile.audioOutput { parts.append("🔈 \(out)") }
-        if let cam = profile.camera { parts.append("📷 \(cam)") }
+        if let mic = profile.audioInput { parts.append(mic) }
+        if let out = profile.audioOutput, out != profile.audioInput {
+            parts.append(out)
+        }
+        if let cam = profile.camera { parts.append(cam) }
         guard !parts.isEmpty else { return nil }
-        return parts.joined(separator: "  •  ")
+        return parts.joined(separator: " · ")
     }
 }
 
