@@ -325,32 +325,39 @@ private struct MenuContentView: View {
                 delegate.applyManually(profile)
             }
         } label: {
-            // SwiftUI's MenuBarExtra menu collapses Buttons to single-
-            // line items by default. Embedding a newline in an
-            // `AttributedString` is the reliable way to get a real
-            // two-line entry — Text(AttributedString) bridges to
-            // NSMenuItem.attributedTitle on macOS, which respects
-            // newlines and per-run font/color attributes.
-            Text(menuLabel(for: profile, pretty: pretty, isActive: isActive))
+            // Always wrap in a Label so the menu's image column is
+            // reserved for every row — without that, inactive rows
+            // would render flush-left while active rows (and
+            // Edit Profiles… below) sit indented behind the icon
+            // gutter, which breaks vertical alignment.
+            //
+            // Active row → checkmark; inactive → a transparent
+            // checkmark placeholder. Same physical width either way.
+            //
+            // The Text label is multi-line: name on the first row,
+            // optional audio/camera summary on a smaller secondary
+            // line. AttributedString carries the per-run weight +
+            // color; SwiftUI bridges it via NSMenuItem.attributedTitle.
+            Label {
+                Text(menuLabel(for: profile, pretty: pretty, isActive: isActive))
+            } icon: {
+                Image(systemName: "checkmark")
+                    .opacity(isActive ? 1 : 0)
+            }
         }
     }
 
     /// Build the AttributedString shown in a "Switch to" submenu row.
-    /// First line = profile name (semibold when active, with a
-    /// leading checkmark in a fixed-width slot to keep names aligned
-    /// across active + inactive rows). Second line = subtext with
-    /// audio + camera in caption-size secondary color.
+    /// First line = profile name (semibold when active). Second line
+    /// = subtext with audio + camera in caption-size secondary color.
+    /// Alignment is handled by the menu's image column, not by leading
+    /// whitespace — see `profileMenuEntry`.
     private func menuLabel(
         for profile: Profile,
         pretty: String,
         isActive: Bool
     ) -> AttributedString {
-        // Leading slot: checkmark on active, two spaces of width on
-        // inactive rows so the names line up. Using "✓ " on active +
-        // "   " on inactive keeps things simple in a plain string;
-        // attributed-string columns can't be set in NSMenu titles.
-        let prefix = isActive ? "✓ " : "   "
-        var first = AttributedString(prefix + pretty)
+        var first = AttributedString(pretty)
         if isActive {
             first.font = .body.weight(.semibold)
         }
@@ -360,10 +367,7 @@ private struct MenuContentView: View {
         else {
             return first
         }
-        // Subtext is indented to align under the name (past the
-        // leading checkmark slot). Smaller font + secondary color
-        // visually demotes it.
-        var second = AttributedString("\n   " + summary)
+        var second = AttributedString("\n" + summary)
         second.font = .caption
         second.foregroundColor = .secondary
         first.append(second)
