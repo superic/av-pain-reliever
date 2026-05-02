@@ -88,11 +88,10 @@ The engine has no network calls, no analytics, no telemetry, no third-party serv
 
 ## What's NOT in V1
 
-- **OBS scene-switching.** The Hammerspoon prototype (archived under `prototypes/hammerspoon/`) supported it; V2 of the Swift app will bring it back as an opt-in Settings tab. For V1 the app is intentionally focused on system audio + camera defaults only.
 - **Per-app routing.** "Same as System" in Zoom/Slack/Teams is the supported pattern. The app does not poke their plists or UI-script them — too fragile, too fiddly.
 - **Detection signals beyond USB.** No WiFi, Bluetooth, calendar, or time-of-day matching. USB-device fingerprints have been sufficient for every location tested.
 
-If you have a use case any of these blocks, file an issue — we'll know which V2 features to prioritize.
+If you have a use case either of these blocks, file an issue.
 
 ---
 
@@ -112,9 +111,7 @@ av-pain-reliever/
 │   ├── AVPainRelieverTests/         # Engine + adapter tests
 │   └── AVPainRelieverAppTests/      # App-target helper tests (Theme, ProfileIcon, NotificationCopy, SettingsStore, view model)
 ├── SWIFT_PORT.md              # Running design log + lessons learned
-├── prototypes/                # Archive of pre-Swift research code
-│   ├── hammerspoon/           # The Phase 1 Lua + bash prototype
-│   └── swift-research/        # Throwaway Swift scripts that proved IOKit + CoreAudio surfaces
+├── prototypes/                # Archive of earlier research code (see prototypes/README.md)
 ├── LICENSE
 └── README.md                  # This file
 ```
@@ -130,17 +127,15 @@ swift test --filter ConfigLoader             # narrow to one suite
 
 ### Architecture in one paragraph
 
-`Engine` (`Sources/AVPainReliever/Engine/Engine.swift`) wires `USBWatcher → Debouncer → ProfileResolver → ProfileApplier`. The watcher is a thin IOKit wrapper; the debouncer collapses USB event bursts; the resolver picks the best-matching `Profile` against attached devices; the applier orchestrates the audio + camera side effects via the `AudioController` and `CameraController` adapter protocols (production: CoreAudio + AVFoundation, tests: recording mocks). `ConfigLoader` parses `profiles.toml` via TOMLKit; `ConfigImporter` is a one-shot Lua → TOML migration path for users coming from the archived Hammerspoon prototype. `ProfileWriter` handles append/replace/delete on the TOML, preserving comments and surrounding content. The SwiftUI app target (`AVPainRelieverApp`) owns an `AppDelegate` that wires the engine to a `MenuBarExtra` plus four `Window` scenes (Add Profile wizard, Settings, About, Welcome).
+`Engine` (`Sources/AVPainReliever/Engine/Engine.swift`) wires `USBWatcher → Debouncer → ProfileResolver → ProfileApplier`. The watcher is a thin IOKit wrapper; the debouncer collapses USB event bursts; the resolver picks the best-matching `Profile` against attached devices; the applier orchestrates the audio + camera side effects via the `AudioController` and `CameraController` adapter protocols (production: CoreAudio + AVFoundation, tests: recording mocks). `ConfigLoader` parses `profiles.toml` via TOMLKit; `ProfileWriter` handles append/replace/delete on the TOML, preserving comments and surrounding content. The SwiftUI app target (`AVPainRelieverApp`) owns an `AppDelegate` that wires the engine to a `MenuBarExtra` plus four `Window` scenes (Add Profile wizard, Settings, About, Welcome).
 
 ### Design log
 
-[`SWIFT_PORT.md`](SWIFT_PORT.md) is the running design document — locked architectural choices, open questions, lessons learned by section, effort estimates, and what's deferred for V2. If you're contributing or just curious about why a thing is the way it is, start there.
+[`SWIFT_PORT.md`](SWIFT_PORT.md) is the running design document — locked architectural choices, open questions, lessons learned by section, effort estimates, and what's deferred. If you're contributing or just curious about why a thing is the way it is, start there.
 
-### Phase 1 archive
+### Research archive
 
-The Hammerspoon prototype that this Swift app supersedes is preserved under [`prototypes/hammerspoon/`](prototypes/hammerspoon/) — `init.lua` + `profiles.lua` + a Bash wizard. It's no longer maintained, but it's kept around because (a) the Swift app's `ConfigImporter` reads its `profiles.lua` format on first launch for migrating users, and (b) its lessons feed directly into [SWIFT_PORT.md](SWIFT_PORT.md). See [`prototypes/README.md`](prototypes/README.md) for context.
-
-The two throwaway Swift scripts that de-risked the IOKit + CoreAudio integrations live under [`prototypes/swift-research/`](prototypes/swift-research/). They're standalone files runnable with `swift prototypes/swift-research/usb-watcher.swift` etc., and each carries a doc comment about what it proved.
+[`prototypes/`](prototypes/) holds earlier research code that informed the current implementation — kept for reference, no longer maintained. See [`prototypes/README.md`](prototypes/README.md) for what's there and why.
 
 ### License
 
