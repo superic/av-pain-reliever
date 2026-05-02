@@ -82,7 +82,27 @@ public struct AVFoundationCameraController: CameraController {
     }
 
     public func currentPreferredName() -> String? {
-        AVCaptureDevice.userPreferredCamera?.localizedName
+        // Fall through three sources so the wizard always pre-selects
+        // a meaningful camera (rather than "Don't change", which is
+        // useful but rarely the right default):
+        //
+        // 1. userPreferredCamera — explicitly set by us or by the
+        //    user via System Settings → Cameras. Often nil because
+        //    most users have never touched it.
+        // 2. systemPreferredCamera (macOS 14+) — what AVFoundation
+        //    would currently pick. Falls back from userPreferred to
+        //    the system's choice (typically the built-in webcam) if
+        //    no user preference is set. Almost always non-nil when
+        //    any camera is connected.
+        // 3. First device in the discovery session — defensive
+        //    last resort.
+        if let user = AVCaptureDevice.userPreferredCamera {
+            return user.localizedName
+        }
+        if let system = AVCaptureDevice.systemPreferredCamera {
+            return system.localizedName
+        }
+        return Self.discoverySession().devices.first?.localizedName
     }
 
     private static func discoverySession() -> AVCaptureDevice.DiscoverySession {
