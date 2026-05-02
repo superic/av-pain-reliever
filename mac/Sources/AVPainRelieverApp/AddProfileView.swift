@@ -90,12 +90,7 @@ struct AddProfileView: View {
                 }
 
                 Section {
-                    Picker("Camera", selection: $viewModel.camera) {
-                        Text("Don't change").tag(String?.none)
-                        ForEach(viewModel.cameras) { cam in
-                            Text(cam.name).tag(String?.some(cam.name))
-                        }
-                    }
+                    cameraPicker
                 } header: {
                     sectionHeader("Camera", symbol: Theme.Symbol.cameraSection)
                 } footer: {
@@ -237,12 +232,23 @@ struct AddProfileView: View {
                     .foregroundStyle(.secondary)
             } else {
                 ForEach(viewModel.attachedDevices) { entry in
+                    let isDisconnected = viewModel.disconnectedDeviceIDs.contains(entry.device)
                     Toggle(isOn: binding(for: entry.device)) {
                         VStack(alignment: .leading, spacing: 1) {
                             HStack(spacing: 6) {
                                 Text(entry.displayName)
                                     .font(.callout)
-                                if let category = DevicePortability
+                                    .foregroundStyle(isDisconnected ? .secondary : .primary)
+                                if isDisconnected {
+                                    // Saved-but-not-attached devices
+                                    // stay in the form so the user
+                                    // can see what their profile
+                                    // actually fingerprints, even
+                                    // when they're away from that
+                                    // location. Yellow pill makes
+                                    // the unavailable state obvious.
+                                    pill(text: "Not connected", tint: Theme.Color.warn)
+                                } else if let category = DevicePortability
                                     .portabilityCategory(deviceName: entry.name) {
                                     // Yellow "Suggested: untick" pill so
                                     // the user immediately spots the
@@ -251,15 +257,7 @@ struct AddProfileView: View {
                                     // a location fingerprint. Hint, not
                                     // an instruction — the user is free
                                     // to keep them ticked.
-                                    Text("Suggested: untick (\(category))")
-                                        .font(.caption2.weight(.semibold))
-                                        .foregroundStyle(.black)
-                                        .padding(.horizontal, 6)
-                                        .padding(.vertical, 2)
-                                        .background(
-                                            Theme.Color.warn.opacity(0.85),
-                                            in: Capsule()
-                                        )
+                                    pill(text: "Suggested: untick (\(category))", tint: Theme.Color.warn)
                                 }
                             }
                             Text(idLine(for: entry.device))
@@ -272,13 +270,60 @@ struct AddProfileView: View {
         }
     }
 
-    private func audioPicker(title: String, selection: Binding<String?>, devices: [AudioDevice]) -> some View {
-        Picker(title, selection: selection) {
+    /// Camera picker — mirrors `audioPicker`'s treatment of saved-
+    /// but-currently-unavailable values. Keeps a synthesized "(not
+    /// connected)" entry so a Home Office profile's external camera
+    /// stays visible when the user's editing from the laptop café.
+    private var cameraPicker: some View {
+        let saved = $viewModel.camera.wrappedValue
+        let savedAvailable = saved.map { name in
+            viewModel.cameras.contains(where: { $0.name == name })
+        } ?? true
+        return Picker("Camera", selection: $viewModel.camera) {
             Text("Don't change").tag(String?.none)
+            if let saved, !savedAvailable {
+                Text("\(saved)  (not connected)")
+                    .tag(String?.some(saved))
+            }
+            ForEach(viewModel.cameras) { cam in
+                Text(cam.name).tag(String?.some(cam.name))
+            }
+        }
+    }
+
+    private func audioPicker(title: String, selection: Binding<String?>, devices: [AudioDevice]) -> some View {
+        // If the saved value isn't in the live device list (the user
+        // is editing the profile while away from this location),
+        // synthesize an entry so the picker still displays the saved
+        // choice and the binding stays stable. The "(not connected)"
+        // suffix tells the user nothing's wrong — the device just
+        // isn't here right now.
+        let saved = selection.wrappedValue
+        let savedAvailable = saved.map { name in
+            devices.contains(where: { $0.name == name })
+        } ?? true
+        return Picker(title, selection: selection) {
+            Text("Don't change").tag(String?.none)
+            if let saved, !savedAvailable {
+                Text("\(saved)  (not connected)")
+                    .tag(String?.some(saved))
+            }
             ForEach(devices) { device in
                 Text(device.name).tag(String?.some(device.name))
             }
         }
+    }
+
+    /// One-stop pill builder used by both the "Not connected" badge
+    /// and the "Suggested: untick" hint. Single source of truth for
+    /// the wizard's small status pills.
+    private func pill(text: String, tint: Color) -> some View {
+        Text(text)
+            .font(.caption2.weight(.semibold))
+            .foregroundStyle(.black)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(tint.opacity(0.85), in: Capsule())
     }
 
     /// Caption line under each device row. Shows vid/pid and the

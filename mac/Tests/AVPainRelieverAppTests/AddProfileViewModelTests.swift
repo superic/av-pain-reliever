@@ -132,6 +132,150 @@ struct AddProfileViewModelTests {
         #expect(loaded.first?.audioInput == "New Mic")
     }
 
+    @Test("editing keeps saved fingerprint devices visible even when not attached")
+    func editingShowsDisconnectedDevices() {
+        // User is undocked: only the laptop's built-in is in the
+        // live snapshot. The editing profile fingerprints two
+        // dock-side devices that aren't currently attached.
+        let watcher = FakeWatcher()
+        watcher.named = []  // undocked, no peripherals
+        let dockDevice = USBDevice(vendorID: 0x2188, productID: 0x6533)
+        let monitorDevice = USBDevice(vendorID: 0x043e, productID: 0x9a68)
+
+        let editing = Profile(
+            name: "home-office",
+            fingerprint: [dockDevice, monitorDevice],
+            audioInput: "Yeti Stereo Microphone",
+            audioOutput: "CalDigit Thunderbolt 3 Audio",
+            camera: "LG UltraFine Display Camera",
+            fingerprintNames: [
+                dockDevice: "CalDigit Thunderbolt 3 Audio",
+                monitorDevice: "LG UltraFine Display Camera"
+            ]
+        )
+
+        let vm = AddProfileViewModel(
+            watcher: watcher,
+            audioController: FakeAudio(devices: ["MacBook Pro Microphone"]),
+            cameraController: FakeCamera(cameras: ["FaceTime HD"]),
+            configURL: URL(fileURLWithPath: "/tmp/x.toml"),
+            editing: editing,
+            onSaved: {}
+        )
+
+        // Both saved devices appear in the form even though neither is
+        // currently attached, with the right names + flagged disconnected.
+        let presented = Set(vm.attachedDevices.map(\.device))
+        #expect(presented == [dockDevice, monitorDevice])
+        #expect(vm.disconnectedDeviceIDs == [dockDevice, monitorDevice])
+        let dockEntry = vm.attachedDevices.first { $0.device == dockDevice }
+        #expect(dockEntry?.name == "CalDigit Thunderbolt 3 Audio")
+        // Selection is preserved across the disconnect — saved fingerprint
+        // devices stay ticked by default.
+        #expect(vm.selectedDeviceIDs == [dockDevice, monitorDevice])
+        // Audio + camera saved values stay populated regardless of what
+        // CoreAudio / AVFoundation report being available right now.
+        #expect(vm.audioInput == "Yeti Stereo Microphone")
+        #expect(vm.audioOutput == "CalDigit Thunderbolt 3 Audio")
+        #expect(vm.camera == "LG UltraFine Display Camera")
+    }
+
+    @Test("saving an undocked edit preserves the disconnected fingerprint")
+    func savingPreservesDisconnectedFingerprint() throws {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("vm-disconnected-\(UUID()).toml")
+        defer { try? FileManager.default.removeItem(at: url) }
+        try """
+        [profiles.home-office]
+        audioInput  = "Yeti Stereo Microphone"
+        audioOutput = "CalDigit Thunderbolt 3 Audio"
+        fingerprint = [
+          { vendorID = 0x2188, productID = 0x6533, name = "CalDigit dock" },
+          { vendorID = 0x043e, productID = 0x9a68, name = "LG UltraFine" },
+        ]
+        """.write(to: url, atomically: true, encoding: .utf8)
+
+        let dockDevice = USBDevice(vendorID: 0x2188, productID: 0x6533)
+        let monitorDevice = USBDevice(vendorID: 0x043e, productID: 0x9a68)
+        let editing = Profile(
+            name: "home-office",
+            fingerprint: [dockDevice, monitorDevice],
+            audioInput: "Yeti Stereo Microphone",
+            audioOutput: "CalDigit Thunderbolt 3 Audio",
+            fingerprintNames: [
+                dockDevice: "CalDigit dock",
+                monitorDevice: "LG UltraFine"
+            ]
+        )
+
+        // Watcher reports nothing attached (user is undocked).
+        let vm = AddProfileViewModel(
+            watcher: FakeWatcher(),
+            audioController: FakeAudio(devices: []),
+            cameraController: FakeCamera(cameras: []),
+            configURL: url,
+            editing: editing,
+            onSaved: {}
+        )
+        // User edits something trivial (audio input) and saves.
+        vm.audioInput = "Yeti Stereo Microphone"
+        vm.save()
+
+        #expect(vm.lastError == nil)
+        let loaded = try ConfigLoader().loadProfiles(from: url)
+        let saved = loaded.first { $0.name == "home-office" }!
+        // Saving while undocked must NOT silently strip the fingerprint —
+        // the user editing while away from the location is exactly the
+        // case this preserves.
+        #expect(Set(saved.fingerprint) == [dockDevice, monitorDevice])
+        // And the names round-trip too, so the next edit also sees them.
+        #expect(saved.fingerprintNames[dockDevice] == "CalDigit dock")
+        #expect(saved.fingerprintNames[monitorDevice] == "LG UltraFine")
+    }
+
+    @Test("unticking a disconnected saved device drops it on save")
+    func untickingDisconnectedDeviceRemovesItOnSave() throws {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("vm-untick-\(UUID()).toml")
+        defer { try? FileManager.default.removeItem(at: url) }
+        try """
+        [profiles.home-office]
+        audioInput  = "Yeti"
+        fingerprint = [
+          { vendorID = 0x2188, productID = 0x6533, name = "Dock" },
+          { vendorID = 0x043e, productID = 0x9a68, name = "Monitor" },
+        ]
+        """.write(to: url, atomically: true, encoding: .utf8)
+
+        let dock = USBDevice(vendorID: 0x2188, productID: 0x6533)
+        let monitor = USBDevice(vendorID: 0x043e, productID: 0x9a68)
+        let editing = Profile(
+            name: "home-office",
+            fingerprint: [dock, monitor],
+            audioInput: "Yeti",
+            fingerprintNames: [dock: "Dock", monitor: "Monitor"]
+        )
+
+        let vm = AddProfileViewModel(
+            watcher: FakeWatcher(),
+            audioController: FakeAudio(devices: []),
+            cameraController: FakeCamera(cameras: []),
+            configURL: url,
+            editing: editing,
+            onSaved: {}
+        )
+        // User unticks the monitor while undocked. The save should
+        // drop it from the fingerprint just like unticking an
+        // attached device would.
+        vm.selectedDeviceIDs.remove(monitor)
+        vm.save()
+
+        #expect(vm.lastError == nil)
+        let loaded = try ConfigLoader().loadProfiles(from: url)
+        let saved = loaded.first { $0.name == "home-office" }!
+        #expect(saved.fingerprint == [dock])
+    }
+
     @Test("renaming an edited profile removes the old section")
     func renameDeletesPriorSection() throws {
         let url = FileManager.default.temporaryDirectory

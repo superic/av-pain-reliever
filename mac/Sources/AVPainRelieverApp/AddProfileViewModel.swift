@@ -36,11 +36,21 @@ final class AddProfileViewModel: ObservableObject {
     @Published var audioOutput: String? = nil
     @Published var camera: String? = nil
 
-    /// Currently-attached USB devices the user can include in the
-    /// fingerprint. Refreshed on demand from the watcher.
+    /// Devices shown in the wizard's USB-fingerprint list. Union of
+    /// (currently-attached devices) and (devices the editing profile
+    /// saved that aren't currently attached). Sorted by display name
+    /// with disconnected entries pushed to the bottom so the active
+    /// hardware is visually grouped at the top.
     @Published private(set) var attachedDevices: [NamedUSBDevice] = []
-    /// Subset of `attachedDevices.id` the user has checked.
+    /// Subset of `attachedDevices` IDs the user has checked.
     @Published var selectedDeviceIDs: Set<USBDevice> = []
+    /// Devices in `attachedDevices` that came from the editing
+    /// profile's fingerprint but are NOT currently plugged in. The
+    /// view shows these with a yellow "Not connected" badge and
+    /// keeps their names from the saved TOML so the user can still
+    /// see what their profile is actually doing while away from the
+    /// location.
+    @Published private(set) var disconnectedDeviceIDs: Set<USBDevice> = []
 
     /// Audio devices CoreAudio sees right now.
     @Published private(set) var audioDevices: [AudioDevice] = []
@@ -75,6 +85,17 @@ final class AddProfileViewModel: ObservableObject {
     private let onSaved: () -> Void
     private let editingSlug: String?
 
+    /// Saved fingerprint from the profile being edited — preserved
+    /// verbatim across `refresh()` so saved-but-disconnected devices
+    /// keep showing up even after the live watcher snapshot updates.
+    /// Empty when adding a new profile.
+    private var savedFingerprint: [USBDevice] = []
+    /// Display names for `savedFingerprint` entries from the source
+    /// TOML. Used by the wizard to show meaningful labels even when
+    /// the device isn't currently attached (in which case the live
+    /// watcher snapshot wouldn't carry a name).
+    private var savedFingerprintNames: [USBDevice: String] = [:]
+
     init(
         watcher: USBWatcher,
         audioController: AudioController,
@@ -98,11 +119,14 @@ final class AddProfileViewModel: ObservableObject {
             self.audioInput = profile.audioInput
             self.audioOutput = profile.audioOutput
             self.camera = profile.camera
-            // Selecting profile fingerprints by default lets the user
-            // see their saved set immediately. Not all profile devices
-            // are necessarily attached right now — the wizard's check-
-            // boxes only show currently-attached ones, so refresh()
-            // will narrow the selection to the intersection.
+            self.savedFingerprint = profile.fingerprint
+            self.savedFingerprintNames = profile.fingerprintNames
+            // Default to keeping every saved device ticked. The user
+            // can untick to remove from the fingerprint. refresh()
+            // will then merge the live watcher snapshot with these
+            // saved entries so devices that aren't currently attached
+            // still appear (with a "Not connected" hint), instead of
+            // silently disappearing.
             self.selectedDeviceIDs = Set(profile.fingerprint)
         }
 
@@ -117,16 +141,43 @@ final class AddProfileViewModel: ObservableObject {
     /// current default input/output the *first* time refresh runs;
     /// subsequent refreshes leave the user's manual selection alone.
     func refresh() {
-        let named = watcher.currentDevicesNamed()
-        attachedDevices = named
+        let liveSnapshot = watcher.currentDevicesNamed()
+        let liveIDs = Set(liveSnapshot.map(\.device))
+
+        // Saved-but-disconnected: any device in the editing profile's
+        // fingerprint that isn't currently plugged in. Synthesize a
+        // NamedUSBDevice from the saved fingerprint + the per-device
+        // names the loader preserved, so the wizard can render them
+        // with a readable label and a "Not connected" badge instead
+        // of dropping them from the form.
+        let disconnected: [NamedUSBDevice] = savedFingerprint
+            .filter { !liveIDs.contains($0) }
+            .map { device in
+                NamedUSBDevice(
+                    device: device,
+                    name: savedFingerprintNames[device],
+                    vendorName: nil
+                )
+            }
+        let disconnectedIDs = Set(disconnected.map(\.device))
+
+        // Live devices first (sorted as the watcher returned them),
+        // then disconnected entries pushed to the bottom by name so
+        // the active hardware stays grouped at the top of the list.
+        attachedDevices = liveSnapshot + disconnected.sorted {
+            $0.displayName < $1.displayName
+        }
+        disconnectedDeviceIDs = disconnectedIDs
+
         // Default selection: every currently-attached device,
         // including unnamed hub legs. Capturing more is the safer
         // default — the user knows what's plugged in right now and
         // can uncheck peripherals (keyboards/mice/phones) that
         // aren't location-specific. Including hub legs is fine
-        // because they're stable parts of the dock.
+        // because they're stable parts of the dock. (Skipped when
+        // editing — the saved fingerprint pre-populates selection.)
         if selectedDeviceIDs.isEmpty {
-            selectedDeviceIDs = Set(named.map(\.device))
+            selectedDeviceIDs = Set(liveSnapshot.map(\.device))
         }
         audioDevices = audioController.availableDevices()
         cameras = cameraController.availableCameras()
@@ -145,7 +196,7 @@ final class AddProfileViewModel: ObservableObject {
         // devices, pre-fill a sensible suggestion. Only when adding —
         // editing keeps the existing name. The user can always rename.
         if name.isEmpty && editingSlug == nil {
-            let deviceNames = named.compactMap { $0.name }
+            let deviceNames = liveSnapshot.compactMap { $0.name }
             if let suggested = ProfileIcon.suggestedName(forDeviceNames: deviceNames) {
                 name = PrettyName.format(suggested)
             }
@@ -263,13 +314,15 @@ final class AddProfileViewModel: ObservableObject {
         lastError = nil
         defer { isSaving = false }
 
-        let fingerprint = attachedDevices
-            .filter { selectedDeviceIDs.contains($0.device) }
-            .map(\.device)
+        // Build the fingerprint from EVERY ticked row in the form —
+        // both currently-attached and saved-but-disconnected. The
+        // user editing while away from a location is the whole
+        // reason disconnected devices are visible, so dropping them
+        // here would silently undo the user's intent on save.
+        let selectedRows = attachedDevices.filter { selectedDeviceIDs.contains($0.device) }
+        let fingerprint = selectedRows.map(\.device)
         let deviceNames: [USBDevice: String?] = Dictionary(
-            uniqueKeysWithValues: attachedDevices
-                .filter { selectedDeviceIDs.contains($0.device) }
-                .map { ($0.device, $0.name) }
+            uniqueKeysWithValues: selectedRows.map { ($0.device, $0.name) }
         )
 
         let profile = Profile(

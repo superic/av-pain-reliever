@@ -520,18 +520,29 @@ private struct ImportedProfile {
     }
 
     var profile: Profile {
-        Profile(
+        let devices = fingerprint.map {
+            USBDevice(
+                vendorID: $0.vendorID,
+                productID: $0.productID,
+                serialNumber: $0.serialNumber
+            )
+        }
+        // Preserve the per-device names from the source Lua so the
+        // wizard's edit form can keep saved-but-disconnected devices
+        // visible. Mirrors what ConfigLoader does for TOML reads.
+        var names: [USBDevice: String] = [:]
+        for (device, source) in zip(devices, fingerprint) {
+            if let n = source.name, !n.isEmpty {
+                names[device] = n
+            }
+        }
+        return Profile(
             name: name,
-            fingerprint: fingerprint.map {
-                USBDevice(
-                    vendorID: $0.vendorID,
-                    productID: $0.productID,
-                    serialNumber: $0.serialNumber
-                )
-            },
+            fingerprint: devices,
             audioInput: audioInput,
             audioOutput: audioOutput,
-            camera: camera
+            camera: camera,
+            fingerprintNames: names
         )
     }
 }

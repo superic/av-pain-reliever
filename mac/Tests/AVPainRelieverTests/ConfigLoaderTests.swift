@@ -232,6 +232,45 @@ struct ConfigLoaderTests {
         #expect(profiles.first?.audioInput == "MacBook Pro Microphone")
     }
 
+    @Test("fingerprint name annotations round-trip into Profile.fingerprintNames")
+    func fingerprintNamesPreserved() throws {
+        let profiles = try loader.parseProfiles("""
+        [profiles.home-office]
+        fingerprint = [
+          { vendorID = 0x2188, productID = 0x6533, name = "CalDigit dock" },
+          { vendorID = 0x043e, productID = 0x9a68, name = "LG UltraFine" },
+          { vendorID = 0xdead, productID = 0xbeef },
+        ]
+        """)
+        let p = profiles.first!
+        let dock = USBDevice(vendorID: 0x2188, productID: 0x6533)
+        let lg = USBDevice(vendorID: 0x043e, productID: 0x9a68)
+        let unnamed = USBDevice(vendorID: 0xdead, productID: 0xbeef)
+        #expect(p.fingerprintNames[dock] == "CalDigit dock")
+        #expect(p.fingerprintNames[lg] == "LG UltraFine")
+        // Entries without `name` are absent from the map (not stored
+        // as empty strings) — the wizard treats absence as "fall back
+        // to '(unnamed device)' display".
+        #expect(p.fingerprintNames[unnamed] == nil)
+    }
+
+    @Test("Profile equality ignores fingerprintNames")
+    func equalityIgnoresNames() {
+        let p1 = Profile(
+            name: "home-office",
+            fingerprint: [USBDevice(vendorID: 0x2188, productID: 0x6533)]
+        )
+        let p2 = Profile(
+            name: "home-office",
+            fingerprint: [USBDevice(vendorID: 0x2188, productID: 0x6533)],
+            fingerprintNames: [USBDevice(vendorID: 0x2188, productID: 0x6533): "Dock"]
+        )
+        // Display-only metadata shouldn't change profile identity —
+        // existing tests that compare profiles via == stay valid.
+        #expect(p1 == p2)
+        #expect(p1.hashValue == p2.hashValue)
+    }
+
     @Test("loadProfiles(from:) on a missing file raises an unreadable error")
     func loadFromMissingFile() {
         let url = URL(fileURLWithPath: "/tmp/does-not-exist-\(UUID().uuidString).toml")

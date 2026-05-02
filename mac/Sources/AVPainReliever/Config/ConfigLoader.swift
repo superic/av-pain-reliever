@@ -106,12 +106,24 @@ private struct ConfigFile: Decodable {
     func toProfiles() -> [Profile] {
         guard let profiles else { return [] }
         return profiles.map { (name, body) in
-            Profile(
+            let entries = body.fingerprint ?? []
+            // Build a USBDevice → display-name map from any entries
+            // that carried a `name = "..."` annotation. The wizard's
+            // edit form uses these to render saved-but-disconnected
+            // devices with the names the user originally captured.
+            var names: [USBDevice: String] = [:]
+            for entry in entries {
+                if let entryName = entry.name, !entryName.isEmpty {
+                    names[entry.usbDevice] = entryName
+                }
+            }
+            return Profile(
                 name: name,
-                fingerprint: body.fingerprint?.map(\.usbDevice) ?? [],
+                fingerprint: entries.map(\.usbDevice),
                 audioInput: body.audioInput,
                 audioOutput: body.audioOutput,
-                camera: body.camera
+                camera: body.camera,
+                fingerprintNames: names
             )
         }
     }

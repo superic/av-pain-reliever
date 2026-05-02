@@ -37,17 +37,53 @@ public struct Profile: Hashable, Sendable {
     /// route through OBS Virtual Camera.
     public let camera: String?
 
+    /// Display-only names for fingerprint devices, keyed by
+    /// `(vid, pid, serial)` USBDevice. Populated by `ConfigLoader`
+    /// and `ConfigImporter` from the `name = "..."` field on each
+    /// fingerprint entry in the source TOML / Lua. The resolver and
+    /// applier ignore this — match logic is `(vid, pid, serial)`-only.
+    /// The wizard's edit form reads this to keep saved-but-currently-
+    /// disconnected devices visible (with a "Not connected" hint)
+    /// rather than silently dropping them when the user is away from
+    /// the location they configured. Excluded from `Hashable` /
+    /// `Equatable` so two semantically-identical profiles stay equal
+    /// regardless of whether one carries names.
+    public let fingerprintNames: [USBDevice: String]
+
     public init(
         name: String,
         fingerprint: [USBDevice],
         audioInput: String? = nil,
         audioOutput: String? = nil,
-        camera: String? = nil
+        camera: String? = nil,
+        fingerprintNames: [USBDevice: String] = [:]
     ) {
         self.name = name
         self.fingerprint = fingerprint
         self.audioInput = audioInput
         self.audioOutput = audioOutput
         self.camera = camera
+        self.fingerprintNames = fingerprintNames
+    }
+
+    // Manual Hashable / Equatable that excludes `fingerprintNames`.
+    // The names are display-only metadata; a profile loaded from a
+    // TOML with `name = "..."` annotations should compare equal to
+    // the same profile loaded without them, so existing tests + any
+    // semantic identity check stays unaffected by this addition.
+    public static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.name == rhs.name
+            && lhs.fingerprint == rhs.fingerprint
+            && lhs.audioInput == rhs.audioInput
+            && lhs.audioOutput == rhs.audioOutput
+            && lhs.camera == rhs.camera
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(name)
+        hasher.combine(fingerprint)
+        hasher.combine(audioInput)
+        hasher.combine(audioOutput)
+        hasher.combine(camera)
     }
 }
