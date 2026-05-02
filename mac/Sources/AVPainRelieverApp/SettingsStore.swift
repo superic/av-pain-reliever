@@ -16,6 +16,7 @@ final class SettingsStore: ObservableObject {
         static let showAudioCameraInMenu = "showAudioCameraInMenu"
         static let profileSwitchCount = "profileSwitchCount"
         static let suppressedWelcome = "suppressedWelcome"
+        static let launchAtLogin = "launchAtLogin"
     }
 
     /// Toast on profile change?  Default on — the at-a-glance signal
@@ -52,6 +53,17 @@ final class SettingsStore: ObservableObject {
         didSet { defaults.set(suppressedWelcome, forKey: Key.suppressedWelcome) }
     }
 
+    /// Whether the app should auto-launch at login. Default off so a
+    /// fresh user has to opt in (per macOS background-task etiquette).
+    /// `LaunchAtLogin.apply(enabled:)` mirrors this state into the
+    /// system's launch services.
+    @Published var launchAtLogin: Bool {
+        didSet {
+            defaults.set(launchAtLogin, forKey: Key.launchAtLogin)
+            LaunchAtLogin.apply(enabled: launchAtLogin)
+        }
+    }
+
     private let defaults: UserDefaults
 
     init(defaults: UserDefaults = .standard) {
@@ -65,6 +77,7 @@ final class SettingsStore: ObservableObject {
         self.showAudioCameraInMenu = (defaults.object(forKey: Key.showAudioCameraInMenu) as? Bool) ?? true
         self.profileSwitchCount = (defaults.object(forKey: Key.profileSwitchCount) as? Int) ?? 0
         self.suppressedWelcome = (defaults.object(forKey: Key.suppressedWelcome) as? Bool) ?? false
+        self.launchAtLogin = (defaults.object(forKey: Key.launchAtLogin) as? Bool) ?? false
     }
 
     func incrementSwitchCount() {

@@ -35,6 +35,7 @@ private struct GeneralSettingsTab: View {
     var body: some View {
         Form {
             Section {
+                Toggle("Launch AV Pain Reliever at login", isOn: $settings.launchAtLogin)
                 Toggle("Send notifications when profiles change", isOn: $settings.notificationsEnabled)
                 Toggle("Show audio + camera details in menu", isOn: $settings.showAudioCameraInMenu)
             } header: {
@@ -64,6 +65,33 @@ private struct GeneralSettingsTab: View {
         }
         .formStyle(.grouped)
         .padding(8)
+        .safeAreaInset(edge: .bottom) {
+            HStack {
+                Spacer()
+                Text(VersionInfo.short)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                Spacer()
+            }
+            .padding(.bottom, 6)
+        }
+    }
+}
+
+/// Small helper to render the version string consistently across
+/// About, Settings, and any future window that needs it. Falls back
+/// to "dev build" when the binary isn't bundled (the SPM build
+/// path).
+enum VersionInfo {
+    static var short: String {
+        let info = Bundle.main.infoDictionary
+        let shortVersion = info?["CFBundleShortVersionString"] as? String
+        let build = info?["CFBundleVersion"] as? String
+        switch (shortVersion, build) {
+        case let (s?, b?): return "AV Pain Reliever \(s) (\(b))"
+        case let (s?, nil): return "AV Pain Reliever \(s)"
+        default: return "AV Pain Reliever — dev build"
+        }
     }
 }
 

@@ -44,6 +44,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
     /// specific profile regardless of what's plugged in.
     @Published var availableProfiles: [Profile] = []
 
+    /// True when the engine resolved to the empty-fingerprint fallback
+    /// profile (e.g. "Laptop") AND the user has USB devices attached.
+    /// That state means the user is plugged into hardware we don't
+    /// have a profile for — the menu should make this visible (the
+    /// fallback profile name alone is misleading: it implies "I'm
+    /// undocked" when the user is actually at a new dock).
+    @Published var atUnknownLocation: Bool = false
+
+    /// Snapshot of attached USB devices the last time the engine
+    /// surfaced an unknown-location signal. Used by the wizard's
+    /// quick-add path so a user clicking "Set Up This Location" from
+    /// the menu lands in the form with the right devices selected.
+    @Published var lastUnknownDevices: Set<USBDevice> = []
+
     private var engine: Engine?
     private let notifier: Notifier = AppleScriptNotifier()
 
@@ -98,8 +112,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         // we don't have an Info.plist, so we set the activation
         // policy at runtime.
         NSApp.setActivationPolicy(.accessory)
+        // Set our brand icon as the app icon — visible in the About
+        // window, in window title bars, and as the Dock-icon-on-
+        // foreground for windows. Generated at runtime so a palette
+        // tweak doesn't need a regenerated `.icns` asset.
+        NSApp.applicationIconImage = AppIcon.image
         bootEngine()
+        applyLaunchAtLoginPreference()
         maybeShowWelcomeWindow()
+    }
+
+    /// Honour the persisted Launch-at-Login preference. Called at
+    /// startup so a setting toggled in a previous session takes
+    /// effect immediately. Failures (typically because the binary
+    /// isn't a signed `.app` yet, so SMAppService can't register it)
+    /// are logged but non-fatal — the toggle in Settings will surface
+    /// the underlying issue.
+    private func applyLaunchAtLoginPreference() {
+        LaunchAtLogin.apply(enabled: settings.launchAtLogin)
     }
 
     /// Set true on first-launch when there are no real-fingerprint
@@ -182,13 +212,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
 
         // Re-arm the unknown-location toast if the user just resolved
         // to a profile with a real fingerprint (i.e., they configured
-        // the location they were at, or moved to a known one).
+        // the location they were at, or moved to a known one). Also
+        // clear the unknown-location menu indicator — it was set by
+        // the fallback path; getting back to a real-fingerprint
+        // resolution means we're at a known place again.
         if !profile.fingerprint.isEmpty {
             notifiedUnknownLocation = false
+            atUnknownLocation = false
+            lastUnknownDevices = []
         }
     }
 
     private func handleUnknownLocation(devices: Set<USBDevice>) {
+        // Always update the status so the menu reflects the new
+        // location even if we've already toasted about it. Setting
+        // these every time is cheap and keeps the menu accurate.
+        atUnknownLocation = true
+        lastUnknownDevices = devices
+
         // One toast per "stretch of unknown-ness" — re-armed when the
         // user resolves to a specific profile. Avoids spamming when
         // multiple USB events fire at the same unconfigured location.

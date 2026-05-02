@@ -21,6 +21,20 @@ struct SettingsStoreTests {
         #expect(store.debounceInterval == 1.5)
         #expect(store.profileSwitchCount == 0)
         #expect(store.suppressedWelcome == false)
+        // Launch-at-login defaults off — fresh users opt in, per
+        // macOS background-task etiquette.
+        #expect(store.launchAtLogin == false)
+    }
+
+    @Test("launchAtLogin persists across reloads")
+    func launchAtLoginPersists() {
+        let defaults = makeSuite()
+        do {
+            let store = SettingsStore(defaults: defaults)
+            store.launchAtLogin = true
+        }
+        let reopened = SettingsStore(defaults: defaults)
+        #expect(reopened.launchAtLogin == true)
     }
 
     @Test("flipping a default-on toggle to false survives a reload")

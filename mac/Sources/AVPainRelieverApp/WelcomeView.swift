@@ -12,15 +12,17 @@ struct WelcomeView: View {
     let onSkip: () -> Void
 
     var body: some View {
-        VStack(spacing: 22) {
-            Image(systemName: Theme.Symbol.appIcon)
-                .font(.system(size: 72, weight: .semibold))
-                .foregroundStyle(Theme.Color.primary)
-                .symbolRenderingMode(.hierarchical)
+        VStack(spacing: 24) {
+            Image(nsImage: AppIcon.image)
+                .resizable()
+                .interpolation(.high)
+                .frame(width: 104, height: 104)
+                .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+                .shadow(color: .black.opacity(0.18), radius: 14, y: 6)
 
             VStack(spacing: 8) {
                 Text("Welcome to \(Theme.Copy.appName)")
-                    .font(.system(size: 26, weight: .bold, design: .rounded))
+                    .font(.system(size: 24, weight: .bold, design: .rounded))
                     .foregroundStyle(Theme.Color.primary)
                     .multilineTextAlignment(.center)
                 Text(Theme.Copy.tagline)
@@ -29,12 +31,17 @@ struct WelcomeView: View {
                     .multilineTextAlignment(.center)
             }
 
-            Text("Plug in different combos of USB devices and AV Pain Reliever picks the right audio + camera defaults — automatically. No tinkering with system settings before every meeting.")
-                .font(.callout)
-                .multilineTextAlignment(.center)
-                .foregroundStyle(.secondary)
-                .padding(.horizontal, 32)
-                .fixedSize(horizontal: false, vertical: true)
+            VStack(alignment: .leading, spacing: 12) {
+                bullet(symbol: "cable.connector",
+                       text: "Plug in your dock, microphone, or webcam.")
+                bullet(symbol: "wand.and.stars",
+                       text: "AV Pain Reliever notices and switches your audio + camera defaults — automatically.")
+                bullet(symbol: "sparkles",
+                       text: "No tinkering with System Settings before every meeting.")
+            }
+            .padding(.horizontal, 18)
+
+            Spacer(minLength: 0)
 
             VStack(spacing: 10) {
                 Button(action: onAddProfile) {
@@ -45,15 +52,34 @@ struct WelcomeView: View {
                 .buttonStyle(.borderedProminent)
                 .tint(Theme.Color.primary)
                 .controlSize(.large)
+                .keyboardShortcut(.defaultAction)
 
                 Button("Skip — I'll set up later", action: onSkip)
                     .buttonStyle(.link)
                     .foregroundStyle(Theme.Color.highlight)
+                    .keyboardShortcut(.cancelAction)
             }
         }
-        .padding(.vertical, 36)
-        .padding(.horizontal, 32)
-        .frame(width: 460, height: 520)
+        .padding(.vertical, 32)
+        .padding(.horizontal, 28)
+        .frame(width: 480, height: 540)
         .background(.background)
+    }
+
+    /// Three bullet rows below the tagline. Each pairs a brand-tinted
+    /// SF Symbol with one short sentence — easier to scan than a
+    /// single dense paragraph and gives the user a sense of the
+    /// product shape on first read.
+    private func bullet(symbol: String, text: String) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: symbol)
+                .font(.body.weight(.semibold))
+                .foregroundStyle(Theme.Color.primary)
+                .frame(width: 24, alignment: .center)
+            Text(text)
+                .font(.callout)
+                .foregroundStyle(.primary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
     }
 }

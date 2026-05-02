@@ -12,13 +12,18 @@ struct AboutView: View {
 
     var body: some View {
         VStack(spacing: 18) {
-            Image(systemName: Theme.Symbol.appIcon)
-                .font(.system(size: 64, weight: .semibold))
-                .foregroundStyle(Theme.Color.primary)
-                .symbolRenderingMode(.hierarchical)
-                .scaleEffect(pulse ? 1.04 : 1.0)
+            // Generated app icon — same artwork the OS uses.
+            // SwiftUI's Image(nsImage:) downscales cleanly from the
+            // 1024-square master.
+            Image(nsImage: AppIcon.image)
+                .resizable()
+                .interpolation(.high)
+                .frame(width: 96, height: 96)
+                .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+                .shadow(color: .black.opacity(0.18), radius: 12, y: 6)
+                .scaleEffect(pulse ? 1.03 : 1.0)
                 .animation(
-                    .easeInOut(duration: 1.6).repeatForever(autoreverses: true),
+                    .easeInOut(duration: 1.8).repeatForever(autoreverses: true),
                     value: pulse
                 )
                 .onAppear { pulse = true }
@@ -33,7 +38,7 @@ struct AboutView: View {
             }
 
             VStack(spacing: 4) {
-                Text("Version \(versionString)")
+                Text(VersionInfo.short)
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 Text("Made to stop the fiddling.")
@@ -57,18 +62,5 @@ struct AboutView: View {
         .padding(.horizontal, 28)
         .frame(width: 360, height: 420)
         .background(.background)
-    }
-
-    private var versionString: String {
-        // SPM-built binaries don't carry an Info.plist; fall back to a
-        // sensible string so the About reads well during development.
-        let info = Bundle.main.infoDictionary
-        let short = info?["CFBundleShortVersionString"] as? String
-        let build = info?["CFBundleVersion"] as? String
-        switch (short, build) {
-        case let (s?, b?): return "\(s) (\(b))"
-        case let (s?, nil): return s
-        default: return "dev build"
-        }
     }
 }

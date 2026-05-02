@@ -96,8 +96,17 @@ private struct MenuLabelView: View {
     @ObservedObject var delegate: AppDelegate
 
     var body: some View {
-        Image(systemName: Theme.Symbol.appIcon)
-        Text(delegate.currentProfileTitle)
+        if delegate.atUnknownLocation {
+            // The fallback profile name (typically "Laptop") would
+            // imply "I'm undocked" — but the user is at a new dock
+            // we don't recognise. Make that visible so they don't
+            // assume the app is misbehaving.
+            Image(systemName: "questionmark.circle")
+            Text("New location")
+        } else {
+            Image(systemName: Theme.Symbol.appIcon)
+            Text(delegate.currentProfileTitle)
+        }
     }
 }
 
@@ -113,16 +122,28 @@ private struct MenuContentView: View {
     @State private var showStats: Bool = false
 
     var body: some View {
-        Text(delegate.currentProfileTitle)
-            .font(.headline)
-        if let camera = delegate.currentCameraDisplay {
-            // Reminder for Zoom/Slack/Teams users: the system
-            // preferred camera is set, but those apps don't follow
-            // it. This line tells the user what name to pick if
-            // they need to update the in-app camera selection.
-            Text("Camera: \(camera)")
+        if delegate.atUnknownLocation {
+            // Headline replaces the misleading fallback profile name
+            // ("Laptop") with an honest "New location detected" so
+            // the user knows the engine is in fallback mode rather
+            // than assuming they're somehow undocked.
+            Text("New location detected")
+                .font(.headline)
+            Text("\(delegate.lastUnknownDevices.count) USB device\(delegate.lastUnknownDevices.count == 1 ? "" : "s") attached")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+        } else {
+            Text(delegate.currentProfileTitle)
+                .font(.headline)
+            if let camera = delegate.currentCameraDisplay {
+                // Reminder for Zoom/Slack/Teams users: the system
+                // preferred camera is set, but those apps don't follow
+                // it. This line tells the user what name to pick if
+                // they need to update the in-app camera selection.
+                Text("Camera: \(camera)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
         }
         if showStats || NSEvent.modifierFlags.contains(.option) {
             Text(StatsCopy.line(for: delegate.profileSwitchCount))
@@ -130,6 +151,21 @@ private struct MenuContentView: View {
                 .foregroundStyle(Theme.Color.highlight)
         }
         Divider()
+
+        if delegate.atUnknownLocation {
+            // Visually prominent affordance — same destination as
+            // Add Profile… below, but framed as the obvious next
+            // step. The wizard pre-selects all currently-attached
+            // devices anyway, so the user just needs to pick a name
+            // and hit Save.
+            Button {
+                openWindow(id: addProfileWindowID)
+                NSApp.activate(ignoringOtherApps: true)
+            } label: {
+                Label("Set Up This Location…", systemImage: "plus.circle.fill")
+            }
+            Divider()
+        }
 
         if !delegate.availableProfiles.isEmpty {
             Menu("Switch to") {
@@ -189,39 +225,34 @@ private struct MenuContentView: View {
         .keyboardShortcut("q")
     }
 
-    /// Each profile entry inside the "Switch to" submenu. The active
-    /// profile gets a checkmark; everything else shows its slug-mapped
-    /// SF Symbol. The button label includes a quiet sub-text line
-    /// describing what audio/camera the profile applies — answers the
-    /// at-a-glance "what does this profile actually do?" question.
+    /// Each profile entry inside the "Switch to" submenu. Clicking
+    /// switches immediately — single-click is the right interaction
+    /// for "switch to" (the prior sub-submenu pattern needed three
+    /// clicks). Edit/Delete live in Settings → Profiles, which is
+    /// where users go to manage anyway.
+    ///
+    /// The active profile gets a checkmark; everything else shows its
+    /// slug-mapped SF Symbol. When `showAudioCameraInMenu` is on, a
+    /// quiet sub-line under the name summarises the audio + camera
+    /// the profile would apply.
     @ViewBuilder
     private func profileMenuEntry(_ profile: Profile) -> some View {
         let pretty = PrettyName.format(profile.name)
         let isActive = profile.name == delegate.activeProfileSlug
         let symbol = isActive ? "checkmark" : ProfileIcon.symbol(for: profile.name)
-        Menu {
-            Button("Switch to “\(pretty)”") {
-                delegate.applyManually(profile)
-            }
-            Divider()
-            Button("Edit…") {
-                delegate.beginEditingProfile(profile)
-                openWindow(id: addProfileWindowID)
-                NSApp.activate(ignoringOtherApps: true)
-            }
-            Button("Delete…") {
-                delegate.requestDelete(profile)
-            }
+        Button {
+            delegate.applyManually(profile)
         } label: {
             Label {
-                VStack(alignment: .leading, spacing: 1) {
+                if let summary = profileSummary(profile),
+                   delegate.showAudioCameraInMenu {
+                    // Inline the summary so AppKit's Menu renderer keeps
+                    // the row to a single line — multi-line VStack
+                    // labels look fine in SwiftUI previews but render
+                    // as just the first line in MenuBarExtra menus.
+                    Text("\(pretty) — \(summary)")
+                } else {
                     Text(pretty)
-                    if let summary = profileSummary(profile),
-                       delegate.showAudioCameraInMenu {
-                        Text(summary)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
                 }
             } icon: {
                 Image(systemName: symbol)
