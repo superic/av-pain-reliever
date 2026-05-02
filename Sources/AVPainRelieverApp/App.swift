@@ -151,7 +151,16 @@ private struct MenuContentView: View {
         // own vertical padding — combining them into one item with a
         // newline-bearing AttributedString visibly tightens the
         // header.
-        Text(headerAttributedString())
+        //
+        // Wrapped in a no-op Button so the menu treats it as enabled
+        // and renders text at full opacity. Plain Text views bridge
+        // to *disabled* NSMenuItems (greyed out, hard to read);
+        // taking the click as a no-op is a small price for legible
+        // text. The menu auto-dismisses after click, which is fine
+        // for a header.
+        Button(action: {}) {
+            Text(headerAttributedString())
+        }
         if showStats || NSEvent.modifierFlags.contains(.option) {
             Text(StatsCopy.line(for: delegate.profileSwitchCount))
                 .font(.caption)
@@ -176,6 +185,7 @@ private struct MenuContentView: View {
             // than assuming they're somehow undocked.
             var first = AttributedString("New location detected")
             first.font = .headline
+            first.paragraphStyle = Self.headerParagraphStyle
             let count = delegate.lastUnknownDevices.count
             var second = AttributedString("\n\(count) USB device\(count == 1 ? "" : "s") attached")
             second.font = .caption
@@ -191,12 +201,23 @@ private struct MenuContentView: View {
         else {
             return first
         }
+        first.paragraphStyle = Self.headerParagraphStyle
         var second = AttributedString("\n" + summary)
         second.font = .caption
         second.foregroundColor = .secondary
         first.append(second)
         return first
     }
+
+    /// Paragraph style for the headline run of the header. Adds a
+    /// few points of trailing space so the summary line below isn't
+    /// crowded against the profile name. Bridges through to
+    /// NSMenuItem.attributedTitle's paragraph layout.
+    private static let headerParagraphStyle: NSParagraphStyle = {
+        let style = NSMutableParagraphStyle()
+        style.paragraphSpacing = 3
+        return style
+    }()
 
     /// Look up the currently-applied profile by slug and produce its
     /// dot-separated mic/speaker/camera summary. Returns nil when
