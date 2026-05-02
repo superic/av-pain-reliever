@@ -14,14 +14,17 @@ we have data.
 **Status:** Phase 1.5 (wizard) in progress on `wizard-hardening` branch as of
 2026-04-30. Swift port end-to-end runnable as of 2026-05-01:
 prototypes, engine, config loader/importer, and a SwiftUI menu-bar
-app target all complete. **V1 design pass landed 2026-05-01** —
-brand-aware Theme, Settings + About + Welcome scenes, slug-mapped
-profile icons, edit/delete plumbing, warm notification copy, save-
-success animation, and an Option-key easter egg. `cd mac && swift run
-AVPainRelieverApp` launches a working menu-bar agent. **130 passing
-tests.** Remaining work is signing/notarization/Sparkle/GitHub
-Actions distribution plumbing — see "V1 design pass" near the bottom
-of this doc for what's still deferred.
+app target all complete. **V1 design pass landed 2026-05-01**, then
+a **V1 polish pass on the same day** — restored one-click profile
+switching, surfaced "New location detected" state in the menu when
+the engine resolves to fallback with USB attached, generated an
+app icon at runtime, added Launch-at-Login, made brand colors
+adapt to light + dark mode, and tightened Welcome + Settings copy.
+`cd mac && swift run AVPainRelieverApp` launches a working menu-bar
+agent. **131 passing tests.** Remaining work is signing/notarization
+/Sparkle/GitHub Actions distribution plumbing — see "V1 design pass"
+and "V1 polish pass" near the bottom of this doc for what's still
+deferred.
 
 ---
 
@@ -1604,13 +1607,168 @@ StatsCopy) took minutes each because the surface is a single function
 
 ### Deferred to v2
 
-- Custom app icon (still `pills.fill` SF Symbol — fine for v1).
+- ~~Custom app icon~~ — runtime-generated icon shipped in the polish
+  pass below. Asset Catalog version still pending for the signed
+  `.app`.
 - User-customizable per-profile icons (auto from slug for v1).
 - OBS scene routing as a Settings tab.
 - Sparkle / signing / GitHub Actions release pipeline (the
   distribution slog still pending; not a UX item).
 - "Show Welcome Again" menu/affordance — easy to add later if
   someone asks.
+
+---
+
+## V1 polish pass (2026-05-01)
+
+A second design pass on the same day, focused on fit-and-finish and
+on fixing one regression I'd shipped in the V1 design pass. Five
+buckets:
+
+### Menu UX restoration
+
+The V1 design pass had wrapped each profile in the "Switch to"
+submenu in its own sub-submenu (Switch / Edit / Delete) — three
+clicks to switch, vs. the pre-V1 menu's one click. Restored to a
+flat menu: each profile is a `Button` that applies on click; Edit
+and Delete already live in Settings → Profiles.
+
+The per-profile summary line ("🎙 Yeti  •  🔈 CalDigit  •
+📷 Built-in") is now inlined onto the same row as the name. AppKit's
+Menu renderer flattens VStack labels to just the first line in
+`MenuBarExtra` menus, so the previous multi-line layout never
+showed the summary in the actual menu — only in SwiftUI previews.
+
+### Unknown-location state
+
+`AppDelegate` carries two new published flags (`atUnknownLocation`,
+`lastUnknownDevices`), set when `Engine.onUnknownLocation` fires
+(empty-fingerprint resolution + non-empty attached set). Both reset
+the moment the engine resolves to a real-fingerprint profile.
+
+Visible effect: when fallback fires with USB attached, the menu-bar
+label switches to a `questionmark.circle` icon + "New location" text;
+the menu header reads "New location detected — N USB devices
+attached"; a magenta "Set Up This Location…" CTA opens the wizard
+with all attached devices already pre-selected (the wizard already
+did this; the CTA is just a more discoverable entry point).
+
+Without this, the user docking somewhere new sees the menu bar say
+"Laptop" and assumes the engine missed the USB event. The status
+toast already told them "new location" but a transient banner
+isn't enough — the menu has to keep telling the truth.
+
+### App icon (runtime-generated)
+
+`AppIcon.makeIcon()` renders a 1024×1024 squircle with a
+magenta→deep-magenta→cyan radial gradient and a white `pills.fill`
+SF Symbol on top with a soft shadow. Wired at launch via
+`NSApp.applicationIconImage` and reused by the About + Welcome
+heroes (rounded-rect-clipped at 96/104 px).
+
+The white-symbol-on-gradient trick uses `.destinationIn` compositing:
+fill a fresh image with white, then `destinationIn`-clip by the
+template SF Symbol's alpha mask. The result is a real white-filled
+symbol image that draws cleanly onto the gradient. SwiftUI's
+`Image(systemName:).foregroundStyle(.white)` doesn't help here
+because we need an `NSImage` to composite into the AppKit graphics
+context, not a SwiftUI view.
+
+Generated in memory rather than shipped as a `.icns` so palette
+tweaks don't need a regenerated Asset Catalog. The signed `.app`
+will eventually carry a proper Asset Catalog AppIcon for higher-
+fidelity rendering at 16/32/64-pt sizes; the runtime icon covers
+the dev workflow without an Xcode project.
+
+### Launch at Login
+
+New `SettingsStore.launchAtLogin` (default off — fresh users opt
+in, per macOS background-task etiquette). `LaunchAtLogin.apply(
+enabled:)` wraps `SMAppService.mainApp.register()` /
+`unregister()`. AppDelegate calls apply() on launch so a setting
+toggled in a previous session takes effect.
+
+Caveat: `SMAppService` needs a properly bundled `.app` for clean
+registration. The SPM dev binary will see `register()` throw — the
+helper logs and continues so the toggle stays usable in Settings;
+once the signed `.app` ships, the same code starts working with no
+app-side changes. This is the same SPM-dev-vs-signed-bundle
+shimming pattern as `Notifier` (AppleScriptNotifier vs the eventual
+UNUserNotificationCenter wrapper).
+
+### Theme adaptive colors
+
+The locked palette (`#FF87D7` magenta, `#00FFFF` cyan, `#00FF00`
+green, `#FF0000` red) is tuned for dark backgrounds — mirrors the
+Hammerspoon TUI which assumes a dark terminal, and the menu-bar
+agent's most common surfaces (the menu, dark-mode windows) are
+dark. On light-mode forms the canonical hex codes washed out:
+`#00FFFF` cyan on white is unreadable as link text.
+
+`Theme.Color.{primary,highlight,success,error}` now return adaptive
+colors via an `NSColor` dynamic provider. The canonical hex codes
+are preserved as the dark-mode value; a darker, more saturated
+cousin handles light mode. The brand-pop intent stays — the user
+can't tell from glancing at either appearance that anything's
+adaptive, but light-mode contrast is now WCAG-respectable.
+
+This respects the spirit of the locked palette (the brand color in
+the surface that matters most — the menu, dark-mode windows — is
+exactly the canonical hex) while fixing a real accessibility
+concern. Documented prominently in the file's doc comment so a
+future palette tweak goes through both variants.
+
+### Lessons learned
+
+- **`MenuBarExtra` collapses multi-line VStack labels to one line.**
+  AppKit's menu renderer pulls the first line out of a VStack and
+  drops the rest. Looks fine in SwiftUI previews; ships broken in
+  the actual menu. Inline summary text is the only reliable way to
+  add a sub-line to a menu entry.
+- **SF Symbols are template images; `.foregroundStyle(.white)` /
+  `setFill()` doesn't tint them when drawing into an AppKit context.**
+  Use `.destinationIn` compositing (fill white → clip by symbol
+  mask) to get a real white-filled image you can composite. Pattern
+  generalizes to any tint of any SF Symbol when drawing into a CG
+  context.
+- **`SMAppService.mainApp` needs a real bundle.** The SPM dev binary
+  fails the registration silently (or throws). Wrap the call so
+  failures log + return — the user toggling Settings during dev
+  doesn't crash anything, and the same code starts working once
+  the signed `.app` ships. Same pattern we used for the
+  AppleScriptNotifier dev-vs-bundle shim.
+- **The locked palette needed light-mode variants for
+  accessibility.** Pure cyan and pure green are unreadable on
+  white. Adaptive colors via `NSColor(name:dynamicProvider:)` keep
+  the dark-mode brand intact and let light-mode breathe — same
+  pattern Apple uses for system colors. Honor the canonical hex
+  in the appearance that matters most (dark, where the menu lives
+  most of the time) and tweak the cousin for light.
+- **Keyboard shortcuts in SwiftUI menus are global to the menu's
+  scope.** Two `Button(...)`s with `.keyboardShortcut("n")` in the
+  same menu silently breaks both. Surface a generic "Add Profile…"
+  shortcut on one entry, leave the visually-prominent CTAs without
+  a shortcut.
+
+### Effort estimate update
+
+Polish pass: ~1.5 hours, 2 new files + 8 modified files, +1 test
+(menu state changes are easier to verify by smoke-launch than to
+unit-test against AppKit). Total polish + design pass over the same
+day: ~4.5 hours, 35+ tests added.
+
+### Deferred to v2 (after polish)
+
+- Asset-Catalog AppIcon for the signed `.app` (waits on the Xcode
+  project that distribution needs anyway).
+- User-customizable per-profile icons.
+- OBS scene routing as a Settings tab.
+- Sparkle / signing / GitHub Actions release pipeline.
+- "Show Welcome Again" affordance.
+- Right-click context menu on profile rows — would let us put
+  Edit/Delete back on the menu without losing the one-click
+  switch. SwiftUI MenuBarExtra doesn't support `contextMenu`
+  propagation in macOS 14; revisit when SDK support lands.
 
 ---
 
