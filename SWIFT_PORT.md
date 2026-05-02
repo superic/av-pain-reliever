@@ -125,31 +125,49 @@ These can be considered final unless we discover a blocker:
   sensitivity is dangerous; TOML is the cleanest fit for human-edited config.
   Lives at `~/Library/Application Support/AVPainReliever/profiles.toml`.
 
-## Visual identity (locked 2026-05-01)
+## Visual identity (revised 2026-05-02 — plain-native pivot)
+
+**The earlier brand palette is retired.** The app reads as a plain
+native macOS utility — no custom accent colors, no CLI-derived
+magenta/cyan. Use SwiftUI defaults for everything; let the user's
+chosen system accent color drive `.borderedProminent` buttons, and
+let `.primary` / `.secondary` handle text contrast.
 
 - **App display name**: AV Pain Reliever
 - **Bundle ID**: `com.ericwillis.avpainreliever`
 - **Tagline**: "Stop fiddling with mic, speakers, and webcam."
-- **Brand colors** (carry through from the CLI's gum/ANSI palette so the
-  app and wizard feel like the same product):
-  - Primary: magenta/pink — ANSI 212, hex ≈ `#FF87D7` — headers, accents,
-    primary CTA buttons
-  - Highlight: cyan — ANSI 51, hex ≈ `#00FFFF` — emphasis, taglines, links
-  - Success: green — ANSI 46, hex ≈ `#00FF00` — ✓ marks, "Switched to X" toasts
-  - Warn: yellow — ANSI 220, hex ≈ `#FFAF00` — soft warnings
-  - Error: red — ANSI 196, hex ≈ `#FF0000` — fatal errors
-  - Chrome: gray — ANSI 245, hex ≈ `#8A8A8A` — borders, hint text
+- **Color rules**:
+  - Headlines, taglines, body text, link buttons → **no foreground
+    style**. Use SwiftUI's defaults (`.primary` / `.secondary`).
+  - `.borderedProminent` buttons → **no `.tint(...)`**. macOS paints
+    them in the user's system accent.
+  - Section headers, hint captions → use `.foregroundStyle(.secondary)`
+    when you need quieter text. Don't introduce new colors.
+  - Status pills + banners → semantic system colors only:
+    `.green` (success), `.orange` (warn), `.red` (error). These
+    survive in `Theme.Color.{success,warn,error}` as the only
+    brand-surface entries left.
 - **Menu bar icon (v1)**: SF Symbol `pills.fill` rendered as a template
   image. Auto-adapts to light/dark mode, native vibe, zero design effort.
-  Upgrade to a custom mark in v2 when we have a designer (or have
-  AI-generated something we like).
-- **App icon (v1)**: defer custom design. During dev, use a placeholder
-  (Pixelmator-mocked pill on a magenta→cyan radial gradient, or just
-  Xcode's default). Custom icon = a discrete sub-project before shipping.
-- **Menu bar UI**: native SwiftUI defaults, no custom theming for v1.
-  Status item title is plain text showing the current profile name
-  (per the locked "no manual override" decision — it's a status display,
-  not a control surface).
+- **App icon (v1)**: runtime-generated neutral gray squircle (top-down
+  light→dark gray gradient) with a white `pills.fill` SF Symbol on
+  top. Looks like an Apple-built utility — System Settings, Disk
+  Utility, that family. The Asset Catalog version for the signed
+  `.app` is still pending.
+- **Menu bar UI**: native SwiftUI defaults. Status item shows the
+  pill icon + current profile title (or "New location" when fallback
+  resolves with USB attached).
+
+### History note
+
+The first design pass (2026-05-01) borrowed the Hammerspoon TUI
+palette (`#FF87D7` magenta, `#00FFFF` cyan, etc.) and threaded it
+through every header, tagline, button tint, and section icon. The
+user reverted that direction the next day — the visual cost
+(magenta accents on light-mode forms, cyan-on-white legibility,
+"branded form" feel) outweighed the parity benefit with the CLI.
+Plain native is the locked direction now; don't reintroduce
+custom accent colors without explicit user direction.
 - **Notification (`UserNotifications`) styling**: title = "Switched to
   Home Office" (pretty-cased profile name), no subtitle, no body, no
   attachment. Mimics the current `hs.notify` minimalism.
