@@ -169,6 +169,14 @@ private struct MenuContentView: View {
 
         if !delegate.availableProfiles.isEmpty {
             Menu("Switch to") {
+                // Disabled text item at the top of the submenu —
+                // SwiftUI renders bare Text inside MenuBarExtra menus
+                // as a non-interactive caption. Surfaces the modifier
+                // affordance without needing a separate "Edit" action
+                // on every row.
+                Text("Hold ⌥ to edit instead of switching")
+                    .font(.caption)
+                Divider()
                 ForEach(delegate.availableProfiles, id: \.name) { profile in
                     profileMenuEntry(profile)
                 }
@@ -244,7 +252,20 @@ private struct MenuContentView: View {
         let pretty = PrettyName.format(profile.name)
         let isActive = profile.name == delegate.activeProfileSlug
         Button {
-            delegate.applyManually(profile)
+            // Modifier-aware action: ⌥-click opens the wizard pre-
+            // filled for editing this profile (single-affordance,
+            // discoverable via the "Hold ⌥ to edit" hint at the top
+            // of the submenu); a normal click switches to the profile
+            // immediately. NSEvent.modifierFlags reads the live
+            // modifier state at the moment the action fires, which is
+            // accurate for menu-driven clicks.
+            if NSEvent.modifierFlags.contains(.option) {
+                delegate.beginEditingProfile(profile)
+                openWindow(id: addProfileWindowID)
+                NSApp.activate(ignoringOtherApps: true)
+            } else {
+                delegate.applyManually(profile)
+            }
         } label: {
             // SwiftUI's MenuBarExtra menu collapses Buttons to single-
             // line items by default. Embedding a newline in an
