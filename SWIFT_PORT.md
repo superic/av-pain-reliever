@@ -15,18 +15,23 @@ we have data.
 2026-04-30. Swift port end-to-end runnable as of 2026-05-01:
 prototypes, engine, config loader/importer, and a SwiftUI menu-bar
 app target all complete. **V1 design pass landed 2026-05-01**, then
-a **V1 polish pass on the same day** — restored one-click profile
-switching, surfaced "New location detected" state, generated an
-app icon at runtime, added Launch-at-Login, made brand colors
-adapt to light + dark mode. Then a **second polish round same day** —
-wizard live icon preview, "Suggested: untick" portability badges,
-warmer toast copy, branded Profiles-tab empty-state, "Show welcome
-again" link, banner-style wizard errors. `cd mac && swift run
-AVPainRelieverApp` launches a working menu-bar agent. **140 passing
-tests.** Remaining work is signing/notarization/Sparkle/GitHub
-Actions distribution plumbing — see the "V1 design pass" / "V1
-polish pass" / "V1 fit & finish" sections near the bottom of this
-doc for what's still deferred.
+two polish rounds the same day — one-click switching restored,
+"New location detected" state surfaced, runtime app icon, Launch-
+at-Login, adaptive light+dark colors, wizard live icon preview,
+"Suggested: untick" badges, warmer toast copy, branded Profiles-
+tab empty-state, "Show welcome again" link, banner-style wizard
+errors. **2026-05-02**: brand palette retired (plain native macOS
+look, no custom accent colors), wizard preserves saved devices +
+audio + camera when not currently attached, ⌥-click in Switch-to
+opens the profile for editing, then **the repo was reorganized**
+so the Mac app is at the root and the earlier Hammerspoon +
+swift-research code is archived under `prototypes/`. `swift run
+AVPainRelieverApp` from the repo root launches the menu-bar
+agent. **145 passing tests** (144 + a known IOKit smoke flaky
+when the host is undocked). Remaining work is signing/notarization
+/Sparkle/GitHub Actions distribution plumbing — see the "V1
+design pass" / "V1 polish pass" / "V1 fit & finish" sections near
+the bottom of this doc for what's still deferred.
 
 ---
 
@@ -329,11 +334,11 @@ we've learned through Phase 1 / 1.5:
     proper signed .app bundle. ~30 min actual.
 - IOKit USB watcher (notification port + run loop): 4-6h (notoriously fiddly)
   → DONE 2026-05-01 as `IOKitUSBWatcher` in
-    `mac/Sources/AVPainReliever/Engine/USBWatcher.swift`. Lifted from
+    `Sources/AVPainReliever/Engine/USBWatcher.swift`. Lifted from
     the prototype; ~150 lines. Actual: ~25 min including 3 smoke tests.
 - CoreAudio adapter (raw CoreAudio, no SimplyCoreAudio): 2-3h
   → DONE 2026-05-01 as `CoreAudioController` in
-    `mac/Sources/AVPainReliever/Adapters/AudioController.swift`. Lifted
+    `Sources/AVPainReliever/Adapters/AudioController.swift`. Lifted
     directly from the prototype; ~85 lines.
 - ProfileResolver + Debouncer (Swift port of init.lua logic): 2-3h
   → DONE 2026-05-01 in `mac/`. Actual: ~30 min including 15 tests.
@@ -343,18 +348,18 @@ we've learned through Phase 1 / 1.5:
     (osascript via Process) for unbundled SPM dev builds; will swap
     for `UNUserNotificationCenter` when the .app bundle ships.
 - OBSController wrapping obs-cmd Process: 1-2h
-  → DONE 2026-05-01 in `mac/Sources/AVPainReliever/Adapters/OBSController.swift`.
+  → DONE 2026-05-01 in `Sources/AVPainReliever/Adapters/OBSController.swift`.
 - ConfigLoader (TOML parser): 1-2h
-  → DONE 2026-05-01 in `mac/Sources/AVPainReliever/Config/ConfigLoader.swift`.
+  → DONE 2026-05-01 in `Sources/AVPainReliever/Config/ConfigLoader.swift`.
     Codable DTO over TOMLKit (~125 lines). Actual: ~30 min including
     14 tests covering schema, error paths, and resolver integration.
 - ConfigImporter (parse profiles.lua → profiles.toml): 2-3h
-  → DONE 2026-05-01 in `mac/Sources/AVPainReliever/Config/ConfigImporter.swift`.
+  → DONE 2026-05-01 in `Sources/AVPainReliever/Config/ConfigImporter.swift`.
     Targeted Lua scanner (~350 lines). Actual: ~45 min including 14
     tests, end-to-end round-trip via ConfigLoader, and a real-world
     parse of the repo's profiles.lua.
 - StatusItem menu UI: 1-2h (smaller now that there's no Switch-to submenu)
-  → v1 DONE 2026-05-01 in `mac/Sources/AVPainRelieverApp/App.swift`.
+  → v1 DONE 2026-05-01 in `Sources/AVPainRelieverApp/App.swift`.
     SwiftUI `MenuBarExtra` with current profile title + Open OBS /
     Reveal Log / Quit. Live profile updates wire through Engine's
     new `onProfileApplied` callback into a `@Published` property on
@@ -767,16 +772,17 @@ plan for `AudioController`.
 
 ## Engine core port (ProfileResolver + Debouncer)
 
-The first production Swift code lives in `mac/` as a Swift Package, set
-up to be wrapped by the eventual menu-bar app's Xcode project. Run
-`cd mac && swift test` to exercise the engine in isolation — no
-AppKit/IOKit/CoreAudio imports yet, so the package builds + tests in
-under 10 seconds on a cold cache.
+The first production Swift code (originally under `mac/`, now at
+the repo root after the 2026-05-02 reorganization) lives as a Swift
+Package, set up to be wrapped by the eventual menu-bar app's Xcode
+project. Run `swift test` to exercise the engine in isolation —
+no AppKit/IOKit/CoreAudio imports yet, so the package builds +
+tests in under 10 seconds on a cold cache.
 
 ### What's there
 
 ```
-mac/
+av-pain-reliever/
 ├── Package.swift
 ├── Sources/AVPainReliever/
 │   ├── Engine/
@@ -1081,7 +1087,7 @@ hold.
 ## ConfigLoader port
 
 `ConfigLoader` parses TOML into `[Profile]`. Lives at
-`mac/Sources/AVPainReliever/Config/ConfigLoader.swift`. ~125 lines
+`Sources/AVPainReliever/Config/ConfigLoader.swift`. ~125 lines
 (including doc comments) over TOMLKit's Codable interface.
 
 ### Schema
@@ -1173,7 +1179,7 @@ of this section.
 `ConfigImporter` is the one-shot Lua → TOML conversion path the
 menu-bar app's first-run wizard will offer to users with an existing
 Hammerspoon setup. Lives at
-`mac/Sources/AVPainReliever/Config/ConfigImporter.swift`. ~350 lines
+`Sources/AVPainReliever/Config/ConfigImporter.swift`. ~350 lines
 including doc comments.
 
 ### Lessons learned
@@ -1209,8 +1215,9 @@ including doc comments.
   The first is the user-facing wizard path; the second is for any
   programmatic write-out from the engine model later.
 - **Real-world input as a permanent test fixture.** One test reads
-  the actual `profiles.lua` from this repo's root via `#filePath`
-  navigation (`mac/Tests/...` → `mac/` → repo root) and parses it.
+  the archived Hammerspoon `profiles.lua` via `#filePath`
+  navigation (`Tests/AVPainRelieverTests/` → repo root →
+  `prototypes/hammerspoon/profiles.lua`) and parses it.
   Catches any wizard format change that breaks the importer in CI
   before users hit it. The four expected profile names + the
   home-office vid/pid pairs are asserted explicitly so the failure
@@ -1242,8 +1249,8 @@ Pure-Swift / framework-independent work is complete. Tally:
 | App target + StatusItem | 2-3h + 1-2h | ~30 min |
 | **Through end-to-end runnable app** | **17-27h** | **~4h** |
 
-67 tests, all sub-millisecond. `cd mac && swift test` runs the full
-suite in ~6 ms. `cd mac && swift run AVPainRelieverApp` launches the
+67 tests, all sub-millisecond. `swift test` runs the full
+suite in ~6 ms. `swift run AVPainRelieverApp` launches the
 menu-bar agent.
 
 Remaining work is all distribution / UI polish where speedups are
@@ -1263,13 +1270,13 @@ unlikely:
 ## App target port (AVPainRelieverApp)
 
 The first runnable Swift menu-bar agent. Lives at
-`mac/Sources/AVPainRelieverApp/`. ~150 lines across four files. Run
-with `cd mac && swift run AVPainRelieverApp`.
+`Sources/AVPainRelieverApp/`. ~150 lines across four files. Run
+with `swift run AVPainRelieverApp`.
 
 ### Architecture
 
 ```
-mac/Sources/AVPainRelieverApp/
+Sources/AVPainRelieverApp/
 ├── App.swift            # @main SwiftUI App with MenuBarExtra
 ├── AppDelegate.swift    # NSApplicationDelegate, owns Engine, exposes
 │                        # @Published currentProfileTitle
