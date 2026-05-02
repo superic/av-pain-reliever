@@ -37,6 +37,26 @@ public enum AudioApplyResult: Equatable, Sendable {
     case setFailed(OSStatus)
 }
 
+/// One entry in the wizard UI's audio-device picker. CoreAudio
+/// sometimes splits a single physical device across multiple
+/// `AudioDeviceID`s (e.g., CalDigit appears once as input-only and
+/// once as output-only); the summary merges by name and ORs the
+/// capability flags so the picker shows one row per real-world
+/// device with both checkboxes available.
+public struct AudioDeviceSummary: Hashable, Sendable, Identifiable {
+    public let name: String
+    public let supportsInput: Bool
+    public let supportsOutput: Bool
+
+    public init(name: String, supportsInput: Bool, supportsOutput: Bool) {
+        self.name = name
+        self.supportsInput = supportsInput
+        self.supportsOutput = supportsOutput
+    }
+
+    public var id: String { name }
+}
+
 /// Abstraction over system audio defaults so `ProfileApplier` can be
 /// unit-tested without CoreAudio. Production uses `CoreAudioController`;
 /// tests use a recording mock.
@@ -45,6 +65,11 @@ public protocol AudioController {
     /// default for that role. See `AudioApplyResult` for the four
     /// possible outcomes.
     func setDefault(named: String, role: AudioDeviceRole) -> AudioApplyResult
+
+    /// Snapshot of available audio devices, deduplicated by name with
+    /// merged input/output capabilities. Used by the wizard UI to
+    /// populate audio pickers.
+    func availableDevices() -> [AudioDeviceSummary]
 }
 
 /// Production `AudioController` backed by raw CoreAudio. Lifted from
@@ -85,6 +110,23 @@ public struct CoreAudioController: AudioController {
             &device
         )
         return kr == noErr ? .ok : .setFailed(kr)
+    }
+
+    public func availableDevices() -> [AudioDeviceSummary] {
+        var byName: [String: AudioDeviceSummary] = [:]
+        for id in Self.allDeviceIDs() {
+            let name = Self.deviceName(id)
+            guard !name.isEmpty else { continue }
+            let inputs = Self.hasStreams(id, scope: kAudioDevicePropertyScopeInput)
+            let outputs = Self.hasStreams(id, scope: kAudioDevicePropertyScopeOutput)
+            let prior = byName[name]
+            byName[name] = AudioDeviceSummary(
+                name: name,
+                supportsInput: (prior?.supportsInput ?? false) || inputs,
+                supportsOutput: (prior?.supportsOutput ?? false) || outputs
+            )
+        }
+        return byName.values.sorted { $0.name < $1.name }
     }
 
     // MARK: - CoreAudio plumbing

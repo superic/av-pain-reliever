@@ -15,10 +15,15 @@ struct ProfileApplierTests {
         private(set) var calls: [Call] = []
         var resultsByName: [String: AudioApplyResult] = [:]
         var defaultResult: AudioApplyResult = .ok
+        var availableDevicesStub: [AudioDeviceSummary] = []
 
         func setDefault(named: String, role: AudioDeviceRole) -> AudioApplyResult {
             calls.append(Call(name: named, role: role))
             return resultsByName[named] ?? defaultResult
+        }
+
+        func availableDevices() -> [AudioDeviceSummary] {
+            availableDevicesStub
         }
     }
 

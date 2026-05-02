@@ -2,6 +2,9 @@ import SwiftUI
 import AppKit
 import AVPainReliever
 
+/// Stable identifier used to open and dismiss the wizard window.
+let addProfileWindowID = "add-profile"
+
 @main
 struct AVPainRelieverApp: SwiftUI.App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
@@ -19,6 +22,11 @@ struct AVPainRelieverApp: SwiftUI.App {
             MenuLabelView(delegate: appDelegate)
         }
         .menuBarExtraStyle(.menu)
+
+        Window("Add Profile", id: addProfileWindowID) {
+            AddProfileWindowContent(delegate: appDelegate)
+        }
+        .windowResizability(.contentSize)
     }
 }
 
@@ -33,11 +41,22 @@ private struct MenuLabelView: View {
 
 private struct MenuContentView: View {
     @ObservedObject var delegate: AppDelegate
+    @Environment(\.openWindow) private var openWindow
 
     var body: some View {
         Text(delegate.currentProfileTitle)
             .font(.headline)
         Divider()
+
+        Button("Add Profile…") {
+            openWindow(id: addProfileWindowID)
+            // Accessory apps (LSUIElement-style) don't auto-activate
+            // when a window opens — the new window appears behind
+            // whatever was focused. Force-activate so the wizard is
+            // immediately usable without an extra click.
+            NSApp.activate(ignoringOtherApps: true)
+        }
+        .keyboardShortcut("n")
 
         Button("Re-evaluate Now") {
             delegate.reevaluate()
@@ -68,5 +87,32 @@ private struct MenuContentView: View {
             NSApp.terminate(nil)
         }
         .keyboardShortcut("q")
+    }
+}
+
+/// Wrapper view inside the Add-Profile Window scene. Owns the
+/// `AddProfileViewModel` as a `@StateObject` so its lifetime matches
+/// the window's, even though SwiftUI may rebuild the surrounding view
+/// when the AppDelegate publishes elsewhere.
+private struct AddProfileWindowContent: View {
+    @ObservedObject var delegate: AppDelegate
+    @Environment(\.dismissWindow) private var dismissWindow
+    @StateObject private var viewModel: AddProfileViewModel
+
+    init(delegate: AppDelegate) {
+        self.delegate = delegate
+        let deps = delegate.addProfileDependencies()
+        _viewModel = StateObject(wrappedValue: AddProfileViewModel(
+            watcher: deps.watcher,
+            audioController: deps.audioController,
+            configURL: deps.configURL,
+            onSaved: deps.onSaved
+        ))
+    }
+
+    var body: some View {
+        AddProfileView(viewModel: viewModel) {
+            dismissWindow(id: addProfileWindowID)
+        }
     }
 }

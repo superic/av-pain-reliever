@@ -6,6 +6,16 @@ import AVPainReliever
 /// Owns the engine and exposes its current profile to the SwiftUI
 /// status item via `@Published`. Created by SwiftUI through
 /// `@NSApplicationDelegateAdaptor` in `App.swift`.
+/// Bundle of dependencies the Add-Profile wizard needs. Created
+/// fresh per-window-open from `AppDelegate.addProfileDependencies()`
+/// so the wizard isn't entangled with the engine's lifecycle.
+struct AddProfileDependencies {
+    let watcher: USBWatcher
+    let audioController: AudioController
+    let configURL: URL
+    let onSaved: () -> Void
+}
+
 final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
     /// Pretty-cased title shown in the menu bar. Defaults to the
     /// product name until the engine performs its first evaluation.
@@ -13,6 +23,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
 
     private var engine: Engine?
     private let notifier: Notifier = AppleScriptNotifier()
+
+    private static let profilesTOMLURL: URL =
+        URL(fileURLWithPath: NSHomeDirectory())
+            .appendingPathComponent(
+                "Library/Application Support/AVPainReliever/profiles.toml"
+            )
 
     /// The most recent profile name we surfaced through
     /// `onProfileApplied`. Used to suppress a notification for the
@@ -123,6 +139,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         bootEngine()
     }
 
+    /// Build a fresh dependency bundle for the Add-Profile wizard.
+    /// We hand the wizard its own `IOKitUSBWatcher` /
+    /// `CoreAudioController` instances rather than reaching into
+    /// the engine's internals — both are cheap to construct and the
+    /// wizard's snapshot calls don't compete with the engine's
+    /// long-lived watcher.
+    func addProfileDependencies() -> AddProfileDependencies {
+        AddProfileDependencies(
+            watcher: IOKitUSBWatcher(),
+            audioController: CoreAudioController(),
+            configURL: Self.profilesTOMLURL,
+            onSaved: { [weak self] in self?.reloadConfig() }
+        )
+    }
+
     // MARK: - Bootstrap
 
     private func buildEngine(profiles: [Profile], logger: ApplierLogger) -> Engine {
@@ -157,10 +188,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
     ///      profile written to (1) so the app actually does
     ///      something on first launch.
     private func loadProfiles(logger: ApplierLogger) -> [Profile] {
-        let home = URL(fileURLWithPath: NSHomeDirectory())
-        let tomlURL = home
-            .appendingPathComponent("Library/Application Support/AVPainReliever/profiles.toml")
-        let luaURL = home
+        let tomlURL = Self.profilesTOMLURL
+        let luaURL = URL(fileURLWithPath: NSHomeDirectory())
             .appendingPathComponent(".hammerspoon/profiles.lua")
 
         if FileManager.default.fileExists(atPath: tomlURL.path) {

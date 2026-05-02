@@ -9,7 +9,7 @@ import PackageDescription
 // before any AppKit/CoreAudio/IOKit code lands.
 let package = Package(
     name: "AVPainReliever",
-    platforms: [.macOS(.v13)],
+    platforms: [.macOS(.v14)],
     products: [
         .library(name: "AVPainReliever", targets: ["AVPainReliever"]),
         .executable(name: "AVPainRelieverApp", targets: ["AVPainRelieverApp"]),

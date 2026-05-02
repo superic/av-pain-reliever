@@ -1,6 +1,26 @@
 import Foundation
 import IOKit
 
+/// USB device with its human-readable product name attached. The
+/// resolver doesn't need names (matching is `(vid, pid)` only), but
+/// the wizard UI does — when the user is picking which devices belong
+/// to a location's fingerprint, "LG UltraFine Display Camera" is
+/// massively more useful than `vid=0x043e pid=0x9a68`.
+public struct NamedUSBDevice: Hashable, Sendable, Identifiable {
+    public let device: USBDevice
+    /// `nil` when the device has no `kUSBProductString` set —
+    /// typically internal hub legs of multi-function devices like
+    /// the LG UltraFine.
+    public let name: String?
+
+    public init(device: USBDevice, name: String?) {
+        self.device = device
+        self.name = name
+    }
+
+    public var id: USBDevice { device }
+}
+
 /// Reads the set of currently-attached USB devices and notifies the
 /// engine when that set changes. Production uses `IOKitUSBWatcher`;
 /// tests inject a recording fake.
@@ -14,6 +34,14 @@ public protocol USBWatcher {
     /// Fresh snapshot of the currently-attached USB devices. Cheap
     /// (microseconds on modern Macs); call as often as needed.
     func currentDevices() -> Set<USBDevice>
+
+    /// Like `currentDevices()` but also returns each device's
+    /// human-readable name. Used by the wizard UI when the user picks
+    /// which currently-attached devices belong to a new location's
+    /// fingerprint. Order is not guaranteed (IOKit's enumeration
+    /// order isn't stable), so callers that need a deterministic
+    /// list should sort by name or `(vid, pid)`.
+    func currentDevicesNamed() -> [NamedUSBDevice]
 
     /// Begin observing USB add/remove events. `onChange` fires once
     /// per IOKit event burst on the main thread. Must be paired with a
@@ -74,6 +102,42 @@ public final class IOKitUSBWatcher: USBWatcher {
             }
         }
         return devices
+    }
+
+    public func currentDevicesNamed() -> [NamedUSBDevice] {
+        guard let matching = IOServiceMatching(Self.usbDeviceClass) else {
+            return []
+        }
+        var iter: io_iterator_t = 0
+        guard IOServiceGetMatchingServices(kIOMainPortDefault, matching, &iter) == KERN_SUCCESS else {
+            return []
+        }
+        defer { IOObjectRelease(iter) }
+        var seen: Set<USBDevice> = []
+        var named: [NamedUSBDevice] = []
+        Self.drain(iter) { entry in
+            guard let device = Self.deviceInfo(entry),
+                  !seen.contains(device) else { return }
+            seen.insert(device)
+            named.append(NamedUSBDevice(device: device, name: Self.productName(entry)))
+        }
+        // Sort for stable UI ordering (IOKit doesn't guarantee an
+        // order, and the wizard list looks weird when devices shuffle
+        // between renders).
+        return named.sorted {
+            // Named devices first (alphabetically), unnamed at the end
+            // by (vid, pid) so the user-recognizable entries surface
+            // up top.
+            switch ($0.name, $1.name) {
+            case let (.some(a), .some(b)): return a < b
+            case (.some, .none): return true
+            case (.none, .some): return false
+            case (.none, .none):
+                return $0.device.vendorID == $1.device.vendorID
+                    ? $0.device.productID < $1.device.productID
+                    : $0.device.vendorID < $1.device.vendorID
+            }
+        }
     }
 
     // MARK: - Notifications
@@ -191,6 +255,15 @@ public final class IOKitUSBWatcher: USBWatcher {
             return nil
         }
         return USBDevice(vendorID: vid, productID: pid)
+    }
+
+    private static func productName(_ entry: io_object_t) -> String? {
+        guard let raw = IORegistryEntryCreateCFProperty(
+            entry, "USB Product Name" as CFString, kCFAllocatorDefault, 0
+        ) else {
+            return nil
+        }
+        return raw.takeRetainedValue() as? String
     }
 
     private static func intProperty(_ entry: io_object_t, _ key: String) -> Int? {

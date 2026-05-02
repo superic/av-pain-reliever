@@ -6,6 +6,9 @@ import Foundation
 /// `onChange` closure, simulating a USB event without involving IOKit.
 final class RecordingUSBWatcher: USBWatcher {
     var devices: Set<USBDevice> = []
+    /// Optional override for `currentDevicesNamed`. When unset, the
+    /// fake derives a list from `devices` with `name = nil`.
+    var namedDevices: [NamedUSBDevice]?
     private var onChange: (() -> Void)?
     private(set) var startCount = 0
     private(set) var stopCount = 0
@@ -13,6 +16,11 @@ final class RecordingUSBWatcher: USBWatcher {
     var isStarted: Bool { onChange != nil }
 
     func currentDevices() -> Set<USBDevice> { devices }
+
+    func currentDevicesNamed() -> [NamedUSBDevice] {
+        if let namedDevices { return namedDevices }
+        return devices.map { NamedUSBDevice(device: $0, name: nil) }
+    }
 
     func start(onChange: @escaping () -> Void) {
         // Match production: idempotent — second start without intervening
