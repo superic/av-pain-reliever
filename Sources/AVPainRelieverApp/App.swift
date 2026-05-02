@@ -18,11 +18,12 @@ struct AVPainRelieverApp: SwiftUI.App {
         // is what makes the live update work.
         MenuBarExtra {
             MenuContentView(delegate: appDelegate)
-            // Hidden helper — observes appDelegate.shouldShowWelcome
-            // and opens the welcome window when it flips true. Lives
-            // inside MenuBarExtra so SwiftUI's openWindow environment
-            // is available; menu items render fine alongside.
+            // Hidden helpers — observe AppDelegate flags and open the
+            // matching window. Live inside MenuBarExtra so SwiftUI's
+            // openWindow environment is available; menu items render
+            // fine alongside.
             WelcomeOpener(delegate: appDelegate)
+            AddProfileOpener(delegate: appDelegate)
         } label: {
             MenuLabelView(delegate: appDelegate)
         }
@@ -67,6 +68,27 @@ private struct WelcomeOpener: View {
                     openWindow(id: welcomeWindowID)
                     NSApp.activate(ignoringOtherApps: true)
                 }
+            }
+    }
+}
+
+/// Sibling of `WelcomeOpener`: routes the AppDelegate's
+/// `shouldOpenAddProfileWindow` flag (set by the unknown-location
+/// notification's "Open Wizard" action) through SwiftUI's
+/// `openWindow`, then resets the flag so the next click re-fires.
+private struct AddProfileOpener: View {
+    @ObservedObject var delegate: AppDelegate
+    @Environment(\.openWindow) private var openWindow
+
+    var body: some View {
+        Color.clear
+            .frame(width: 0, height: 0)
+            .onChange(of: delegate.shouldOpenAddProfileWindow) { _, shouldOpen in
+                guard shouldOpen else { return }
+                delegate.beginAddingProfile()
+                openWindow(id: addProfileWindowID)
+                NSApp.activate(ignoringOtherApps: true)
+                delegate.shouldOpenAddProfileWindow = false
             }
     }
 }

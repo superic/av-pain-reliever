@@ -187,6 +187,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
     /// as "configured" — only a profile with a real fingerprint does.
     @Published var shouldShowWelcome: Bool = false
 
+    /// Bridge published by the unknown-location notification's
+    /// "Open Wizard" action. App.swift's `AddProfileOpener` view
+    /// observes this and routes through `openWindow(id:)` — the
+    /// SwiftUI environment value isn't reachable from AppDelegate
+    /// directly, so we hop via an `@Published` flag the same way
+    /// `shouldShowWelcome` does.
+    @Published var shouldOpenAddProfileWindow: Bool = false
+
     private func maybeShowWelcomeWindow() {
         guard !settings.suppressedWelcome else { return }
         let configured = availableProfiles.contains { !$0.fingerprint.isEmpty }
@@ -299,7 +307,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
 
         notifier.notify(
             title: "New location detected",
-            body: NotificationCopy.unknownLocationBody(deviceCount: devices.count)
+            body: NotificationCopy.unknownLocationBody(deviceCount: devices.count),
+            actionTitle: "Open Wizard",
+            onAction: { [weak self] in
+                // UN delivers the action callback on the main queue
+                // already, so no extra hop is needed. Toggle the
+                // bridge flag and let `AddProfileOpener` route
+                // through SwiftUI's `openWindow`.
+                self?.shouldOpenAddProfileWindow = true
+                NSApp.activate(ignoringOtherApps: true)
+            }
         )
     }
 
