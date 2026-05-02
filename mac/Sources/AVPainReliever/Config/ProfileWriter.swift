@@ -91,6 +91,82 @@ public struct ProfileWriter {
         Self.render(profile: profile, deviceNames: deviceNames)
     }
 
+    /// True if a `[profiles.<name>]` section already exists in the
+    /// file at `url`. Returns false if the file doesn't exist or
+    /// can't be read.
+    public func profileExists(named name: String, in url: URL) -> Bool {
+        guard FileManager.default.fileExists(atPath: url.path),
+              let content = try? String(contentsOf: url, encoding: .utf8) else {
+            return false
+        }
+        return Self.containsProfile(named: name, in: content)
+    }
+
+    /// Find the first available `<base>-<n>` slug that doesn't collide
+    /// with an existing profile in the file. Returns `base` itself if
+    /// nothing collides. Used by the wizard's "Save as new" path
+    /// after a duplicate-name dialog.
+    public func nextAvailableName(base: String, in url: URL) -> String {
+        guard FileManager.default.fileExists(atPath: url.path),
+              let content = try? String(contentsOf: url, encoding: .utf8) else {
+            return base
+        }
+        if !Self.containsProfile(named: base, in: content) { return base }
+        var n = 2
+        while Self.containsProfile(named: "\(base)-\(n)", in: content) {
+            n += 1
+        }
+        return "\(base)-\(n)"
+    }
+
+    /// Replace an existing `[profiles.<name>]` section's body with the
+    /// rendered output for `profile`. The section header line through
+    /// the line just before the next `[...]` section (or end of file)
+    /// is overwritten in place; everything else in the file is
+    /// preserved verbatim.
+    ///
+    /// `profile.name` must equal the existing section's name — the
+    /// caller has already established this is the section to replace.
+    /// Throws `.duplicateProfile` if no matching section is found
+    /// (use `append` for the new-profile case).
+    public func replace(
+        profile: Profile,
+        deviceNames: [USBDevice: String?] = [:],
+        in url: URL
+    ) throws {
+        let validatedName = try Self.validateName(profile.name)
+        guard FileManager.default.fileExists(atPath: url.path) else {
+            throw ProfileWriteError.writeFailed(reason: "no file to replace at \(url.path)")
+        }
+        let existing: String
+        do {
+            existing = try String(contentsOf: url, encoding: .utf8)
+        } catch {
+            throw ProfileWriteError.writeFailed(
+                reason: "couldn't read \(url.path): \(error.localizedDescription)"
+            )
+        }
+        guard let span = Self.sectionRange(named: validatedName, in: existing) else {
+            // Caller invariant: replace assumes the section is there.
+            // Surface this as duplicateProfile-shaped because the
+            // higher-level wizard already routed here based on a
+            // collision check; if the file changed under us, fall
+            // back to caller-handled flow.
+            throw ProfileWriteError.duplicateProfile(name: validatedName)
+        }
+        let rendered = Self.render(profile: profile, deviceNames: deviceNames)
+        var output = existing
+        output.replaceSubrange(span, with: rendered)
+
+        do {
+            try output.write(to: url, atomically: true, encoding: .utf8)
+        } catch {
+            throw ProfileWriteError.writeFailed(
+                reason: "couldn't write \(url.path): \(error.localizedDescription)"
+            )
+        }
+    }
+
     // MARK: - Implementation
 
     /// TOML bare keys allow `[A-Za-z0-9_-]+`. Profile names also need
@@ -116,6 +192,33 @@ public struct ProfileWriter {
             return false
         }
         return regex.firstMatch(in: toml, range: range) != nil
+    }
+
+    /// Find the file range covering an existing `[profiles.<name>]`
+    /// section: from the section header line through everything before
+    /// the next `[...]` line (or to end of file). Returns nil if no
+    /// matching section is found.
+    private static func sectionRange(named: String, in toml: String) -> Range<String.Index>? {
+        let headerPattern = "(?m)^[[:space:]]*\\[profiles\\.\(NSRegularExpression.escapedPattern(for: named))\\][[:space:]]*$"
+        let nsRange = NSRange(toml.startIndex..., in: toml)
+        guard let headerRegex = try? NSRegularExpression(pattern: headerPattern),
+              let headerMatch = headerRegex.firstMatch(in: toml, range: nsRange),
+              let headerRange = Range(headerMatch.range, in: toml) else {
+            return nil
+        }
+        // Scan from after the header line for the next line that
+        // starts with `[`. That's the start of the next section, OR
+        // end of file.
+        let afterHeader = headerRange.upperBound
+        let afterRange = NSRange(afterHeader..<toml.endIndex, in: toml)
+        let nextSectionPattern = "(?m)^[[:space:]]*\\["
+        if let nextRegex = try? NSRegularExpression(pattern: nextSectionPattern),
+           let nextMatch = nextRegex.firstMatch(in: toml, range: afterRange),
+           let nextRange = Range(nextMatch.range, in: toml) {
+            return headerRange.lowerBound..<nextRange.lowerBound
+        }
+        // No next section — span runs to EOF.
+        return headerRange.lowerBound..<toml.endIndex
     }
 
     private static func render(profile: Profile, deviceNames: [USBDevice: String?]) -> String {

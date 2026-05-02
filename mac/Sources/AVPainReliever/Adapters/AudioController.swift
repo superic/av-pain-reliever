@@ -57,6 +57,20 @@ public struct AudioDeviceSummary: Hashable, Sendable, Identifiable {
     public var id: String { name }
 }
 
+/// Names of the system's currently-set default input + output
+/// devices. Used by the wizard to pre-select "what's currently
+/// active" so users capturing a new profile don't have to repeat
+/// audio choices they already made manually.
+public struct AudioDefaults: Sendable {
+    public let inputName: String?
+    public let outputName: String?
+
+    public init(inputName: String?, outputName: String?) {
+        self.inputName = inputName
+        self.outputName = outputName
+    }
+}
+
 /// Abstraction over system audio defaults so `ProfileApplier` can be
 /// unit-tested without CoreAudio. Production uses `CoreAudioController`;
 /// tests use a recording mock.
@@ -70,6 +84,11 @@ public protocol AudioController {
     /// merged input/output capabilities. Used by the wizard UI to
     /// populate audio pickers.
     func availableDevices() -> [AudioDeviceSummary]
+
+    /// Names of the system's currently-set default input + output.
+    /// Either side may be nil if CoreAudio has no default for that
+    /// scope (rare on macOS but defensible).
+    func currentDefaults() -> AudioDefaults
 }
 
 /// Production `AudioController` backed by raw CoreAudio. Lifted from
@@ -110,6 +129,29 @@ public struct CoreAudioController: AudioController {
             &device
         )
         return kr == noErr ? .ok : .setFailed(kr)
+    }
+
+    public func currentDefaults() -> AudioDefaults {
+        AudioDefaults(
+            inputName: Self.defaultDeviceName(for: .input),
+            outputName: Self.defaultDeviceName(for: .output)
+        )
+    }
+
+    private static func defaultDeviceName(for role: AudioDeviceRole) -> String? {
+        var addr = AudioObjectPropertyAddress(
+            mSelector: role.defaultDeviceSelector,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        var deviceID: AudioDeviceID = 0
+        var size = UInt32(MemoryLayout<AudioDeviceID>.size)
+        guard AudioObjectGetPropertyData(
+            AudioObjectID(kAudioObjectSystemObject),
+            &addr, 0, nil, &size, &deviceID
+        ) == noErr else { return nil }
+        let name = Self.deviceName(deviceID)
+        return name.isEmpty ? nil : name
     }
 
     public func availableDevices() -> [AudioDeviceSummary] {

@@ -20,16 +20,20 @@ struct AddProfileView: View {
                     // pair layout (which renders the field's title
                     // arg as a left label and pushes the input right).
                     VStack(alignment: .leading, spacing: 6) {
-                        TextField("e.g. home-office", text: $viewModel.name)
+                        TextField("e.g. Home Office", text: $viewModel.name)
                             .textFieldStyle(.roundedBorder)
                             .labelsHidden()
                             .frame(maxWidth: .infinity)
-                        if let hint = viewModel.nameValidationHint {
-                            Text(hint)
+                        // Hint defaults to brief instructions; switches
+                        // to a quiet preview the moment a name is being
+                        // typed so the user sees how it'll appear in
+                        // the menu bar.
+                        if !viewModel.prettyPreview.isEmpty {
+                            Text("Will appear as “\(viewModel.prettyPreview)”")
                                 .font(.caption)
-                                .foregroundStyle(.red)
+                                .foregroundStyle(.secondary)
                         } else {
-                            Text("Letters, numbers, hyphens, or underscores. Pretty-cased automatically (\"home-office\" → \"Home Office\").")
+                            Text("Pick anything human — letters, spaces, punctuation are fine.")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
@@ -92,6 +96,35 @@ struct AddProfileView: View {
         .onChange(of: viewModel.didSave) { _, saved in
             if saved { dismiss() }
         }
+        .alert(
+            "Profile already exists",
+            isPresented: collisionPresented,
+            presenting: viewModel.pendingCollision
+        ) { collision in
+            Button("Update “\(collision.existingPrettyName)”") {
+                viewModel.confirmReplace()
+            }
+            Button("Save as “\(collision.newPrettyName)”") {
+                viewModel.confirmSaveAsNew()
+            }
+            Button("Cancel", role: .cancel) {
+                viewModel.cancelCollision()
+            }
+        } message: { collision in
+            Text("There's already a profile called “\(collision.existingPrettyName)”. Did you mean to update it with the devices and audio you've selected, or is this a different location?")
+        }
+    }
+
+    /// Glue between SwiftUI's `isPresented` Binding API and our
+    /// `Identifiable?` collision state — bound to true whenever a
+    /// pending collision exists; setting it false clears the state.
+    private var collisionPresented: Binding<Bool> {
+        Binding(
+            get: { viewModel.pendingCollision != nil },
+            set: { presented in
+                if !presented { viewModel.cancelCollision() }
+            }
+        )
     }
 
     // MARK: - Subviews

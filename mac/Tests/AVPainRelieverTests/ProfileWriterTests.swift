@@ -157,6 +157,73 @@ struct ProfileWriterTests {
         #expect(written.contains("name = \"LG Camera\""))
     }
 
+    @Test("replace swaps an existing section in place, preserving the rest")
+    func replacePreservesRest() throws {
+        let url = tempTOMLURL()
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        try """
+        # Top-level comment.
+        [profiles.laptop]
+        audioInput = "MacBook Pro Microphone"
+
+        [profiles.home-office]
+        audioInput = "Old Yeti"
+        fingerprint = [
+          { vendorID = 0x1, productID = 0x1 },
+        ]
+
+        [profiles.studio]
+        audioInput = "Studio Mic"
+        """.write(to: url, atomically: true, encoding: .utf8)
+
+        let updated = Profile(
+            name: "home-office",
+            fingerprint: [
+                USBDevice(vendorID: 0x2188, productID: 0x6533, serialNumber: "ABC"),
+            ],
+            audioInput: "New Yeti",
+            audioOutput: "CalDigit"
+        )
+        try writer.replace(profile: updated, in: url)
+
+        let written = try String(contentsOf: url, encoding: .utf8)
+        // Top-level comment + neighboring sections stay verbatim.
+        #expect(written.contains("# Top-level comment."))
+        #expect(written.contains("audioInput = \"MacBook Pro Microphone\""))
+        #expect(written.contains("audioInput  = \"Studio Mic\"") ||
+                written.contains("audioInput = \"Studio Mic\""))
+        // The home-office section reflects the new payload.
+        #expect(written.contains("audioInput  = \"New Yeti\""))
+        #expect(written.contains("audioOutput = \"CalDigit\""))
+        #expect(written.contains("serialNumber = \"ABC\""))
+        // The old "Old Yeti" string is gone.
+        #expect(!written.contains("Old Yeti"))
+
+        // Round-trip: ConfigLoader picks up exactly three profiles.
+        let loaded = try ConfigLoader().loadProfiles(from: url)
+        #expect(Set(loaded.map(\.name)) == ["laptop", "home-office", "studio"])
+        let homeOffice = loaded.first { $0.name == "home-office" }!
+        #expect(homeOffice.audioInput == "New Yeti")
+        #expect(homeOffice.audioOutput == "CalDigit")
+    }
+
+    @Test("nextAvailableName finds the lowest unused suffix")
+    func nextAvailableNameSuffixes() throws {
+        let url = tempTOMLURL()
+        defer { try? FileManager.default.removeItem(at: url) }
+        try """
+        [profiles.home-office]
+        audioInput = "X"
+
+        [profiles.home-office-2]
+        audioInput = "Y"
+        """.write(to: url, atomically: true, encoding: .utf8)
+
+        #expect(writer.nextAvailableName(base: "home-office", in: url) == "home-office-3")
+        #expect(writer.nextAvailableName(base: "studio", in: url) == "studio")
+    }
+
     @Test("invalid profile names are rejected")
     func invalidNameError() throws {
         let url = tempTOMLURL()

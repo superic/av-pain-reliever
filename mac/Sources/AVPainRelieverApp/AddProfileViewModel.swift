@@ -6,6 +6,21 @@ import AVPainReliever
 /// engine module for a name.
 typealias AudioDevice = AudioDeviceSummary
 
+/// State the view shows when the user tries to save a profile name
+/// that already exists. The view's alert renders three buttons that
+/// route to `confirmReplace` / `confirmSaveAsNew` / `cancelCollision`.
+struct PendingCollision: Identifiable, Equatable {
+    let id = UUID()
+    /// Pretty-cased existing name, e.g. "Home Office".
+    let existingPrettyName: String
+    /// Slug we'd save under if user picks "Save as new".
+    let newSlug: String
+    /// Pretty-cased version of `newSlug`, e.g. "Home Office 2".
+    var newPrettyName: String { PrettyName.format(newSlug) }
+    /// Slug of the existing profile we'd replace.
+    let existingSlug: String
+}
+
 /// Owns the editable state of the Add-Profile form and runs the save
 /// action. Created with the data sources it needs (USB watcher,
 /// audio controller, target file URL, post-save reload callback)
@@ -40,6 +55,13 @@ final class AddProfileViewModel: ObservableObject {
     /// closes the window.
     @Published private(set) var didSave = false
 
+    /// Set when the user attempts to save a profile name that
+    /// conflicts with an existing one. The view shows a dialog
+    /// asking whether to update the existing profile (with the
+    /// current selections) or save as a new one with a numbered
+    /// suffix.
+    @Published var pendingCollision: PendingCollision? = nil
+
     // MARK: - Dependencies
 
     private let watcher: USBWatcher
@@ -64,7 +86,9 @@ final class AddProfileViewModel: ObservableObject {
 
     /// Re-pull the USB and audio device lists. Called on init and
     /// from the "Refresh" button — useful when the user docks
-    /// mid-wizard.
+    /// mid-wizard. Audio defaults are pre-populated from the system's
+    /// current default input/output the *first* time refresh runs;
+    /// subsequent refreshes leave the user's manual selection alone.
     func refresh() {
         let named = watcher.currentDevicesNamed()
         attachedDevices = named
@@ -78,6 +102,14 @@ final class AddProfileViewModel: ObservableObject {
             selectedDeviceIDs = Set(named.map(\.device))
         }
         audioDevices = audioController.availableDevices()
+
+        // Pre-select whatever the system currently uses so the user
+        // doesn't have to repeat audio choices they already made
+        // manually before opening the wizard. Only sets an unset
+        // field; never overwrites a deliberate user pick.
+        let defaults = audioController.currentDefaults()
+        if audioInput == nil { audioInput = defaults.inputName }
+        if audioOutput == nil { audioOutput = defaults.outputName }
     }
 
     var inputDevices: [AudioDevice] {
@@ -88,48 +120,81 @@ final class AddProfileViewModel: ObservableObject {
         audioDevices.filter(\.supportsOutput)
     }
 
-    // MARK: - Validation
+    // MARK: - Name handling
+    //
+    // The wizard accepts any human-friendly name ("Home Office",
+    // "Mom's House", "Café 2"). Internally we slugify on save; the
+    // user never sees the slug. Display layers (menu bar, alerts)
+    // route the slug back through PrettyName.format.
 
-    var trimmedName: String {
-        name.trimmingCharacters(in: .whitespacesAndNewlines)
+    /// Pretty-cased preview of what the user will see after saving.
+    /// Empty when the user hasn't typed anything yet.
+    var prettyPreview: String {
+        let slug = Slug.format(name)
+        return slug.isEmpty ? "" : PrettyName.format(slug)
     }
 
-    var isNameValid: Bool {
-        guard !trimmedName.isEmpty else { return false }
-        let allowed = CharacterSet(charactersIn:
-            "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_")
-        return trimmedName.unicodeScalars.allSatisfy { allowed.contains($0) }
-    }
-
-    /// True only while the save operation is in flight. The button
-    /// itself is otherwise always clickable so the user gets a clear
-    /// inline error if the name is invalid (the previous design
-    /// disabled the button silently and gave no feedback when a name
-    /// like "Home Office" with a space failed validation).
+    /// True only while the save operation is in flight. Otherwise
+    /// the button is always clickable; validation runs at click time
+    /// with a clear inline error so the user knows why save was
+    /// rejected (vs. silently disabling and leaving them stuck).
     var canSave: Bool {
         !isSaving
-    }
-
-    /// Inline hint shown under the Name field. Empty when nothing's
-    /// typed yet (the placeholder + caption do that work); explicit
-    /// red error when the typed name has invalid characters; nil
-    /// otherwise.
-    var nameValidationHint: String? {
-        guard !name.isEmpty else { return nil }
-        guard isNameValid else {
-            return "Use only letters, numbers, hyphens, or underscores."
-        }
-        return nil
     }
 
     // MARK: - Save
 
     func save() {
         guard !isSaving else { return }
-        guard isNameValid else {
-            lastError = "Profile name can only contain letters, numbers, hyphens, or underscores."
+        let slug = Slug.format(name)
+        guard !slug.isEmpty else {
+            lastError = "Please enter a profile name."
             return
         }
+        let writer = ProfileWriter()
+        if writer.profileExists(named: slug, in: configURL) {
+            // Don't write yet — surface the collision dialog and let
+            // the user pick (update existing / save as new / cancel).
+            pendingCollision = PendingCollision(
+                existingPrettyName: PrettyName.format(slug),
+                newSlug: writer.nextAvailableName(base: slug, in: configURL),
+                existingSlug: slug
+            )
+            return
+        }
+        performSave(slug: slug, mode: .append)
+    }
+
+    /// User picked "Update existing" in the collision dialog — replace
+    /// the prior profile's section with our current selections.
+    func confirmReplace() {
+        guard let collision = pendingCollision else { return }
+        pendingCollision = nil
+        performSave(slug: collision.existingSlug, mode: .replace)
+    }
+
+    /// User picked "Save as new" in the collision dialog — append
+    /// under the auto-suggested suffixed slug.
+    func confirmSaveAsNew() {
+        guard let collision = pendingCollision else { return }
+        pendingCollision = nil
+        performSave(slug: collision.newSlug, mode: .append)
+    }
+
+    /// User picked "Cancel" — drop the collision state and let them
+    /// edit the form.
+    func cancelCollision() {
+        pendingCollision = nil
+    }
+
+    // MARK: - Implementation
+
+    private enum SaveMode {
+        case append
+        case replace
+    }
+
+    private func performSave(slug: String, mode: SaveMode) {
         isSaving = true
         lastError = nil
         defer { isSaving = false }
@@ -144,25 +209,36 @@ final class AddProfileViewModel: ObservableObject {
         )
 
         let profile = Profile(
-            name: trimmedName,
+            name: slug,
             fingerprint: fingerprint,
             audioInput: audioInput,
             audioOutput: audioOutput
         )
 
         do {
-            try ProfileWriter().append(
-                profile: profile,
-                deviceNames: deviceNames,
-                to: configURL,
-                startingHeader: AddProfileViewModel.starterHeader
-            )
+            switch mode {
+            case .append:
+                try ProfileWriter().append(
+                    profile: profile,
+                    deviceNames: deviceNames,
+                    to: configURL,
+                    startingHeader: AddProfileViewModel.starterHeader
+                )
+            case .replace:
+                try ProfileWriter().replace(
+                    profile: profile,
+                    deviceNames: deviceNames,
+                    in: configURL
+                )
+            }
             didSave = true
             onSaved()
         } catch let ProfileWriteError.duplicateProfile(name) {
-            lastError = "A profile named \"\(name)\" already exists. Choose a different name."
+            // Race: collision check passed but the file changed
+            // before write. Surface it.
+            lastError = "Couldn't save: profile \"\(PrettyName.format(name))\" already exists."
         } catch let ProfileWriteError.invalidName(name) {
-            lastError = "\"\(name)\" isn't a valid profile name. Use letters, numbers, hyphens, or underscores."
+            lastError = "Couldn't save: \"\(name)\" isn't a valid profile name."
         } catch let ProfileWriteError.writeFailed(reason) {
             lastError = "Couldn't save: \(reason)"
         } catch {
