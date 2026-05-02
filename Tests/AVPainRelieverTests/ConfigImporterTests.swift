@@ -199,20 +199,23 @@ struct ConfigImporterTests {
 
     // MARK: - Real-world profiles.lua from this repo
 
-    @Test("the wizard's profiles.lua at the repo root parses cleanly")
+    @Test("the archived Hammerspoon profiles.lua parses cleanly")
     func realWorldProfilesLua() throws {
-        // Find the repo root from the test bundle. Tests run from
-        // `mac/.build/...`, so walk up to the repo and read the
-        // profiles.lua there. If the layout ever moves, this test will
-        // fail loudly.
+        // Find the repo root from the test bundle and read the
+        // Hammerspoon prototype's profiles.lua under prototypes/.
+        // The Lua engine is archived but the importer still has to
+        // round-trip its config, since users migrating from Phase 1
+        // still hit this path on first launch.
         let here = URL(fileURLWithPath: #filePath)
-        // ConfigImporterTests.swift → AVPainRelieverTests/ → Tests/ → mac/ → repo root
+        // ConfigImporterTests.swift → AVPainRelieverTests/ → Tests/ → repo root
         let repoRoot = here
             .deletingLastPathComponent() // AVPainRelieverTests/
             .deletingLastPathComponent() // Tests/
-            .deletingLastPathComponent() // mac/
             .deletingLastPathComponent() // repo root
-        let profilesLua = repoRoot.appendingPathComponent("profiles.lua")
+        let profilesLua = repoRoot
+            .appendingPathComponent("prototypes")
+            .appendingPathComponent("hammerspoon")
+            .appendingPathComponent("profiles.lua")
 
         let lua = try String(contentsOf: profilesLua, encoding: .utf8)
         let profiles = try importer.parse(lua)
