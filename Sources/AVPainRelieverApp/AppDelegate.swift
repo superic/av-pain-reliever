@@ -59,7 +59,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
     @Published var lastUnknownDevices: Set<USBDevice> = []
 
     private var engine: Engine?
-    private let notifier: Notifier = AppleScriptNotifier()
+
+    /// Pick the bundle-aware UserNotifications notifier when running
+    /// inside the signed `.app` (clean icon, click-to-dismiss). Fall
+    /// back to the AppleScript shim for `swift run` dev binaries that
+    /// don't have a bundle identifier. The bundle-id check matches
+    /// the gate used for Sparkle below — same "are we inside a real
+    /// .app?" signal.
+    private let notifier: Notifier = {
+        if Bundle.main.bundleIdentifier == "com.ericwillis.avpainreliever" {
+            return UserNotificationsNotifier()
+        }
+        return AppleScriptNotifier()
+    }()
 
     /// Sparkle updater wrapper. Stored so the underlying
     /// `SPUStandardUpdaterController` outlives every "Check for
