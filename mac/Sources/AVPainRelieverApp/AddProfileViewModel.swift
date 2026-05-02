@@ -69,11 +69,14 @@ final class AddProfileViewModel: ObservableObject {
     func refresh() {
         let named = watcher.currentDevicesNamed()
         attachedDevices = named
-        // Default selection: every named device. The user uncbecks
-        // peripherals like keyboards/mice/iPhones that aren't
-        // location-specific.
+        // Default selection: every currently-attached device,
+        // including unnamed hub legs. Capturing more is the safer
+        // default — the user knows what's plugged in right now and
+        // can uncheck peripherals (keyboards/mice/phones) that
+        // aren't location-specific. Including hub legs is fine
+        // because they're stable parts of the dock.
         if selectedDeviceIDs.isEmpty {
-            selectedDeviceIDs = Set(named.compactMap { $0.name == nil ? nil : $0.device })
+            selectedDeviceIDs = Set(named.map(\.device))
         }
         audioDevices = audioController.availableDevices()
     }

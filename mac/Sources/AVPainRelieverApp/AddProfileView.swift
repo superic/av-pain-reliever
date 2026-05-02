@@ -104,7 +104,7 @@ struct AddProfileView: View {
                 ForEach(viewModel.attachedDevices) { entry in
                     Toggle(isOn: binding(for: entry.device)) {
                         VStack(alignment: .leading, spacing: 1) {
-                            Text(entry.name ?? "(unnamed device)")
+                            Text(entry.displayName)
                                 .font(.callout)
                             Text(String(format: "vid=0x%04x  pid=0x%04x", entry.device.vendorID, entry.device.productID))
                                 .font(.caption.monospaced())
