@@ -4,8 +4,8 @@
 .LSOverride
 ._*
 
-# Hammerspoon runtime artifacts
-logs/
+# Hammerspoon runtime artifacts (archived prototype)
+prototypes/hammerspoon/logs/
 *.log
 
 # Editor junk
@@ -22,5 +22,5 @@ logs/
 # Swift Package Manager — ignore build/IDE artifacts but commit
 # Package.resolved so `swift test` pins the same dep versions across
 # checkouts.
-mac/.build/
-mac/.swiftpm/
+.build/
+.swiftpm/
