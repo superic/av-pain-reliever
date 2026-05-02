@@ -145,36 +145,75 @@ private struct MenuContentView: View {
     @State private var showStats: Bool = false
 
     var body: some View {
-        if delegate.atUnknownLocation {
-            // Headline replaces the misleading fallback profile name
-            // ("Laptop") with an honest "New location detected" so
-            // the user knows the engine is in fallback mode rather
-            // than assuming they're somehow undocked.
-            Text("New location detected")
-                .font(.headline)
-            Text("\(delegate.lastUnknownDevices.count) USB device\(delegate.lastUnknownDevices.count == 1 ? "" : "s") attached")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        } else {
-            Text(delegate.currentProfileTitle)
-                .font(.headline)
-            if let camera = delegate.currentCameraDisplay {
-                // Reminder for Zoom/Slack/Teams users: the system
-                // preferred camera is set, but those apps don't follow
-                // it. This line tells the user what name to pick if
-                // they need to update the in-app camera selection.
-                Text("Camera: \(camera)")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-        }
+        // Render the header as a single Text(AttributedString) rather
+        // than separate headline/caption views. Each SwiftUI Text in
+        // a MenuBarExtra menu becomes its own NSMenuItem with its
+        // own vertical padding — combining them into one item with a
+        // newline-bearing AttributedString visibly tightens the
+        // header.
+        Text(headerAttributedString())
         if showStats || NSEvent.modifierFlags.contains(.option) {
             Text(StatsCopy.line(for: delegate.profileSwitchCount))
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
         Divider()
+        // Continue with action items below; the original layout
+        // resumed after a Divider so this stays equivalent.
+        bodyActions
+    }
 
+    /// First line: profile name (or "New location detected"), in
+    /// headline weight. Optional second line: dot-separated audio +
+    /// camera summary (or USB device count when at an unknown
+    /// location), in caption-secondary. Returns a single
+    /// AttributedString so the menu bridges to a single NSMenuItem.
+    private func headerAttributedString() -> AttributedString {
+        if delegate.atUnknownLocation {
+            // Headline replaces the misleading fallback profile name
+            // ("Laptop") with an honest "New location detected" so
+            // the user knows the engine is in fallback mode rather
+            // than assuming they're somehow undocked.
+            var first = AttributedString("New location detected")
+            first.font = .headline
+            let count = delegate.lastUnknownDevices.count
+            var second = AttributedString("\n\(count) USB device\(count == 1 ? "" : "s") attached")
+            second.font = .caption
+            second.foregroundColor = .secondary
+            first.append(second)
+            return first
+        }
+        var first = AttributedString(delegate.currentProfileTitle)
+        first.font = .headline
+        guard
+            delegate.showAudioCameraInMenu,
+            let summary = activeProfileSummary()
+        else {
+            return first
+        }
+        var second = AttributedString("\n" + summary)
+        second.font = .caption
+        second.foregroundColor = .secondary
+        first.append(second)
+        return first
+    }
+
+    /// Look up the currently-applied profile by slug and produce its
+    /// dot-separated mic/speaker/camera summary. Returns nil when
+    /// nothing has been applied yet, the profile is gone (race), or
+    /// it has no AV fields configured.
+    private func activeProfileSummary() -> String? {
+        guard
+            let slug = delegate.activeProfileSlug,
+            let profile = delegate.availableProfiles.first(where: { $0.name == slug })
+        else {
+            return nil
+        }
+        return profileSummary(profile)
+    }
+
+    @ViewBuilder
+    private var bodyActions: some View {
         if delegate.atUnknownLocation {
             // Visually prominent affordance — same destination as
             // Add Profile… below, but framed as the obvious next
@@ -325,53 +364,49 @@ private struct MenuContentView: View {
                 delegate.applyManually(profile)
             }
         } label: {
-            // Always wrap in a Label so the menu's image column is
-            // reserved for every row — without that, inactive rows
-            // would render flush-left while active rows (and
-            // Edit Profiles… below) sit indented behind the icon
-            // gutter, which breaks vertical alignment.
-            //
-            // Active row → checkmark; inactive → a transparent
-            // checkmark placeholder. Same physical width either way.
+            // Active row gets a real checkmark icon; inactive rows
+            // omit the icon entirely. NSMenu reserves the image
+            // column for every row in a menu as long as at least one
+            // item has an image — the Edit Profiles… entry below
+            // (with its list.bullet.rectangle icon) keeps the column
+            // pinned even when no profile is active. SwiftUI's
+            // bridge silently ignores `.opacity(0)` on a Label icon,
+            // so a real conditional is the only reliable way to
+            // hide the glyph.
             //
             // The Text label is multi-line: name on the first row,
             // optional audio/camera summary on a smaller secondary
             // line. AttributedString carries the per-run weight +
             // color; SwiftUI bridges it via NSMenuItem.attributedTitle.
-            Label {
-                Text(menuLabel(for: profile, pretty: pretty, isActive: isActive))
-            } icon: {
-                Image(systemName: "checkmark")
-                    .opacity(isActive ? 1 : 0)
+            if isActive {
+                Label {
+                    Text(menuLabel(for: profile, pretty: pretty, isActive: true))
+                } icon: {
+                    Image(systemName: "checkmark")
+                }
+            } else {
+                Text(menuLabel(for: profile, pretty: pretty, isActive: false))
             }
         }
     }
 
     /// Build the AttributedString shown in a "Switch to" submenu row.
-    /// First line = profile name (semibold when active). Second line
-    /// = subtext with audio + camera in caption-size secondary color.
-    /// Alignment is handled by the menu's image column, not by leading
-    /// whitespace — see `profileMenuEntry`.
+    /// Just the profile name, semibold when active. The audio + camera
+    /// summary used to live here on a sub-line, but moved up to the
+    /// main menu's header for the active profile — duplicating it on
+    /// every Switch to row was redundant once the header carried it.
+    /// Alignment with `Edit Profiles…` is handled by the menu's image
+    /// column (see `profileMenuEntry`).
     private func menuLabel(
         for profile: Profile,
         pretty: String,
         isActive: Bool
     ) -> AttributedString {
-        var first = AttributedString(pretty)
+        var label = AttributedString(pretty)
         if isActive {
-            first.font = .body.weight(.semibold)
+            label.font = .body.weight(.semibold)
         }
-        guard
-            delegate.showAudioCameraInMenu,
-            let summary = profileSummary(profile)
-        else {
-            return first
-        }
-        var second = AttributedString("\n" + summary)
-        second.font = .caption
-        second.foregroundColor = .secondary
-        first.append(second)
-        return first
+        return label
     }
 
     /// One-line summary of the audio / camera the profile would
