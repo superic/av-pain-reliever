@@ -410,19 +410,51 @@ private struct MenuContentView: View {
     }
 
     /// One-line summary of the audio / camera the profile would
-    /// apply. Plain bullet-separated names — no per-item emoji,
-    /// since the row itself provides enough context (the user just
-    /// drilled into "Switch to" so they know they're looking at AV
-    /// behaviour). Returns nil for profiles with no apply fields.
+    /// apply, formatted for the main-menu header. Each segment gets
+    /// an emoji prefix (🎙 / 🔈 / 📷) and trims trailing device-type
+    /// words ("Microphone", "HD Camera", etc.) since the emoji
+    /// already communicates the kind. When mic and speaker compact
+    /// to the same name (built-in MacBook case), they collapse into
+    /// a single 🎙🔈 segment instead of being printed twice.
+    /// Returns nil for profiles with no apply fields configured.
     private func profileSummary(_ profile: Profile) -> String? {
+        let mic = profile.audioInput.map(Self.compactDeviceName)
+        let spk = profile.audioOutput.map(Self.compactDeviceName)
+        let cam = profile.camera.map(Self.compactDeviceName)
+
         var parts: [String] = []
-        if let mic = profile.audioInput { parts.append(mic) }
-        if let out = profile.audioOutput, out != profile.audioInput {
-            parts.append(out)
+        if let mic, let spk, mic == spk {
+            parts.append("🎙🔈 \(mic)")
+        } else {
+            if let mic { parts.append("🎙 \(mic)") }
+            if let spk { parts.append("🔈 \(spk)") }
         }
-        if let cam = profile.camera { parts.append(cam) }
+        if let cam { parts.append("📷 \(cam)") }
         guard !parts.isEmpty else { return nil }
         return parts.joined(separator: " · ")
+    }
+
+    /// Trim well-known trailing device-type words off a human-readable
+    /// device name so the menu header doesn't echo what the emoji
+    /// prefix already says. Stop list is case-insensitive and applied
+    /// iteratively from the end — "FaceTime HD Camera" peels to
+    /// "FaceTime HD" then to "FaceTime". If trimming would leave an
+    /// empty string (a device literally named "Microphone"), fall
+    /// back to the original.
+    private static let compactStopWords: Set<String> = [
+        "camera", "cam",
+        "microphone", "mic",
+        "speakers", "speaker", "headphones",
+        "audio", "hd"
+    ]
+
+    private static func compactDeviceName(_ name: String) -> String {
+        var words = name.split(separator: " ").map(String.init)
+        while let last = words.last, compactStopWords.contains(last.lowercased()) {
+            words.removeLast()
+        }
+        let result = words.joined(separator: " ")
+        return result.isEmpty ? name : result
     }
 }
 
