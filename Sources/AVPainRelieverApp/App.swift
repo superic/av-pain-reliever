@@ -226,6 +226,9 @@ private struct MenuContentView: View {
             }
             .keyboardShortcut("l")
             Divider()
+            Button("Check for Updates…") {
+                delegate.checkForUpdates()
+            }
             Button("Reveal Log in Console") {
                 // Surface the os.Logger stream by opening Console.app.
                 // The log stream filter for our subsystem can be applied

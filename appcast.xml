@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" xmlns:dc="http://purl.org/dc/elements/1.1/">
+    <channel>
+        <title>AV Pain Reliever</title>
+        <link>https://github.com/superic/av-pain-reliever</link>
+        <description>AV Pain Reliever — release feed for the Sparkle auto-updater.</description>
+        <language>en</language>
+        <!--
+            Stub feed. The .github/workflows/release.yml workflow
+            appends a new <item> here on every signed-and-notarized
+            release. Until the first tag lands, an installed app
+            fetching this feed correctly resolves to "you're up to
+            date."
+        -->
+    </channel>
+</rss>

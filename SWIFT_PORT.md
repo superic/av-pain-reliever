@@ -1639,8 +1639,9 @@ StatsCopy) took minutes each because the surface is a single function
   `.app`.
 - User-customizable per-profile icons (auto from slug for v1).
 - OBS scene routing as a Settings tab.
-- Sparkle / signing / GitHub Actions release pipeline (the
-  distribution slog still pending; not a UX item).
+- ~~Sparkle / signing / GitHub Actions release pipeline~~ — landed
+  2026-05-02 (see "Distribution pipeline kickoff" below); appcast
+  hosted on raw.githubusercontent.com.
 - "Show Welcome Again" menu/affordance — easy to add later if
   someone asks.
 
@@ -1786,11 +1787,13 @@ day: ~4.5 hours, 35+ tests added.
 
 ### Deferred to v2 (after polish)
 
-- Asset-Catalog AppIcon for the signed `.app` (waits on the Xcode
-  project that distribution needs anyway).
+- ~~Asset-Catalog AppIcon for the signed `.app`~~ — replaced 2026-05-02
+  with a `Resources/AppIcon.icns` rendered from `AppIcon.swift`'s
+  pill via `scripts/build-icon.sh`. No Asset Catalog needed.
 - User-customizable per-profile icons.
 - OBS scene routing as a Settings tab.
-- Sparkle / signing / GitHub Actions release pipeline.
+- ~~Sparkle / signing / GitHub Actions release pipeline~~ — landed
+  2026-05-02.
 - ~~"Show Welcome Again" affordance~~ — shipped in the fit & finish
   pass below.
 - Right-click context menu on profile rows — would let us put
@@ -1908,14 +1911,155 @@ relying on visual smoke tests, since smoke tests can't gate CI.
 
 ### Deferred (still on the v2 list)
 
-- Asset-Catalog AppIcon for the signed `.app`.
+- ~~Asset-Catalog AppIcon for the signed `.app`~~ — superseded by
+  `scripts/build-icon.sh` rendering the pill into `.icns` (2026-05-02).
 - User-customizable per-profile icons.
 - OBS scene routing as a Settings tab.
-- Sparkle / signing / GitHub Actions release pipeline.
+- ~~Sparkle / signing / GitHub Actions release pipeline~~ — landed
+  2026-05-02 (Distribution pipeline kickoff section below).
 - Right-click context menu on profile rows.
 - Notification-action support ("Open Wizard" button on the
   unknown-location toast). Needs UNUserNotificationCenter, which
-  needs a real bundle.
+  ~~needs a real bundle~~ becomes available now that we ship a
+  signed `.app` — re-evaluate when revisiting notifications.
+
+---
+
+## Distribution pipeline kickoff (2026-05-02)
+
+Phase 2 distribution — turning the SPM executable into a signed,
+notarized, auto-updating `.app` released via GitHub Actions on tag
+push. The work landed in a single session, with one user-driven
+follow-up (Apple Developer Program enrollment + Sparkle EdDSA key
+generation) gating the first real release.
+
+### What landed
+
+- `Resources/Info.plist` — bundle metadata, `LSUIElement=YES`,
+  `LSMinimumSystemVersion=14.0`, `SUFeedURL` pointing at
+  `raw.githubusercontent.com/superic/av-pain-reliever/main/appcast.xml`,
+  `SUPublicEDKey` placeholder waiting on first `generate_keys`.
+  `__MARKETING_VERSION__` / `__BUILD_VERSION__` substituted at build
+  time by `make-app.sh`.
+- `Resources/AVPainReliever.entitlements` — `app-sandbox=NO`. The
+  engine reads `~/Library/Application Support`, talks to IOKit and
+  CoreAudio, and uses `SMAppService` for Launch-at-Login — none of
+  which are sandbox-compatible. No special hardened-runtime
+  exceptions needed.
+- `Resources/AppIcon.icns` (455KB) — rendered from
+  `Sources/AVPainRelieverApp/AppIcon.swift`'s pill design via
+  `scripts/build-icon.sh` + `scripts/icon-exporter.swift`. Renders
+  natively at each iconset size (16/32/64/128/256/512/1024 + @2x)
+  rather than downscaling a single high-res master, which gives SF
+  Symbols a chance to use size-specific glyphs and stay crisp at
+  16×16.
+- `scripts/make-app.sh` — universal-binary build (`swift build
+  --arch arm64 --arch x86_64`), bundle assembly, version stamping
+  via sed substitution, embedding of Sparkle.framework's macOS slice
+  from the SPM artifact directory, `install_name_tool -add_rpath
+  @executable_path/../Frameworks` (SPM only adds `../lib`),
+  inside-out codesigning of Sparkle's nested helpers, and a final
+  ad-hoc-or-Developer-ID sign of the main app driven by the
+  `MAC_CERT_NAME` env var.
+- `Sources/AVPainRelieverApp/Updater.swift` + the AppDelegate hook —
+  thin wrapper around `SPUStandardUpdaterController`, plus a
+  conditional gate that skips Sparkle init when running outside a
+  proper bundle (`swift run`) **or** when the SUPublicEDKey is still
+  the `__SPARKLE_PUBLIC_KEY__` placeholder. Without the placeholder
+  guard, dev builds pop a "Unable to Check For Updates / EdDSA key
+  not valid" dialog at every launch.
+- `Sources/AVPainRelieverApp/App.swift` — "Check for Updates…" item
+  added to the existing **Advanced** submenu (commit `8f54caf`).
+- `appcast.xml` (stub) — empty `<channel>` so the first running app
+  resolves to "you're up to date" against an empty feed.
+- `.github/workflows/release.yml` — fires on `v*.*.*` tag push,
+  imports the cert from `MACOS_CERTIFICATE` (base64 `.p12`) into a
+  temp keychain, runs `make-app.sh`, runs `notarytool submit
+  --wait`, staples, EdDSA-signs the zip via Sparkle's `sign_update`,
+  drafts a GitHub Release with auto-generated notes, then commits
+  the new `<item>` to `appcast.xml` on `main`. Each Apple- or
+  Sparkle-secret-dependent step early-exits with a `::warning::` if
+  the secret is empty, so a `v0.0.0-dryrun` tag exercises the
+  workflow end-to-end without credentials.
+- `scripts/sign-appcast.sh` — wraps `sign_update`, emits a
+  ready-to-paste `<item>` block. Reads the private key from
+  `$SPARKLE_PRIVATE_KEY` (CI) or the `avpainreliever` keychain
+  account (local).
+- `docs/RELEASING.md` — runbook for Apple Developer Program
+  enrollment, Sparkle key generation, the seven `gh secret set`
+  commands, the first-tag checklist, and a troubleshooting section.
+
+### Lessons learned
+
+- **macOS file-provider race against codesign.** Building the
+  bundle directly under `dist/` in a `~/Documents`-rooted repo
+  triggered a race: macOS's fileprovider daemon (visible as a
+  lingering `com.apple.fileprovider.fpfs#P` xattr) re-added
+  `com.apple.FinderInfo` to the bundle root in the milliseconds
+  between our `xattr -cr` scrub and codesign's read, causing a
+  "resource fork detritus not allowed" failure on the main-app
+  sign every time. `xattr -cr "$path" && xattr -d
+  com.apple.FinderInfo "$path"` immediately before codesign wasn't
+  enough — the race was tighter than that. Fix: assemble + sign in
+  a `mktemp -d`, `ditto` the finished bundle to `dist/` at the end.
+  /tmp isn't watched by fileprovider.
+- **Sparkle.framework needs an explicit rpath.** SPM only injects
+  `@executable_path/../lib` into the executable. Sparkle's binary
+  expects `@rpath/Sparkle.framework/Versions/B/Sparkle`, where
+  `@rpath` is conventionally `@executable_path/../Frameworks`.
+  Patching it post-build with `install_name_tool -add_rpath
+  @executable_path/../Frameworks` is one line and avoids unsafe
+  linker flags in `Package.swift`.
+- **Sparkle's nested bundles (Updater.app, Downloader.xpc,
+  Installer.xpc) ship pre-signed by the Sparkle project.**
+  Re-distributing requires re-signing each one with our identity
+  before signing the framework before signing the main app —
+  Apple's `--deep` flag is deprecated and notarization rejects it.
+  Inside-out, path-by-path is the supported approach.
+- **`generate_keys` writes to the user's login keychain.** Running
+  it from an automated agent isn't appropriate (it produces a
+  long-lived credential the user owns); the docs walk the user
+  through running it themselves, replacing the
+  `__SPARKLE_PUBLIC_KEY__` placeholder in `Info.plist`, and stashing
+  the private key in 1Password + `gh secret set
+  SPARKLE_PRIVATE_KEY`.
+- **GitHub Actions secrets can't be used in `if:` conditions
+  directly.** Tried `if: ${{ secrets.X != '' }}` and it doesn't
+  evaluate as expected. The clean pattern: every step runs, but
+  the step body checks `[[ -z "${X:-}" ]]` and `exit 0` with a
+  `::warning::` if missing. That gives us the "dryrun tag works
+  with no Apple creds" property.
+- **macOS bash 3.2 + `set -u` + empty arrays.** `"${arr[@]}"`
+  expansion on an empty array under `set -u` errors with
+  "unbound variable." Use `${arr[@]+"${arr[@]}"}` for the
+  empty-safe expansion.
+
+### Pending (gated on user)
+
+- Apple Developer Program enrollment ($99/yr, 24–48h approval).
+- Sparkle EdDSA keypair generation + Info.plist substitution.
+- Setting the seven GitHub Secrets per `docs/RELEASING.md`.
+- First `git tag v0.1.0` push to exercise the workflow end-to-end.
+- Smoke-test auto-update by tagging `v0.1.1` immediately after
+  with a one-line README change.
+
+`docs/RELEASING.md` is the canonical handoff for these.
+
+### Verification done in this session
+
+- `scripts/make-app.sh` produces a valid universal-binary
+  `dist/AVPainReliever.app` with embedded `Sparkle.framework`,
+  ad-hoc signed, that launches and surfaces the menu-bar pill
+  + engine.
+- 145 of 146 tests still pass (`IOKitUSBWatcher` test depends on
+  attached USB hardware, unrelated to distribution work).
+- `swift build -c release --arch arm64 --arch x86_64` clean.
+- Sparkle wiring confirmed by an earlier crash dialog: with the
+  placeholder public key in Info.plist, Sparkle correctly
+  initialized, fetched feedURL, then refused to start ("EdDSA key
+  not valid") — proving every step except verification works. The
+  guard in `AppDelegate` now suppresses the dialog by skipping
+  Sparkle init until a real key is committed.
 
 ---
 

@@ -1,0 +1,185 @@
+# GitHub Actions release pipeline.
+#
+# Trigger: push of a tag matching v*.*.* (e.g. v0.1.0). Steps:
+#   1. Build a universal-binary, Developer-ID-signed, hardened-runtime
+#      AVPainReliever.app via scripts/make-app.sh.
+#   2. Notarize via notarytool (--wait), then staple the ticket.
+#   3. EdDSA-sign the .app.zip with Sparkle's sign_update.
+#   4. Create a draft GitHub Release with auto-generated notes and the
+#      .app.zip attached.
+#   5. Append a new <item> to appcast.xml on main and push, so existing
+#      installs see the update.
+#
+# Required GitHub Secrets — see docs/RELEASING.md for setup instructions:
+#   MACOS_CERTIFICATE          base64 of the Developer ID Application .p12
+#   MACOS_CERTIFICATE_PASSWORD .p12 password
+#   MACOS_KEYCHAIN_PASSWORD    random — for the temp keychain Actions creates
+#   APPLE_ID                   developer Apple ID email
+#   APPLE_ID_PASSWORD          app-specific password for notarytool
+#   APPLE_TEAM_ID              10-char Team ID
+#   SPARKLE_PRIVATE_KEY        EdDSA private key from generate_keys -x (raw, base64-decoded contents)
+#
+# Each step that depends on a secret early-exits with a warning when
+# the secret is empty. That makes a v0.0.0-dryrun tag possible without
+# Apple credentials: the build runs, the bundle is unsigned, the
+# notarize/sign/appcast steps log skipped, and the release is created
+# in draft form for sanity-check.
+
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write  # gh release create + appcast push
+
+jobs:
+  release:
+    runs-on: macos-14
+    timeout-minutes: 45  # notarization can take 10+ minutes on a cold Team ID
+
+    env:
+      # github.ref_name is "v0.1.0"; downstream steps use $VERSION_NUM
+      # for the bare value.
+      VERSION_TAG: ${{ github.ref_name }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Compute version number
+        run: echo "VERSION_NUM=${VERSION_TAG#v}" >> "$GITHUB_ENV"
+
+      - name: Select Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      - name: Resolve SPM dependencies
+        run: swift package resolve
+
+      - name: Import signing certificate
+        env:
+          CERT_BASE64: ${{ secrets.MACOS_CERTIFICATE }}
+          CERT_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ secrets.MACOS_KEYCHAIN_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${CERT_BASE64:-}" ]]; then
+              echo "::warning::MACOS_CERTIFICATE secret is empty — building unsigned (dryrun mode)"
+              exit 0
+          fi
+          CERT_PATH="$RUNNER_TEMP/cert.p12"
+          KEYCHAIN_PATH="$RUNNER_TEMP/build.keychain"
+          echo -n "$CERT_BASE64" | base64 --decode -o "$CERT_PATH"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security import "$CERT_PATH" -P "$CERT_PASSWORD" \
+              -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+          security set-key-partition-list -S apple-tool:,apple: \
+              -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security list-keychain -d user -s "$KEYCHAIN_PATH" login.keychain
+          IDENTITY=$(security find-identity -v -p codesigning "$KEYCHAIN_PATH" \
+              | awk -F'"' '/Developer ID Application/ { print $2; exit }')
+          if [[ -z "$IDENTITY" ]]; then
+              echo "::error::No Developer ID Application identity found in imported keychain"
+              exit 1
+          fi
+          echo "MAC_CERT_NAME=$IDENTITY" >> "$GITHUB_ENV"
+
+      - name: Build .app
+        env:
+          VERSION: ${{ env.VERSION_NUM }}
+        run: |
+          set -euo pipefail
+          # MAC_CERT_NAME is set by the keychain step when secrets
+          # were available; otherwise unset → make-app.sh ad-hoc signs.
+          scripts/make-app.sh
+
+      - name: Notarize and staple
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_ID_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${MAC_CERT_NAME:-}" ]]; then
+              echo "::warning::Skipping notarization — bundle is unsigned"
+              exit 0
+          fi
+          if [[ -z "${APPLE_ID:-}" || -z "${APPLE_ID_PASSWORD:-}" || -z "${APPLE_TEAM_ID:-}" ]]; then
+              echo "::error::Apple notary secrets missing while a signed cert was used"
+              exit 1
+          fi
+          xcrun notarytool submit dist/AVPainReliever.app.zip \
+              --apple-id "$APPLE_ID" \
+              --password "$APPLE_ID_PASSWORD" \
+              --team-id "$APPLE_TEAM_ID" \
+              --wait
+          xcrun stapler staple dist/AVPainReliever.app
+          # Re-zip after stapling so the published asset carries the ticket.
+          rm -f dist/AVPainReliever.app.zip
+          ditto -c -k --sequesterRsrc --keepParent \
+              dist/AVPainReliever.app dist/AVPainReliever.app.zip
+
+      - name: Sign appcast item
+        env:
+          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+          VERSION: ${{ env.VERSION_NUM }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${SPARKLE_PRIVATE_KEY:-}" ]]; then
+              echo "::warning::SPARKLE_PRIVATE_KEY empty — appcast item will not be signed/published"
+              echo "APPCAST_ITEM_FILE=" >> "$GITHUB_ENV"
+              exit 0
+          fi
+          ITEM_FILE="$RUNNER_TEMP/appcast-item.xml"
+          scripts/sign-appcast.sh dist/AVPainReliever.app.zip > "$ITEM_FILE"
+          echo "APPCAST_ITEM_FILE=$ITEM_FILE" >> "$GITHUB_ENV"
+
+      - name: Create draft GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh release create "$VERSION_TAG" \
+              dist/AVPainReliever.app.zip \
+              --draft \
+              --generate-notes \
+              --title "$VERSION_TAG"
+
+      - name: Append item to appcast.xml on main
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${APPCAST_ITEM_FILE:-}" || ! -f "${APPCAST_ITEM_FILE:-}" ]]; then
+              echo "::warning::No signed appcast item to publish"
+              exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin main
+          git checkout main
+          # Splice the new <item> in immediately before </channel>.
+          # awk over sed because sed's behavior across BSD/GNU on
+          # multi-line replaces is annoying to make portable.
+          awk -v item_file="$APPCAST_ITEM_FILE" '
+              /<\/channel>/ {
+                  while ((getline line < item_file) > 0) print line
+                  close(item_file)
+              }
+              { print }
+          ' appcast.xml > appcast.xml.new
+          mv appcast.xml.new appcast.xml
+          git add appcast.xml
+          git commit -m "appcast: publish $VERSION_TAG
+
+          [skip ci]"
+          git push origin main

@@ -14,36 +14,20 @@ The app lives in your menu bar — no Dock icon, no windows that get in your way
 
 ---
 
-## Status
-
-**In active development.** A signed, notarized `.app` distribution with auto-updates via Sparkle is the next chunk of work; until that lands, the way to use the app is to clone this repo and run it from source (instructions below).
-
-The engine itself is feature-complete and tested (145+ tests, all green). What's pending is the distribution pipeline — code signing, notarization, GitHub Actions release workflow, Sparkle appcast.
-
----
-
 ## What you'll need
 
-- A Mac running **macOS 14 (Sonoma) or later**.
-- The Swift toolchain. If you have [Xcode](https://apps.apple.com/us/app/xcode/id497799835?mt=12) installed, you have it. Otherwise install just the command-line tools: open **Terminal**, paste `xcode-select --install`, press Enter.
-
-That's it.
+A Mac running **macOS 14 (Sonoma) or later**. That's it.
 
 ---
 
-## Run it
+## Install
 
-Clone the repo and launch:
+1. Download the latest **AVPainReliever.app.zip** from the [Releases page](https://github.com/superic/av-pain-reliever/releases/latest).
+2. Unzip and drag **AVPainReliever.app** into your **Applications** folder.
+3. Double-click to launch. The pill icon shows up in your menu bar; the engine starts watching USB events immediately.
+4. Open **Settings…** and toggle **Launch at Login** if you want it running every time you sign in.
 
-```sh
-git clone https://github.com/superic/av-pain-reliever ~/av-pain-reliever
-cd ~/av-pain-reliever
-swift run AVPainRelieverApp
-```
-
-The first run takes ~30 seconds while Swift Package Manager fetches dependencies and compiles. After that, launches are instant. The pill icon shows up in your menu bar; the engine starts watching USB events.
-
-To leave it running in the background, just leave the Terminal window open. (When the signed `.app` ships, this will become a normal "drag to Applications" install with Launch-at-Login wired through Settings.)
+The app updates itself: a new version downloads in the background and prompts you to install on next launch. Or check on demand via the menu → **Advanced → Check for Updates…**
 
 To stop it: click the pill icon → **Quit AV Pain Reliever** (or ⌘Q with the menu open).
 
@@ -116,6 +100,18 @@ av-pain-reliever/
 └── README.md                  # This file
 ```
 
+### Build from source
+
+If you'd rather run from source than download the signed `.app` (e.g. you want to hack on it), you'll need the Swift toolchain — installed automatically with [Xcode](https://apps.apple.com/us/app/xcode/id497799835?mt=12), or via `xcode-select --install` for the command-line tools alone.
+
+```sh
+git clone https://github.com/superic/av-pain-reliever ~/av-pain-reliever
+cd ~/av-pain-reliever
+swift run AVPainRelieverApp
+```
+
+Login items via `SMAppService` only register when running from a signed `.app` bundle, so the **Launch at Login** toggle is a no-op when you launch this way. Quit by clicking the pill icon → **Quit**.
+
 ### Build, run, test
 
 ```sh
@@ -123,6 +119,7 @@ swift build                                  # compile
 swift run AVPainRelieverApp                  # launch the menu-bar app
 swift test                                   # full test suite
 swift test --filter ConfigLoader             # narrow to one suite
+scripts/make-app.sh                          # build a signed .app under dist/ (see docs/RELEASING.md for signed builds)
 ```
 
 ### Architecture in one paragraph

@@ -61,6 +61,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
     private var engine: Engine?
     private let notifier: Notifier = AppleScriptNotifier()
 
+    /// Sparkle updater wrapper. Stored so the underlying
+    /// `SPUStandardUpdaterController` outlives every "Check for
+    /// Updates…" click and the background-check timer. Constructed
+    /// lazily in `applicationDidFinishLaunching` so an SPM unit-test
+    /// host that imports the app target doesn't pick up a Sparkle
+    /// timer it never asked for.
+    private var updater: Updater?
+
     /// Persistent UI preferences. Owned here so views can be passed a
     /// shared `@ObservedObject` reference; the SettingsView and the
     /// menu both read from this.
@@ -127,7 +135,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         NSApp.applicationIconImage = AppIcon.image
         bootEngine()
         applyLaunchAtLoginPreference()
+        // Spin up Sparkle only inside a real .app bundle that has a
+        // real EdDSA public key embedded. Running via `swift run`
+        // produces a binary with no Info.plist; an unfinished build
+        // ships with the `__SPARKLE_PUBLIC_KEY__` placeholder. Either
+        // case would surface Sparkle's "Unable to Check For Updates"
+        // dialog at the user. Skip the wire-up when the key is missing
+        // or placeholder — Check for Updates… becomes a quiet no-op.
+        let key = Bundle.main.object(forInfoDictionaryKey: "SUPublicEDKey") as? String
+        let bundleID = Bundle.main.bundleIdentifier
+        let hasRealKey = (key?.isEmpty == false) && key != "__SPARKLE_PUBLIC_KEY__"
+        if bundleID == "com.ericwillis.avpainreliever" && hasRealKey {
+            updater = Updater()
+        }
         maybeShowWelcomeWindow()
+    }
+
+    /// Menu-bar entry point — kick off a user-initiated Sparkle check.
+    /// No-op when running as an SPM `swift run` binary (updater is nil).
+    func checkForUpdates() {
+        updater?.checkForUpdates()
     }
 
     /// Honour the persisted Launch-at-Login preference. Called at

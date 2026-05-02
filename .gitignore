@@ -24,3 +24,6 @@ prototypes/hammerspoon/logs/
 # checkouts.
 .build/
 .swiftpm/
+
+# Distribution output — produced by scripts/make-app.sh; never commit.
+dist/
