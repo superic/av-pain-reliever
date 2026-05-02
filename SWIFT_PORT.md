@@ -16,15 +16,17 @@ we have data.
 prototypes, engine, config loader/importer, and a SwiftUI menu-bar
 app target all complete. **V1 design pass landed 2026-05-01**, then
 a **V1 polish pass on the same day** — restored one-click profile
-switching, surfaced "New location detected" state in the menu when
-the engine resolves to fallback with USB attached, generated an
+switching, surfaced "New location detected" state, generated an
 app icon at runtime, added Launch-at-Login, made brand colors
-adapt to light + dark mode, and tightened Welcome + Settings copy.
-`cd mac && swift run AVPainRelieverApp` launches a working menu-bar
-agent. **131 passing tests.** Remaining work is signing/notarization
-/Sparkle/GitHub Actions distribution plumbing — see "V1 design pass"
-and "V1 polish pass" near the bottom of this doc for what's still
-deferred.
+adapt to light + dark mode. Then a **second polish round same day** —
+wizard live icon preview, "Suggested: untick" portability badges,
+warmer toast copy, branded Profiles-tab empty-state, "Show welcome
+again" link, banner-style wizard errors. `cd mac && swift run
+AVPainRelieverApp` launches a working menu-bar agent. **140 passing
+tests.** Remaining work is signing/notarization/Sparkle/GitHub
+Actions distribution plumbing — see the "V1 design pass" / "V1
+polish pass" / "V1 fit & finish" sections near the bottom of this
+doc for what's still deferred.
 
 ---
 
@@ -1764,11 +1766,131 @@ day: ~4.5 hours, 35+ tests added.
 - User-customizable per-profile icons.
 - OBS scene routing as a Settings tab.
 - Sparkle / signing / GitHub Actions release pipeline.
-- "Show Welcome Again" affordance.
+- ~~"Show Welcome Again" affordance~~ — shipped in the fit & finish
+  pass below.
 - Right-click context menu on profile rows — would let us put
   Edit/Delete back on the menu without losing the one-click
   switch. SwiftUI MenuBarExtra doesn't support `contextMenu`
   propagation in macOS 14; revisit when SDK support lands.
+
+---
+
+## V1 fit & finish (2026-05-01 — third pass same day)
+
+A short third pass focused on individual rough edges spotted on
+the polished build. Three buckets, each landed in its own commit.
+
+### Wizard: live profile-icon preview
+
+The Name section now renders the SF Symbol the menu would use
+for the typed slug, live, with a short crossfade. Surfaces the
+"each location gets its own icon" feature visually and tells the
+user what their slug matched on without forcing them to save +
+inspect the menu. `AddProfileViewModel.previewSlug` exposes the
+slug used for the icon; falls back to a generic placeholder slug
+while the field is empty so the icon doesn't flicker on every
+keystroke at the start.
+
+### Wizard: "Suggested: untick" portability badges
+
+`DevicePortability.portabilityCategory(deviceName:)` classifies
+attached USB devices by name into "this almost certainly travels
+with you" categories — keyboards, pointing devices, phones /
+wearables, headphones, watches. The fingerprint list now shows a
+yellow capsule "Suggested: untick (<category>)" on flagged rows.
+
+Conservative on purpose — when in doubt, don't flag, because a
+wrong-positive (silently dropping an actually-fingerprintable
+peripheral) is worse than a missed flag (the user spends two
+seconds unticking three rows manually). Auto-untick was
+considered and rejected for the same reason.
+
+### Warmer toast copy
+
+The "new location detected" toast body switched from
+> 5 USB devices attached. Add it to your profiles so AV Pain
+> Reliever can switch automatically.
+
+to
+> 5 USB devices joined the party. Open the menu to teach me
+> this spot.
+
+Same information, half the words, voice consistent with the rest
+of the app. Pulled into a public testable helper at
+`NotificationCopy.unknownLocationBody(deviceCount:)`.
+
+### Profiles tab empty state
+
+`Settings → Profiles` previously rendered a generic SF tray icon
++ small caption when no profiles existed. Replaced with an
+inviting empty-state hero: rounded-rect-clipped app icon with a
+soft shadow, magenta "Set up your first location" headline, a
+sentence of explainer copy, and a large magenta "Add Profile" CTA.
+The empty state now reads as part of the product, not as a
+placeholder.
+
+### Show Welcome Again
+
+The first-run welcome window is suppressed forever after the user
+clicks either button. The About scene now carries a small "Show
+welcome again" link below the explainer copy that flips the
+published flag, dismisses About, and re-opens the welcome via the
+existing `WelcomeOpener` watcher. `AppDelegate.showWelcomeAgain()`
+toggles `shouldShowWelcome` false→true across runloop turns so
+the `.onChange` watcher fires even if the flag was already true.
+
+### Wizard error banner
+
+`viewModel.lastError` previously rendered as a single line of
+`.foregroundStyle(.red)` text. Now wrapped in a proper banner:
+triangle warning icon, error-tinted background + border, padded
+rounded rectangle, opacity+slide transition on appear. Same
+information, much higher signal — the user can't miss it.
+
+### Lessons learned
+
+- **`MenuBarExtra` activated views can take an `@ObservedObject`
+  AppDelegate** even when the AppDelegate's own properties
+  changed via Combine republishing. The dependency tracking
+  picks up the republished signal without complaint. This is
+  what made `Show Welcome Again` work — a Settings change
+  observed in the menu's stats line + an About-scene
+  callback driving an AppDelegate published property all
+  flow through the same single observation.
+- **NSImage rounded-rect clipping inside SwiftUI doesn't need
+  an `Image(uiImage:)`-style hack on macOS** — `Image(nsImage:
+  AppIcon.image).resizable().clipShape(RoundedRectangle(...))`
+  works directly. The signed `.app`'s Asset Catalog icon will
+  still be sharper at small render sizes, but the runtime icon
+  composites cleanly enough at 76+ pt.
+- **Conservative classification beats aggressive defaults.** The
+  Wizard's "Suggested: untick" hint is on portable devices only
+  — auto-unticking would silently drop an ergonomic-keyboard
+  fingerprint the user actually wanted, and that failure
+  (silent data loss in a config workflow) is irrecoverable
+  without re-discovery. The badge surfaces the suggestion;
+  the user remains in control of every checkbox.
+
+### Effort estimate update
+
+Fit & finish pass: ~1 hour, 1 new file + 8 modified files,
++9 tests (140 total). Combined day-of-2026-05-01 design + polish
++ fit & finish: ~5 hours actual, 45+ tests added across three
+commits' worth of UI/UX work plus the supporting library + app
+helpers. The tests bias is intentional — every pure-logic
+helper (Theme adaptation aside) gets a `testTarget` rather than
+relying on visual smoke tests, since smoke tests can't gate CI.
+
+### Deferred (still on the v2 list)
+
+- Asset-Catalog AppIcon for the signed `.app`.
+- User-customizable per-profile icons.
+- OBS scene routing as a Settings tab.
+- Sparkle / signing / GitHub Actions release pipeline.
+- Right-click context menu on profile rows.
+- Notification-action support ("Open Wizard" button on the
+  unknown-location toast). Needs UNUserNotificationCenter, which
+  needs a real bundle.
 
 ---
 
