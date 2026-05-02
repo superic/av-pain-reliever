@@ -192,12 +192,12 @@ private struct MenuContentView: View {
         }
 
         if !delegate.availableProfiles.isEmpty {
-            Menu("Switch to") {
+            Menu {
                 ForEach(delegate.availableProfiles, id: \.name) { profile in
                     profileMenuEntry(profile)
                 }
                 Divider()
-                Button("Edit Profiles…") {
+                Button {
                     // Pre-select the Profiles tab before opening so
                     // the user lands on the list directly — Settings
                     // remembers this across re-opens, mirroring macOS
@@ -205,12 +205,16 @@ private struct MenuContentView: View {
                     delegate.settingsTab = .profiles
                     openWindow(id: settingsWindowID)
                     NSApp.activate(ignoringOtherApps: true)
+                } label: {
+                    Label("Edit Profiles…", systemImage: "list.bullet.rectangle")
                 }
+            } label: {
+                Label("Switch to", systemImage: "arrow.left.arrow.right")
             }
             Divider()
         }
 
-        Button("Add Profile…") {
+        Button {
             delegate.beginAddingProfile()
             openWindow(id: addProfileWindowID)
             // Accessory apps (LSUIElement-style) don't auto-activate
@@ -218,20 +222,26 @@ private struct MenuContentView: View {
             // whatever was focused. Force-activate so the wizard is
             // immediately usable without an extra click.
             NSApp.activate(ignoringOtherApps: true)
+        } label: {
+            Label("Add Profile…", systemImage: "plus")
         }
         .keyboardShortcut("n")
 
         Divider()
 
-        Button("Settings…") {
+        Button {
             openWindow(id: settingsWindowID)
             NSApp.activate(ignoringOtherApps: true)
+        } label: {
+            Label("Settings…", systemImage: "gearshape")
         }
         .keyboardShortcut(",")
 
-        Button("About AV Pain Reliever") {
+        Button {
             openWindow(id: aboutWindowID)
             NSApp.activate(ignoringOtherApps: true)
+        } label: {
+            Label("About AV Pain Reliever", systemImage: "info.circle")
         }
 
         // Power-user / diagnostic actions live under Advanced so the
@@ -240,27 +250,37 @@ private struct MenuContentView: View {
         // Reload are useful when the engine's state has drifted from
         // reality (a missed USB event, a hand-edited config); the
         // log link is for diagnosing what the engine saw.
-        Menu("Advanced") {
-            Button("Re-evaluate Now") {
+        Menu {
+            Button {
                 delegate.reevaluate()
+            } label: {
+                Label("Re-evaluate Now", systemImage: "arrow.clockwise")
             }
             .keyboardShortcut("r")
-            Button("Reload Config") {
+            Button {
                 delegate.reloadConfig()
+            } label: {
+                Label("Reload Config", systemImage: "doc.text")
             }
             .keyboardShortcut("l")
             Divider()
-            Button("Check for Updates…") {
+            Button {
                 delegate.checkForUpdates()
+            } label: {
+                Label("Check for Updates…", systemImage: "arrow.down.circle")
             }
-            Button("Reveal Log in Console") {
+            Button {
                 // Surface the os.Logger stream by opening Console.app.
                 // The log stream filter for our subsystem can be applied
                 // there manually; deep-linking to a filtered view requires
                 // a private URL scheme we don't want to bake in.
                 let consoleURL = URL(fileURLWithPath: "/System/Applications/Utilities/Console.app")
                 NSWorkspace.shared.openApplication(at: consoleURL, configuration: .init())
+            } label: {
+                Label("Reveal Log in Console", systemImage: "terminal")
             }
+        } label: {
+            Label("Advanced", systemImage: "wrench.and.screwdriver")
         }
 
         Divider()
