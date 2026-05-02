@@ -39,7 +39,7 @@ struct AVPainRelieverApp: SwiftUI.App {
         .windowResizability(.contentSize)
 
         Window("About AV Pain Reliever", id: aboutWindowID) {
-            AboutView()
+            AboutView(delegate: appDelegate)
         }
         .windowResizability(.contentSize)
 

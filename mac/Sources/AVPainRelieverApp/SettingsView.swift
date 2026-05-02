@@ -142,18 +142,39 @@ private struct ProfilesSettingsTab: View {
     }
 
     private var emptyState: some View {
-        VStack(spacing: 14) {
+        VStack(spacing: 18) {
             Spacer()
-            Image(systemName: "tray")
-                .font(.system(size: 36, weight: .light))
-                .foregroundStyle(Theme.Color.chrome)
-            Text("No profiles yet")
-                .font(.headline)
-            Text("Click Add Profile to capture the dock you're at right now.")
-                .font(.callout)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 24)
+            // Hero icon — uses the app icon (rather than a generic
+            // tray) so the empty state still feels like the
+            // product, not a generic-iOS-style placeholder.
+            Image(nsImage: AppIcon.image)
+                .resizable()
+                .interpolation(.high)
+                .frame(width: 76, height: 76)
+                .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                .shadow(color: .black.opacity(0.15), radius: 10, y: 4)
+            VStack(spacing: 4) {
+                Text("Set up your first location")
+                    .font(.title3.weight(.semibold))
+                    .foregroundStyle(Theme.Color.primary)
+                Text("Plug in your dock or peripherals, then capture them as a profile. AV Pain Reliever will switch your audio + camera defaults whenever you dock there again.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, 32)
+            }
+            Button {
+                openWindow(id: addProfileWindowID)
+                NSApp.activate(ignoringOtherApps: true)
+            } label: {
+                Label("Add Profile", systemImage: "plus")
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 2)
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(Theme.Color.primary)
+            .controlSize(.large)
             Spacer()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)

@@ -107,9 +107,22 @@ struct AddProfileView: View {
             .formStyle(.grouped)
 
             if let error = viewModel.lastError {
-                Text(error)
-                    .font(.callout)
-                    .foregroundStyle(.red)
+                HStack(alignment: .top, spacing: 8) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundStyle(Theme.Color.error)
+                    Text(error)
+                        .font(.callout)
+                        .foregroundStyle(.primary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Spacer(minLength: 0)
+                }
+                .padding(10)
+                .background(Theme.Color.error.opacity(0.10), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .strokeBorder(Theme.Color.error.opacity(0.35), lineWidth: 1)
+                )
+                .transition(.opacity.combined(with: .move(edge: .top)))
             }
 
             HStack {

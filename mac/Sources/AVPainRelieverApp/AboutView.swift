@@ -8,6 +8,8 @@ let aboutWindowID = "about-window"
 /// cyan tagline, version + a single warm "made to stop the fiddling"
 /// line. Personality lives in the copy, not the chrome.
 struct AboutView: View {
+    @ObservedObject var delegate: AppDelegate
+    @Environment(\.dismissWindow) private var dismissWindow
     @State private var pulse = false
 
     var body: some View {
@@ -57,10 +59,18 @@ struct AboutView: View {
             .multilineTextAlignment(.center)
             .foregroundStyle(.secondary)
             .padding(.horizontal, 24)
+
+            Button("Show welcome again") {
+                delegate.showWelcomeAgain()
+                dismissWindow(id: aboutWindowID)
+            }
+            .buttonStyle(.link)
+            .font(.caption)
+            .foregroundStyle(Theme.Color.highlight)
         }
         .padding(.vertical, 28)
         .padding(.horizontal, 28)
-        .frame(width: 360, height: 420)
+        .frame(width: 360, height: 460)
         .background(.background)
     }
 }

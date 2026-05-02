@@ -159,6 +159,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         shouldShowWelcome = false
     }
 
+    /// Manual entry point — re-show the welcome window even if it
+    /// was previously dismissed. Wired to a "Show Welcome Again"
+    /// link in the About scene for users who clicked through too
+    /// fast and want another look at the explainer.
+    func showWelcomeAgain() {
+        // Toggling false→true is what `WelcomeOpener` watches for.
+        shouldShowWelcome = false
+        DispatchQueue.main.async { [weak self] in
+            self?.shouldShowWelcome = true
+            NSApp.activate(ignoringOtherApps: true)
+        }
+    }
+
     /// Tear down any existing engine, re-read the config from disk,
     /// and start a fresh engine. Called on launch and on the menu's
     /// "Reload Config" action. Notification state
