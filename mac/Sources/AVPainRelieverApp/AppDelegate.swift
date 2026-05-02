@@ -205,8 +205,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         if FileManager.default.fileExists(atPath: luaURL.path) {
             do {
                 let lua = try String(contentsOf: luaURL, encoding: .utf8)
-                let profiles = try ConfigImporter().parse(lua)
-                logger.info("imported \(profiles.count) profiles from \(luaURL.path) (Hammerspoon)")
+                let importer = ConfigImporter()
+                let profiles = try importer.parse(lua)
+                // One-shot migration: write the imported profiles to
+                // the canonical TOML location so future launches AND
+                // the Add-Profile wizard work against the same file.
+                // Without this, the first wizard save creates a TOML
+                // containing only the new profile, silently shadowing
+                // everything in profiles.lua.
+                do {
+                    let toml = try importer.convertToTOML(lua)
+                    try FileManager.default.createDirectory(
+                        at: tomlURL.deletingLastPathComponent(),
+                        withIntermediateDirectories: true
+                    )
+                    try toml.write(to: tomlURL, atomically: true, encoding: .utf8)
+                    logger.info("migrated \(profiles.count) profiles from \(luaURL.path) (Hammerspoon) → \(tomlURL.path); future edits should go to the TOML file")
+                } catch {
+                    logger.warn("loaded \(profiles.count) profiles from \(luaURL.path) but migration to \(tomlURL.path) failed: \(error). Wizard saves won't include these until migration succeeds.")
+                }
                 return profiles
             } catch {
                 logger.warn("failed to import \(luaURL.path): \(error)")
