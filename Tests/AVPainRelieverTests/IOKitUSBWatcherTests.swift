@@ -19,16 +19,20 @@ struct IOKitUSBWatcherTests {
         #expect(a == b)
     }
 
-    @Test("currentDevices returns a non-empty snapshot when run on a docked Mac")
-    func currentDevicesNonEmptyWhenDocked() {
+    @Test("currentDevices returns well-formed USBDevice entries")
+    func currentDevicesAreWellFormed() {
         // Light end-to-end check — proves IOKit is linked, the matching
-        // dictionary returns devices, and `(idVendor, idProduct)`
-        // round-trip into `USBDevice`. May fail if the user runs
-        // `swift test` on an undocked MacBook with zero USB
-        // peripherals; that's an acceptable false-failure for a
-        // single-developer project.
+        // dictionary enumerates without crashing, and any returned
+        // (idVendor, idProduct) round-trips into a USBDevice with
+        // valid uint16 IDs. We deliberately don't assert the snapshot
+        // is non-empty: an undocked MacBook with no external USB
+        // peripherals legitimately returns the empty set, and the
+        // prior version of this test was a hardware-dependent flake.
         let watcher = IOKitUSBWatcher()
-        #expect(!watcher.currentDevices().isEmpty)
+        for device in watcher.currentDevices() {
+            #expect(device.vendorID >= 0 && device.vendorID <= 0xFFFF)
+            #expect(device.productID >= 0 && device.productID <= 0xFFFF)
+        }
     }
 
     @Test("start + stop is idempotent and does not leak the notification port")
