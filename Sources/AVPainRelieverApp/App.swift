@@ -204,6 +204,16 @@ private struct MenuContentView: View {
                 ForEach(delegate.availableProfiles, id: \.name) { profile in
                     profileMenuEntry(profile)
                 }
+                Divider()
+                Button("Edit Profiles…") {
+                    // Pre-select the Profiles tab before opening so
+                    // the user lands on the list directly — Settings
+                    // remembers this across re-opens, mirroring macOS
+                    // default tab persistence.
+                    delegate.settingsTab = .profiles
+                    openWindow(id: settingsWindowID)
+                    NSApp.activate(ignoringOtherApps: true)
+                }
             }
             Divider()
         }

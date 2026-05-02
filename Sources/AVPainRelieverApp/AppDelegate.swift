@@ -195,6 +195,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
     /// `shouldShowWelcome` does.
     @Published var shouldOpenAddProfileWindow: Bool = false
 
+    /// Initial tab when the Settings window opens. Mutated by the
+    /// menu's "Edit Profiles…" item before opening so the user lands
+    /// directly on the Profiles list. Persists across opens — leaving
+    /// the user on whichever tab they were last using is the macOS
+    /// default and preferred over forcing General every time.
+    @Published var settingsTab: SettingsTab = .general
+
     private func maybeShowWelcomeWindow() {
         guard !settings.suppressedWelcome else { return }
         let configured = availableProfiles.contains { !$0.fingerprint.isEmpty }

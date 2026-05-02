@@ -4,6 +4,15 @@ import AVPainReliever
 
 let settingsWindowID = "settings-window"
 
+/// Stable identifiers for the Settings tabs. Bound to the TabView's
+/// selection so callers (e.g. the menu's "Edit Profiles…" item) can
+/// pre-select a tab before opening the window. Tab choice persists
+/// across opens via the AppDelegate's @Published property.
+enum SettingsTab: Hashable {
+    case general
+    case profiles
+}
+
 /// The Settings scene has two tabs: General (toggles + slider) and
 /// Profiles (list with edit/delete). Deliberately *no* mention of
 /// Hammerspoon, OBS, or any other third-party tool — the app must read
@@ -13,16 +22,18 @@ struct SettingsView: View {
     @ObservedObject var settings: SettingsStore
 
     var body: some View {
-        TabView {
+        TabView(selection: $delegate.settingsTab) {
             GeneralSettingsTab(settings: settings)
                 .tabItem {
                     Label("General", systemImage: "gearshape")
                 }
+                .tag(SettingsTab.general)
 
             ProfilesSettingsTab(delegate: delegate)
                 .tabItem {
                     Label("Profiles", systemImage: "list.bullet.rectangle")
                 }
+                .tag(SettingsTab.profiles)
         }
         .frame(width: 480, height: 380)
         .padding(.top, 8)
