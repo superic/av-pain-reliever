@@ -5,6 +5,7 @@ import AVPainReliever
 /// Re-exported here so the SwiftUI views don't have to import the
 /// engine module for a name.
 typealias AudioDevice = AudioDeviceSummary
+typealias CameraDevice = CameraSummary
 
 /// State the view shows when the user tries to save a profile name
 /// that already exists. The view's alert renders three buttons that
@@ -33,6 +34,7 @@ final class AddProfileViewModel: ObservableObject {
     @Published var name: String = ""
     @Published var audioInput: String? = nil
     @Published var audioOutput: String? = nil
+    @Published var camera: String? = nil
 
     /// Currently-attached USB devices the user can include in the
     /// fingerprint. Refreshed on demand from the watcher.
@@ -42,6 +44,8 @@ final class AddProfileViewModel: ObservableObject {
 
     /// Audio devices CoreAudio sees right now.
     @Published private(set) var audioDevices: [AudioDevice] = []
+    /// Cameras AVFoundation sees right now.
+    @Published private(set) var cameras: [CameraDevice] = []
 
     /// User-facing error from the most recent save attempt. Cleared
     /// when the user edits any field.
@@ -66,17 +70,20 @@ final class AddProfileViewModel: ObservableObject {
 
     private let watcher: USBWatcher
     private let audioController: AudioController
+    private let cameraController: CameraController
     private let configURL: URL
     private let onSaved: () -> Void
 
     init(
         watcher: USBWatcher,
         audioController: AudioController,
+        cameraController: CameraController,
         configURL: URL,
         onSaved: @escaping () -> Void
     ) {
         self.watcher = watcher
         self.audioController = audioController
+        self.cameraController = cameraController
         self.configURL = configURL
         self.onSaved = onSaved
         refresh()
@@ -102,14 +109,16 @@ final class AddProfileViewModel: ObservableObject {
             selectedDeviceIDs = Set(named.map(\.device))
         }
         audioDevices = audioController.availableDevices()
+        cameras = cameraController.availableCameras()
 
         // Pre-select whatever the system currently uses so the user
-        // doesn't have to repeat audio choices they already made
-        // manually before opening the wizard. Only sets an unset
-        // field; never overwrites a deliberate user pick.
+        // doesn't have to repeat audio/camera choices they already
+        // made manually before opening the wizard. Only sets an
+        // unset field; never overwrites a deliberate user pick.
         let defaults = audioController.currentDefaults()
         if audioInput == nil { audioInput = defaults.inputName }
         if audioOutput == nil { audioOutput = defaults.outputName }
+        if camera == nil { camera = cameraController.currentPreferredName() }
     }
 
     var inputDevices: [AudioDevice] {
@@ -212,7 +221,8 @@ final class AddProfileViewModel: ObservableObject {
             name: slug,
             fingerprint: fingerprint,
             audioInput: audioInput,
-            audioOutput: audioOutput
+            audioOutput: audioOutput,
+            camera: camera
         )
 
         do {

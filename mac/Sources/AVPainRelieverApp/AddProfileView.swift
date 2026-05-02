@@ -70,6 +70,21 @@ struct AddProfileView: View {
                         devices: viewModel.outputDevices
                     )
                 }
+
+                Section {
+                    Picker("Camera", selection: $viewModel.camera) {
+                        Text("Don't change").tag(String?.none)
+                        ForEach(viewModel.cameras) { cam in
+                            Text(cam.name).tag(String?.some(cam.name))
+                        }
+                    }
+                } header: {
+                    Text("Camera")
+                } footer: {
+                    Text("Sets macOS's preferred camera. Apps with their own camera picker (Zoom, Slack, Teams) won't follow this — configure those once per location and they'll remember.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
             .formStyle(.grouped)
 

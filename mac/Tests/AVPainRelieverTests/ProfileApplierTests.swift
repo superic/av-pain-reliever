@@ -32,6 +32,25 @@ struct ProfileApplierTests {
         }
     }
 
+    final class MockCamera: CameraController {
+        struct Call: Equatable {
+            let name: String
+        }
+        private(set) var calls: [Call] = []
+        var resultsByName: [String: CameraApplyResult] = [:]
+        var defaultResult: CameraApplyResult = .ok
+        var availableCamerasStub: [CameraSummary] = []
+        var currentPreferredNameStub: String? = nil
+
+        func setPreferred(named: String) -> CameraApplyResult {
+            calls.append(Call(name: named))
+            return resultsByName[named] ?? defaultResult
+        }
+
+        func availableCameras() -> [CameraSummary] { availableCamerasStub }
+        func currentPreferredName() -> String? { currentPreferredNameStub }
+    }
+
     final class MockLogger: ApplierLogger {
         private(set) var infos: [String] = []
         private(set) var warns: [String] = []
@@ -156,6 +175,66 @@ struct ProfileApplierTests {
         #expect(audio.calls.count == 2) // input + output, ONE round
         // Second apply was logged as a no-op.
         #expect(log.infos.contains { $0.contains("profile unchanged (home-office)") })
+    }
+
+    // MARK: - Camera
+
+    @Test("applies camera when the profile sets one and a CameraController is wired")
+    func appliesCamera() {
+        let camera = MockCamera()
+        let log = MockLogger()
+        let applier = ProfileApplier(audio: MockAudio(), camera: camera, logger: log)
+        let p = Profile(
+            name: "home",
+            fingerprint: [],
+            camera: "LG UltraFine Display Camera"
+        )
+
+        applier.apply(p)
+
+        #expect(camera.calls == [.init(name: "LG UltraFine Display Camera")])
+        #expect(log.infos.contains { $0.contains("set preferred camera: LG UltraFine") })
+    }
+
+    @Test("warns when camera not currently attached")
+    func warnsWhenCameraMissing() {
+        let camera = MockCamera()
+        camera.resultsByName["LG UltraFine Display Camera"] = .notFound
+        let log = MockLogger()
+        let applier = ProfileApplier(audio: MockAudio(), camera: camera, logger: log)
+        let p = Profile(
+            name: "home",
+            fingerprint: [],
+            camera: "LG UltraFine Display Camera"
+        )
+
+        applier.apply(p)
+
+        #expect(log.warns.contains { $0.contains("camera 'LG UltraFine Display Camera' not found") })
+    }
+
+    @Test("silently skips camera when no controller is configured")
+    func skipsCameraWithoutController() {
+        let log = MockLogger()
+        let applier = ProfileApplier(audio: MockAudio(), camera: nil, logger: log)
+        let p = Profile(
+            name: "home",
+            fingerprint: [],
+            camera: "Some Camera"
+        )
+
+        applier.apply(p)
+
+        #expect(!log.warns.contains { $0.contains("camera") })
+    }
+
+    @Test("does not touch camera when profile.camera is nil")
+    func skipsNilCamera() {
+        let camera = MockCamera()
+        let applier = ProfileApplier(audio: MockAudio(), camera: camera, logger: MockLogger())
+        applier.apply(Self.homeOffice) // no camera field set
+
+        #expect(camera.calls.isEmpty)
     }
 
     @Test("applying a different profile after a no-op fires side effects again")

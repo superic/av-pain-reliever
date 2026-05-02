@@ -29,6 +29,7 @@ public enum ConfigError: Error, Equatable {
 /// [profiles.home-office]
 /// audioInput  = "Yeti Stereo Microphone"
 /// audioOutput = "CalDigit Thunderbolt 3 Audio"
+/// camera      = "LG UltraFine Display Camera"
 /// fingerprint = [
 ///   { vendorID = 0x2188, productID = 0x6533, name = "CalDigit dock" },
 ///   # `serialNumber` is optional. When present, the entry only matches
@@ -109,7 +110,8 @@ private struct ConfigFile: Decodable {
                 name: name,
                 fingerprint: body.fingerprint?.map(\.usbDevice) ?? [],
                 audioInput: body.audioInput,
-                audioOutput: body.audioOutput
+                audioOutput: body.audioOutput,
+                camera: body.camera
             )
         }
     }
@@ -118,6 +120,7 @@ private struct ConfigFile: Decodable {
 private struct ProfileBody: Decodable {
     let audioInput: String?
     let audioOutput: String?
+    let camera: String?
     let fingerprint: [FingerprintEntry]?
 }
 

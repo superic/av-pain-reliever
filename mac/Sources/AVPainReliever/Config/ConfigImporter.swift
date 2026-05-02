@@ -184,6 +184,7 @@ public struct ConfigImporter {
     private func parseProfileBody(name: String, body: Substring) throws -> ImportedProfile {
         let audioInput = extractStringField("audioInput", in: body)
         let audioOutput = extractStringField("audioOutput", in: body)
+        let camera = extractStringField("camera", in: body)
         // obsScene from the Lua source is intentionally dropped:
         // OBS scene-switching is V2 work for the Swift app. When V2
         // adds it, we'll re-extract here.
@@ -192,7 +193,8 @@ public struct ConfigImporter {
             name: name,
             fingerprint: fingerprint,
             audioInput: audioInput,
-            audioOutput: audioOutput
+            audioOutput: audioOutput,
+            camera: camera
         )
     }
 
@@ -442,6 +444,9 @@ public struct ConfigImporter {
         if let v = profile.audioOutput {
             out += "audioOutput = \(tomlString(v))\n"
         }
+        if let v = profile.camera {
+            out += "camera      = \(tomlString(v))\n"
+        }
         if !profile.fingerprint.isEmpty {
             out += "fingerprint = [\n"
             for d in profile.fingerprint {
@@ -483,17 +488,20 @@ private struct ImportedProfile {
     let fingerprint: [ImportedDevice]
     let audioInput: String?
     let audioOutput: String?
+    let camera: String?
 
     init(
         name: String,
         fingerprint: [ImportedDevice],
         audioInput: String?,
-        audioOutput: String?
+        audioOutput: String?,
+        camera: String? = nil
     ) {
         self.name = name
         self.fingerprint = fingerprint
         self.audioInput = audioInput
         self.audioOutput = audioOutput
+        self.camera = camera
     }
 
     init(profile: Profile) {
@@ -508,6 +516,7 @@ private struct ImportedProfile {
         }
         self.audioInput = profile.audioInput
         self.audioOutput = profile.audioOutput
+        self.camera = profile.camera
     }
 
     var profile: Profile {
@@ -521,7 +530,8 @@ private struct ImportedProfile {
                 )
             },
             audioInput: audioInput,
-            audioOutput: audioOutput
+            audioOutput: audioOutput,
+            camera: camera
         )
     }
 }

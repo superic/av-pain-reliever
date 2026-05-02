@@ -46,6 +46,15 @@ private struct MenuContentView: View {
     var body: some View {
         Text(delegate.currentProfileTitle)
             .font(.headline)
+        if let camera = delegate.currentCameraDisplay {
+            // Reminder for Zoom/Slack/Teams users: the system
+            // preferred camera is set, but those apps don't follow
+            // it. This line tells the user what name to pick if
+            // they need to update the in-app camera selection.
+            Text("Camera: \(camera)")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
         Divider()
 
         Button("Add Profile…") {
@@ -102,6 +111,7 @@ private struct AddProfileWindowContent: View {
         _viewModel = StateObject(wrappedValue: AddProfileViewModel(
             watcher: deps.watcher,
             audioController: deps.audioController,
+            cameraController: deps.cameraController,
             configURL: deps.configURL,
             onSaved: deps.onSaved
         ))

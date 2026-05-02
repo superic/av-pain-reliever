@@ -12,6 +12,7 @@ import AVPainReliever
 struct AddProfileDependencies {
     let watcher: USBWatcher
     let audioController: AudioController
+    let cameraController: CameraController
     let configURL: URL
     let onSaved: () -> Void
 }
@@ -20,6 +21,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
     /// Pretty-cased title shown in the menu bar. Defaults to the
     /// product name until the engine performs its first evaluation.
     @Published var currentProfileTitle: String = "AV Pain Reliever"
+
+    /// Camera the active profile asks the system to prefer, or nil
+    /// if the profile doesn't manage cameras. Surfaced in the menu
+    /// for at-a-glance "what camera should I be on" info — useful
+    /// because Zoom/Slack/Teams don't follow the system preference,
+    /// so the user sometimes has to manually pick the same name in
+    /// those apps.
+    @Published var currentCameraDisplay: String? = nil
 
     private var engine: Engine?
     private let notifier: Notifier = AppleScriptNotifier()
@@ -83,6 +92,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
     private func handleProfileApplied(_ profile: Profile) {
         let pretty = PrettyName.format(profile.name)
         currentProfileTitle = pretty
+        currentCameraDisplay = profile.camera
 
         // Toast only on actual changes (different profile name from
         // the previous evaluation). The initial evaluation on launch
@@ -149,6 +159,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         AddProfileDependencies(
             watcher: IOKitUSBWatcher(),
             audioController: CoreAudioController(),
+            cameraController: AVFoundationCameraController(),
             configURL: Self.profilesTOMLURL,
             onSaved: { [weak self] in self?.reloadConfig() }
         )
@@ -160,7 +171,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         let watcher = IOKitUSBWatcher()
         let resolver = ProfileResolver(profiles: profiles)
         let audio = CoreAudioController()
-        let applier = ProfileApplier(audio: audio, logger: logger)
+        let camera = AVFoundationCameraController()
+        let applier = ProfileApplier(audio: audio, camera: camera, logger: logger)
         return Engine(
             watcher: watcher,
             resolver: resolver,

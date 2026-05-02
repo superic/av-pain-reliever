@@ -8,9 +8,10 @@ public protocol ApplierLogger {
     func warn(_ message: String)
 }
 
-/// Applies a resolved profile: switches default audio in/out to
-/// match. Idempotent — a re-apply of the *same* profile is a logged
-/// no-op (matches `init.lua`'s `lastAppliedProfile` check).
+/// Applies a resolved profile: switches default audio in/out and the
+/// system preferred camera to match. Idempotent — a re-apply of the
+/// *same* profile is a logged no-op (matches `init.lua`'s
+/// `lastAppliedProfile` check).
 ///
 /// Owns no policy beyond "did we just apply this?": the caller is
 /// responsible for resolving the right profile (`ProfileResolver`),
@@ -19,14 +20,20 @@ public protocol ApplierLogger {
 ///
 /// OBS scene-switching is intentionally not part of V1; planned for
 /// V2. When it lands, it'll arrive as a separate optional injectable
-/// alongside `AudioController`.
+/// alongside `AudioController` and `CameraController`.
 public final class ProfileApplier {
     private let audio: AudioController
+    private let camera: CameraController?
     private let logger: ApplierLogger
     private var lastAppliedName: String?
 
-    public init(audio: AudioController, logger: ApplierLogger) {
+    public init(
+        audio: AudioController,
+        camera: CameraController? = nil,
+        logger: ApplierLogger
+    ) {
         self.audio = audio
+        self.camera = camera
         self.logger = logger
     }
 
@@ -43,6 +50,9 @@ public final class ProfileApplier {
         if let output = profile.audioOutput {
             applyAudio(output, role: .output)
         }
+        if let cameraName = profile.camera {
+            applyCamera(cameraName)
+        }
 
         lastAppliedName = profile.name
     }
@@ -57,6 +67,20 @@ public final class ProfileApplier {
             logger.warn("audio device '\(name)' exists but is not an \(role.rawValue) — skipping")
         case .setFailed(let status):
             logger.warn("setDefault\(role.rawValue) failed for: \(name) (OSStatus=\(status))")
+        }
+    }
+
+    private func applyCamera(_ name: String) {
+        // No CameraController configured (e.g., older macOS, or
+        // construction-time decision). Same convention as the V1
+        // OBS removal: the configuration layer announces the
+        // limitation; per-profile we silently skip.
+        guard let camera else { return }
+        switch camera.setPreferred(named: name) {
+        case .ok:
+            logger.info("set preferred camera: \(name)")
+        case .notFound:
+            logger.warn("camera '\(name)' not found — skipping (it may not be currently attached)")
         }
     }
 }

@@ -229,6 +229,9 @@ public struct ProfileWriter {
         if let v = profile.audioOutput {
             out += "audioOutput = \(tomlString(v))\n"
         }
+        if let v = profile.camera {
+            out += "camera      = \(tomlString(v))\n"
+        }
         if !profile.fingerprint.isEmpty {
             out += "fingerprint = [\n"
             for d in profile.fingerprint {
