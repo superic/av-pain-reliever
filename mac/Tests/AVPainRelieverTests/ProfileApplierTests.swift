@@ -106,15 +106,19 @@ struct ProfileApplierTests {
         #expect(obs.calls.isEmpty)
     }
 
-    @Test("warns and skips OBS when no controller is configured")
+    @Test("silently skips OBS when no controller is configured")
     func skipsOBSWhenControllerMissing() {
         let log = MockLogger()
         let applier = ProfileApplier(audio: MockAudio(), obs: nil, logger: log)
 
         applier.apply(Self.homeOffice)
 
-        #expect(log.warns.contains { $0.contains("obs-cmd is not installed") })
-        #expect(log.warns.contains { $0.contains("'Home Office'") })
+        // The "obs-cmd not installed" announcement is the
+        // configuration layer's job (AppDelegate logs it once at
+        // startup). The applier silently skips per-profile so users
+        // who don't run OBS don't see a warning per dock event.
+        #expect(!log.warns.contains { $0.contains("OBS") })
+        #expect(!log.warns.contains { $0.contains("Home Office") })
     }
 
     // MARK: - Audio failure modes

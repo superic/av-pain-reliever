@@ -66,7 +66,12 @@ public final class ProfileApplier {
 
     private func applyScene(_ name: String) {
         guard let obs else {
-            logger.warn("OBS scene switch requested ('\(name)') but obs-cmd is not installed — skipping")
+            // OBS isn't configured for this engine. The decision was
+            // made at construction time (likely because obs-cmd isn't
+            // installed) and the configuration layer is responsible
+            // for announcing that — typically once at startup.
+            // Silently skipping per-profile avoids one warning per
+            // change for users who simply don't use OBS.
             return
         }
         do {

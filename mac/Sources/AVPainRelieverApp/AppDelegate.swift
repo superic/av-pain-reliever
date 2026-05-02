@@ -152,8 +152,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
     ///      — the canonical Swift-app config location.
     ///   2. `~/.hammerspoon/profiles.lua` — auto-import for users
     ///      migrating from the Hammerspoon Phase 1 engine.
-    ///   3. Empty list — engine logs a warning and runs idle until
-    ///      the user creates a config.
+    ///   3. **Bootstrap a default profiles.toml** — a fresh user
+    ///      with neither file gets a working "laptop" fallback
+    ///      profile written to (1) so the app actually does
+    ///      something on first launch.
     private func loadProfiles(logger: ApplierLogger) -> [Profile] {
         let home = URL(fileURLWithPath: NSHomeDirectory())
         let tomlURL = home
@@ -182,7 +184,65 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
             }
         }
 
-        logger.warn("no profile config found at \(tomlURL.path) or \(luaURL.path) — engine will run idle until a config is created")
-        return []
+        // Fresh user with no Hammerspoon and no Swift-app config:
+        // bootstrap a starter `profiles.toml` so the app does
+        // something useful on first launch (apply MacBook audio
+        // defaults when undocked) instead of staring blankly until
+        // the user creates a config.
+        do {
+            try writeStarterConfig(at: tomlURL)
+            let profiles = try ConfigLoader().loadProfiles(from: tomlURL)
+            logger.info("first launch — wrote a starter config to \(tomlURL.path) (\(profiles.count) profile)")
+            return profiles
+        } catch {
+            logger.warn("failed to write starter config to \(tomlURL.path): \(error) — engine will run idle until a config is created")
+            return []
+        }
+    }
+
+    /// Default `profiles.toml` content, written on first launch when
+    /// neither an existing TOML nor a Hammerspoon `profiles.lua`
+    /// exists. Includes one always-matches "laptop" profile with
+    /// modern-Mac defaults plus inline comments showing the user how
+    /// to add docked locations and OBS scenes.
+    private static let starterConfig = """
+    # AV Pain Reliever — profile config.
+    # Each [profiles.<name>] section defines a location.
+    #
+    # A profile matches when every USB device in its `fingerprint` is
+    # currently attached. Most-specific match wins; alphabetical
+    # tiebreak. An empty fingerprint matches always (specificity 0),
+    # making such a profile the implicit fallback when nothing more
+    # specific matches.
+
+    [profiles.laptop]
+    # Implicit fallback — no fingerprint means this matches whenever
+    # no docked profile does (typical state: undocked MacBook).
+    audioInput  = "MacBook Pro Microphone"
+    audioOutput = "MacBook Pro Speakers"
+    # obsScene = "Laptop"  # uncomment if you use OBS scenes
+
+    # Add a docked profile here, e.g.:
+    #
+    # [profiles.home-office]
+    # audioInput  = "Yeti Stereo Microphone"
+    # audioOutput = "External DAC"
+    # obsScene    = "Home Office"
+    # fingerprint = [
+    #   { vendorID = 0x2188, productID = 0x6533, name = "Dock" },
+    #   { vendorID = 0x043e, productID = 0x9a68, name = "External camera" },
+    # ]
+    #
+    # Click the menu-bar item → "Reveal Log in Console" while docked
+    # to see the (vendorID, productID) pairs of attached devices.
+
+    """
+
+    private func writeStarterConfig(at url: URL) throws {
+        let parent = url.deletingLastPathComponent()
+        try FileManager.default.createDirectory(
+            at: parent, withIntermediateDirectories: true
+        )
+        try Self.starterConfig.write(to: url, atomically: true, encoding: .utf8)
     }
 }
