@@ -31,23 +31,23 @@ struct AddProfileView: View {
                         if !viewModel.prettyPreview.isEmpty {
                             Text("Will appear as “\(viewModel.prettyPreview)”")
                                 .font(.caption)
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(Theme.Color.highlight)
                         } else {
                             Text("Pick anything human — letters, spaces, punctuation are fine.")
                                 .font(.caption)
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(Theme.Color.chrome)
                         }
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                 } header: {
-                    Text("Name")
+                    sectionHeader("Name", symbol: Theme.Symbol.nameSection)
                 }
 
                 Section {
                     devicesList
                 } header: {
                     HStack {
-                        Text("USB fingerprint")
+                        sectionHeader("USB fingerprint", symbol: Theme.Symbol.usbSection)
                         Spacer()
                         Button("Refresh", action: viewModel.refresh)
                             .controlSize(.small)
@@ -55,10 +55,10 @@ struct AddProfileView: View {
                 } footer: {
                     Text("Uncheck peripherals that aren't unique to this location (keyboards, mice, phones). The profile matches when every checked device is attached.")
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Theme.Color.chrome)
                 }
 
-                Section("Audio") {
+                Section {
                     audioPicker(
                         title: "Input (microphone)",
                         selection: $viewModel.audioInput,
@@ -69,6 +69,8 @@ struct AddProfileView: View {
                         selection: $viewModel.audioOutput,
                         devices: viewModel.outputDevices
                     )
+                } header: {
+                    sectionHeader("Audio", symbol: Theme.Symbol.audioSection)
                 }
 
                 Section {
@@ -79,11 +81,11 @@ struct AddProfileView: View {
                         }
                     }
                 } header: {
-                    Text("Camera")
+                    sectionHeader("Camera", symbol: Theme.Symbol.cameraSection)
                 } footer: {
                     Text("Sets macOS's preferred camera. Apps with their own camera picker (Zoom, Slack, Teams) won't follow this — configure those once per location and they'll remember.")
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Theme.Color.chrome)
                 }
             }
             .formStyle(.grouped)
@@ -99,17 +101,40 @@ struct AddProfileView: View {
                 Button("Cancel", action: dismiss)
                     .keyboardShortcut(.cancelAction)
                 Button(action: { viewModel.save() }) {
-                    Text(viewModel.isSaving ? "Saving…" : "Save Profile")
+                    HStack(spacing: 6) {
+                        if viewModel.didSave {
+                            Image(systemName: "checkmark.circle.fill")
+                                .foregroundStyle(Theme.Color.success)
+                            Text("Saved")
+                        } else if viewModel.isSaving {
+                            ProgressView()
+                                .controlSize(.small)
+                                .tint(.white)
+                            Text("Saving…")
+                        } else {
+                            Text(viewModel.editingExisting ? "Update Profile" : "Save Profile")
+                        }
+                    }
                 }
                 .buttonStyle(.borderedProminent)
+                .tint(viewModel.didSave ? Theme.Color.success : Theme.Color.primary)
                 .disabled(!viewModel.canSave)
                 .keyboardShortcut(.defaultAction)
+                .animation(.easeInOut(duration: 0.18), value: viewModel.didSave)
             }
         }
         .padding(20)
         .frame(minWidth: 460, idealWidth: 520, minHeight: 540, idealHeight: 600)
         .onChange(of: viewModel.didSave) { _, saved in
-            if saved { dismiss() }
+            // Brief save-success window (~0.45 s) so the green check
+            // and "Saved" affordance read as a beat of feedback rather
+            // than disappearing instantly.
+            if saved {
+                Task { @MainActor in
+                    try? await Task.sleep(nanoseconds: 450_000_000)
+                    dismiss()
+                }
+            }
         }
         .alert(
             "Profile already exists",
@@ -145,12 +170,33 @@ struct AddProfileView: View {
     // MARK: - Subviews
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text("Add a Profile")
-                .font(.title2.bold())
-            Text("Capture the dock you're at right now.")
-                .font(.callout)
-                .foregroundStyle(.secondary)
+        HStack(alignment: .center, spacing: 12) {
+            Image(systemName: Theme.Symbol.appIcon)
+                .font(.system(size: 28, weight: .semibold))
+                .foregroundStyle(Theme.Color.primary)
+                .symbolRenderingMode(.hierarchical)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(viewModel.editingExisting ? "Edit Profile" : "Add a Profile")
+                    .font(.title2.bold())
+                    .foregroundStyle(Theme.Color.primary)
+                Text(viewModel.editingExisting
+                     ? "Tweak how this location switches your audio + camera."
+                     : "Capture the dock you're at right now.")
+                    .font(.callout)
+                    .foregroundStyle(Theme.Color.highlight)
+            }
+            Spacer()
+        }
+    }
+
+    /// Section-header label shared by every Form section. Keeps
+    /// title + section icon consistent across the wizard.
+    private func sectionHeader(_ title: String, symbol: String) -> some View {
+        Label {
+            Text(title)
+        } icon: {
+            Image(systemName: symbol)
+                .foregroundStyle(Theme.Color.primary)
         }
     }
 

@@ -1,6 +1,7 @@
 import Foundation
 import AppKit
 import SwiftUI
+import Combine
 import AVPainReliever
 
 /// Owns the engine and exposes its current profile to the SwiftUI
@@ -14,6 +15,7 @@ struct AddProfileDependencies {
     let audioController: AudioController
     let cameraController: CameraController
     let configURL: URL
+    let editing: Profile?
     let onSaved: () -> Void
 }
 
@@ -45,6 +47,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
     private var engine: Engine?
     private let notifier: Notifier = AppleScriptNotifier()
 
+    /// Persistent UI preferences. Owned here so views can be passed a
+    /// shared `@ObservedObject` reference; the SettingsView and the
+    /// menu both read from this.
+    let settings = SettingsStore()
+
+    /// Profile currently slated for editing. Set by
+    /// `beginEditingProfile(_:)` before opening the wizard window;
+    /// cleared once the wizard finishes. Reading this when building
+    /// the wizard's `AddProfileDependencies` is what swaps it from
+    /// "add new" mode to "edit existing".
+    private(set) var profileBeingEdited: Profile?
+
+    private var cancellables: Set<AnyCancellable> = []
+
+    override init() {
+        super.init()
+        // Republish SettingsStore changes through our own
+        // ObservableObject so views that observe the AppDelegate (the
+        // menu, the About scene) re-render when a setting flips —
+        // without each view having to observe the store directly.
+        settings.objectWillChange
+            .sink { [weak self] in self?.objectWillChange.send() }
+            .store(in: &cancellables)
+    }
+
     private static let profilesTOMLURL: URL =
         URL(fileURLWithPath: NSHomeDirectory())
             .appendingPathComponent(
@@ -72,6 +99,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         // policy at runtime.
         NSApp.setActivationPolicy(.accessory)
         bootEngine()
+        maybeShowWelcomeWindow()
+    }
+
+    /// Set true on first-launch when there are no real-fingerprint
+    /// profiles AND the welcome has never been suppressed. App.swift
+    /// observes this and opens the welcome window. The fresh-user
+    /// starter config still writes (so the engine is operational),
+    /// but a single empty-fingerprint laptop fallback doesn't count
+    /// as "configured" — only a profile with a real fingerprint does.
+    @Published var shouldShowWelcome: Bool = false
+
+    private func maybeShowWelcomeWindow() {
+        guard !settings.suppressedWelcome else { return }
+        let configured = availableProfiles.contains { !$0.fingerprint.isEmpty }
+        guard !configured else { return }
+        // Defer to the next runloop turn so SwiftUI's window graph is
+        // ready to receive the openWindow request.
+        DispatchQueue.main.async { [weak self] in
+            self?.shouldShowWelcome = true
+            NSApp.activate(ignoringOtherApps: true)
+        }
+    }
+
+    /// Suppress the first-run welcome from this point forward. Called
+    /// from both `WelcomeView` callbacks (Skip and Add-Your-First).
+    func dismissWelcome() {
+        settings.suppressedWelcome = true
+        shouldShowWelcome = false
     }
 
     /// Tear down any existing engine, re-read the config from disk,
@@ -112,9 +167,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         // the previous evaluation). The initial evaluation on launch
         // is intentionally silent — the menu-bar title is already
         // showing the correct profile, so a duplicate toast would
-        // just be noise.
+        // just be noise. Settings.notificationsEnabled gates the
+        // toast (default on; users can mute from Preferences).
         if let last = lastNotifiedName, last != profile.name {
-            notifier.notify(title: pretty, body: "AV profile activated")
+            settings.incrementSwitchCount()
+            if settings.notificationsEnabled {
+                notifier.notify(
+                    title: NotificationCopy.title(forSlug: profile.name),
+                    body: "Audio + camera switched"
+                )
+            }
         }
         lastNotifiedName = profile.name
 
@@ -132,6 +194,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         // multiple USB events fire at the same unconfigured location.
         guard !notifiedUnknownLocation else { return }
         notifiedUnknownLocation = true
+        guard settings.notificationsEnabled else { return }
 
         let count = devices.count
         let unitNoun = count == 1 ? "device" : "devices"
@@ -179,14 +242,59 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
     /// the engine's internals — both are cheap to construct and the
     /// wizard's snapshot calls don't compete with the engine's
     /// long-lived watcher.
+    ///
+    /// `editing` is consumed once per wizard window: the next call
+    /// returns the edit target, and clearing it after the bundle is
+    /// built ensures a subsequent "Add Profile…" doesn't accidentally
+    /// reopen in edit mode.
     func addProfileDependencies() -> AddProfileDependencies {
-        AddProfileDependencies(
+        let editing = profileBeingEdited
+        profileBeingEdited = nil
+        return AddProfileDependencies(
             watcher: IOKitUSBWatcher(),
             audioController: CoreAudioController(),
             cameraController: AVFoundationCameraController(),
             configURL: Self.profilesTOMLURL,
-            onSaved: { [weak self] in self?.reloadConfig() }
+            editing: editing,
+            onSaved: { [weak self] in
+                // Saving any profile is taken as the user being
+                // committed — no need to keep showing the welcome
+                // window if it was queued.
+                self?.dismissWelcome()
+                self?.reloadConfig()
+            }
         )
+    }
+
+    /// Stash the profile to edit. The wizard's window-content view
+    /// pulls this into its bundle on construction, then clears it.
+    func beginEditingProfile(_ profile: Profile) {
+        profileBeingEdited = profile
+    }
+
+    /// Confirm + delete a profile. Shown as a modal alert so the user
+    /// can't accidentally lose a configuration. After deletion the
+    /// engine reloads against the trimmed config.
+    func requestDelete(_ profile: Profile) {
+        let alert = NSAlert()
+        let pretty = PrettyName.format(profile.name)
+        alert.messageText = "Delete “\(pretty)”?"
+        alert.informativeText = "AV Pain Reliever will stop switching to this profile when its USB devices are attached. You can always recapture it later."
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "Delete")
+        alert.addButton(withTitle: "Cancel")
+        let response = alert.runModal()
+        guard response == .alertFirstButtonReturn else { return }
+        do {
+            try ProfileWriter().delete(named: profile.name, in: Self.profilesTOMLURL)
+            reloadConfig()
+        } catch {
+            let failure = NSAlert()
+            failure.messageText = "Couldn't delete “\(pretty)”"
+            failure.informativeText = "\(error)"
+            failure.alertStyle = .critical
+            failure.runModal()
+        }
     }
 
     // MARK: - Bootstrap
@@ -202,10 +310,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
             resolver: resolver,
             applier: applier,
             logger: logger,
-            debounceInterval: 1.5,
+            debounceInterval: settings.debounceInterval,
             clock: DispatchClock()
         )
     }
+
+    // MARK: - Convenience surfaces for the menu
+
+    /// Mirror of `settings.profileSwitchCount` exposed on the
+    /// AppDelegate so the menu's `@ObservedObject` re-renders without
+    /// a separate observer plumbed through the view.
+    var profileSwitchCount: Int { settings.profileSwitchCount }
+
+    /// Mirror of `settings.showAudioCameraInMenu` for the same reason.
+    var showAudioCameraInMenu: Bool { settings.showAudioCameraInMenu }
 
     /// Profile-config discovery in priority order. Mirrors what the
     /// eventual first-run wizard will codify, but for now lets a

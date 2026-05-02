@@ -243,6 +243,96 @@ struct ProfileWriterTests {
         }
     }
 
+    @Test("delete removes the named section, preserving everything else")
+    func deleteRemovesSection() throws {
+        let url = tempTOMLURL()
+        defer { try? FileManager.default.removeItem(at: url) }
+        let prior = """
+        # User-added top comment.
+
+        [profiles.laptop]
+        audioInput = "MacBook Pro Microphone"
+
+        [profiles.home-office]
+        audioInput  = "Yeti Stereo Microphone"
+        audioOutput = "External DAC"
+        fingerprint = [
+          { vendorID = 0x2188, productID = 0x6533 },
+        ]
+
+        [profiles.studio]
+        audioInput = "Shure MV7"
+        """
+        try prior.write(to: url, atomically: true, encoding: .utf8)
+
+        try writer.delete(named: "home-office", in: url)
+
+        let after = try String(contentsOf: url, encoding: .utf8)
+        #expect(after.contains("[profiles.laptop]"))
+        #expect(after.contains("[profiles.studio]"))
+        #expect(!after.contains("[profiles.home-office]"))
+        #expect(after.contains("# User-added top comment."))
+
+        // The remaining file should still parse cleanly through the loader.
+        let loaded = try ConfigLoader().loadProfiles(from: url)
+        #expect(Set(loaded.map(\.name)) == ["laptop", "studio"])
+    }
+
+    @Test("delete on a missing section raises duplicateProfile")
+    func deleteOnMissingSectionThrows() throws {
+        let url = tempTOMLURL()
+        defer { try? FileManager.default.removeItem(at: url) }
+        try """
+        [profiles.laptop]
+        audioInput = "MacBook Pro Microphone"
+        """.write(to: url, atomically: true, encoding: .utf8)
+
+        do {
+            try writer.delete(named: "home-office", in: url)
+            Issue.record("expected duplicateProfile for missing section")
+        } catch ProfileWriteError.duplicateProfile {
+            // expected
+        } catch {
+            Issue.record("expected duplicateProfile, got \(error)")
+        }
+    }
+
+    @Test("delete on a missing file raises writeFailed")
+    func deleteOnMissingFileThrows() throws {
+        let url = tempTOMLURL()
+        // Don't create the file.
+        do {
+            try writer.delete(named: "laptop", in: url)
+            Issue.record("expected writeFailed for missing file")
+        } catch ProfileWriteError.writeFailed {
+            // expected
+        } catch {
+            Issue.record("expected writeFailed, got \(error)")
+        }
+    }
+
+    @Test("deleted profile can be re-added")
+    func deleteThenAppendRoundTrips() throws {
+        let url = tempTOMLURL()
+        defer { try? FileManager.default.removeItem(at: url) }
+        try """
+        [profiles.home-office]
+        audioInput = "Yeti Stereo Microphone"
+        """.write(to: url, atomically: true, encoding: .utf8)
+
+        try writer.delete(named: "home-office", in: url)
+        try writer.append(
+            profile: Profile(
+                name: "home-office",
+                fingerprint: [],
+                audioInput: "New Mic"
+            ),
+            to: url
+        )
+        let loaded = try ConfigLoader().loadProfiles(from: url)
+        #expect(loaded.first { $0.name == "home-office" }?.audioInput == "New Mic")
+    }
+
     // MARK: - helpers
 
     private func tempTOMLURL() -> URL {

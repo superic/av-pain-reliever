@@ -73,12 +73,14 @@ final class AddProfileViewModel: ObservableObject {
     private let cameraController: CameraController
     private let configURL: URL
     private let onSaved: () -> Void
+    private let editingSlug: String?
 
     init(
         watcher: USBWatcher,
         audioController: AudioController,
         cameraController: CameraController,
         configURL: URL,
+        editing: Profile? = nil,
         onSaved: @escaping () -> Void
     ) {
         self.watcher = watcher
@@ -86,6 +88,24 @@ final class AddProfileViewModel: ObservableObject {
         self.cameraController = cameraController
         self.configURL = configURL
         self.onSaved = onSaved
+        self.editingSlug = editing?.name
+
+        if let profile = editing {
+            // Pre-populate from the existing profile so the user can
+            // adjust the bits they care about. Pretty-cased name keeps
+            // the textfield human-readable; we re-slugify on save.
+            self.name = PrettyName.format(profile.name)
+            self.audioInput = profile.audioInput
+            self.audioOutput = profile.audioOutput
+            self.camera = profile.camera
+            // Selecting profile fingerprints by default lets the user
+            // see their saved set immediately. Not all profile devices
+            // are necessarily attached right now — the wizard's check-
+            // boxes only show currently-attached ones, so refresh()
+            // will narrow the selection to the intersection.
+            self.selectedDeviceIDs = Set(profile.fingerprint)
+        }
+
         refresh()
     }
 
@@ -119,6 +139,17 @@ final class AddProfileViewModel: ObservableObject {
         if audioInput == nil { audioInput = defaults.inputName }
         if audioOutput == nil { audioOutput = defaults.outputName }
         if camera == nil { camera = cameraController.currentPreferredName() }
+
+        // First-launch convenience: if the user hasn't typed a name and
+        // we recognize a docked-setup signature in the attached
+        // devices, pre-fill a sensible suggestion. Only when adding —
+        // editing keeps the existing name. The user can always rename.
+        if name.isEmpty && editingSlug == nil {
+            let deviceNames = named.compactMap { $0.name }
+            if let suggested = ProfileIcon.suggestedName(forDeviceNames: deviceNames) {
+                name = PrettyName.format(suggested)
+            }
+        }
     }
 
     var inputDevices: [AudioDevice] {
@@ -148,7 +179,13 @@ final class AddProfileViewModel: ObservableObject {
     /// with a clear inline error so the user knows why save was
     /// rejected (vs. silently disabling and leaving them stuck).
     var canSave: Bool {
-        !isSaving
+        !isSaving && !didSave
+    }
+
+    /// True when the wizard was opened to edit an existing profile
+    /// rather than to create a new one. Drives copy + button labels.
+    var editingExisting: Bool {
+        editingSlug != nil
     }
 
     // MARK: - Save
@@ -161,6 +198,16 @@ final class AddProfileViewModel: ObservableObject {
             return
         }
         let writer = ProfileWriter()
+
+        // Editing a profile and keeping the same slug → replace in
+        // place. Editing a profile but renaming it to a slug that
+        // collides with another existing profile → fall through to
+        // the collision dialog.
+        if let editing = editingSlug, slug == editing {
+            performSave(slug: slug, mode: .replace)
+            return
+        }
+
         if writer.profileExists(named: slug, in: configURL) {
             // Don't write yet — surface the collision dialog and let
             // the user pick (update existing / save as new / cancel).
@@ -240,6 +287,17 @@ final class AddProfileViewModel: ObservableObject {
                     deviceNames: deviceNames,
                     in: configURL
                 )
+            }
+            // Renamed an existing profile (slug differs from the one we
+            // started editing) → drop the old section so the user
+            // doesn't end up with both. Failures here surface as a
+            // warning since the new profile already saved fine.
+            if let editing = editingSlug, editing != slug {
+                do {
+                    try ProfileWriter().delete(named: editing, in: configURL)
+                } catch {
+                    lastError = "Saved as \"\(PrettyName.format(slug))\", but couldn't remove the old \"\(PrettyName.format(editing))\" entry: \(error)"
+                }
             }
             didSave = true
             onSaved()

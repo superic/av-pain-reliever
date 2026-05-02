@@ -119,6 +119,46 @@ public struct ProfileWriter {
         return "\(base)-\(n)"
     }
 
+    /// Remove the `[profiles.<name>]` section from the TOML file at
+    /// `url`. The section header line through everything before the
+    /// next `[...]` section (or end of file) is excised; surrounding
+    /// content (other profiles, header banner, comments) is preserved.
+    /// Throws `.duplicateProfile` (re-using the "expected this section
+    /// to be present, it wasn't" code path) when the section is
+    /// missing — the caller has already established it's there, so
+    /// missing means a concurrent edit raced us.
+    public func delete(named name: String, in url: URL) throws {
+        let validatedName = try Self.validateName(name)
+        guard FileManager.default.fileExists(atPath: url.path) else {
+            throw ProfileWriteError.writeFailed(reason: "no file to edit at \(url.path)")
+        }
+        let existing: String
+        do {
+            existing = try String(contentsOf: url, encoding: .utf8)
+        } catch {
+            throw ProfileWriteError.writeFailed(
+                reason: "couldn't read \(url.path): \(error.localizedDescription)"
+            )
+        }
+        guard let span = Self.sectionRange(named: validatedName, in: existing) else {
+            throw ProfileWriteError.duplicateProfile(name: validatedName)
+        }
+        var output = existing
+        output.replaceSubrange(span, with: "")
+        // Trailing whitespace from a removed-last-section can leave a
+        // blank tail; tidy that up so the file looks clean.
+        while output.hasSuffix("\n\n\n") {
+            output.removeLast()
+        }
+        do {
+            try output.write(to: url, atomically: true, encoding: .utf8)
+        } catch {
+            throw ProfileWriteError.writeFailed(
+                reason: "couldn't write \(url.path): \(error.localizedDescription)"
+            )
+        }
+    }
+
     /// Replace an existing `[profiles.<name>]` section's body with the
     /// rendered output for `profile`. The section header line through
     /// the line just before the next `[...]` section (or end of file)

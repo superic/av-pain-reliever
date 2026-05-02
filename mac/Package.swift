@@ -34,5 +34,13 @@ let package = Package(
             name: "AVPainRelieverTests",
             dependencies: ["AVPainReliever"]
         ),
+        // Tests for the app target's pure-logic helpers (Theme,
+        // ProfileIcon, NotificationCopy, SettingsStore). The view code
+        // itself is exercised by hand; this target keeps the
+        // map/copy/persist helpers under unit-test coverage.
+        .testTarget(
+            name: "AVPainRelieverAppTests",
+            dependencies: ["AVPainRelieverApp"]
+        ),
     ]
 )

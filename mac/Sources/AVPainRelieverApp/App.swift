@@ -18,6 +18,11 @@ struct AVPainRelieverApp: SwiftUI.App {
         // is what makes the live update work.
         MenuBarExtra {
             MenuContentView(delegate: appDelegate)
+            // Hidden helper — observes appDelegate.shouldShowWelcome
+            // and opens the welcome window when it flips true. Lives
+            // inside MenuBarExtra so SwiftUI's openWindow environment
+            // is available; menu items render fine alongside.
+            WelcomeOpener(delegate: appDelegate)
         } label: {
             MenuLabelView(delegate: appDelegate)
         }
@@ -27,6 +32,63 @@ struct AVPainRelieverApp: SwiftUI.App {
             AddProfileWindowContent(delegate: appDelegate)
         }
         .windowResizability(.contentSize)
+
+        Window("Settings", id: settingsWindowID) {
+            SettingsView(delegate: appDelegate, settings: appDelegate.settings)
+        }
+        .windowResizability(.contentSize)
+
+        Window("About AV Pain Reliever", id: aboutWindowID) {
+            AboutView()
+        }
+        .windowResizability(.contentSize)
+
+        Window("Welcome", id: welcomeWindowID) {
+            WelcomeWindowContent(delegate: appDelegate)
+        }
+        .windowResizability(.contentSize)
+    }
+}
+
+/// Invisible view inside the menu scene whose only job is to react to
+/// `appDelegate.shouldShowWelcome` and open the welcome window via the
+/// SwiftUI environment. Keeping the openWindow trigger inside a real
+/// View is the cleanest way to bridge AppDelegate (no environment
+/// access) → SwiftUI's openWindow API.
+private struct WelcomeOpener: View {
+    @ObservedObject var delegate: AppDelegate
+    @Environment(\.openWindow) private var openWindow
+
+    var body: some View {
+        Color.clear
+            .frame(width: 0, height: 0)
+            .onChange(of: delegate.shouldShowWelcome) { _, show in
+                if show {
+                    openWindow(id: welcomeWindowID)
+                    NSApp.activate(ignoringOtherApps: true)
+                }
+            }
+    }
+}
+
+private struct WelcomeWindowContent: View {
+    @ObservedObject var delegate: AppDelegate
+    @Environment(\.openWindow) private var openWindow
+    @Environment(\.dismissWindow) private var dismissWindow
+
+    var body: some View {
+        WelcomeView(
+            onAddProfile: {
+                delegate.dismissWelcome()
+                openWindow(id: addProfileWindowID)
+                NSApp.activate(ignoringOtherApps: true)
+                dismissWindow(id: welcomeWindowID)
+            },
+            onSkip: {
+                delegate.dismissWelcome()
+                dismissWindow(id: welcomeWindowID)
+            }
+        )
     }
 }
 
@@ -34,7 +96,7 @@ private struct MenuLabelView: View {
     @ObservedObject var delegate: AppDelegate
 
     var body: some View {
-        Image(systemName: "pills.fill")
+        Image(systemName: Theme.Symbol.appIcon)
         Text(delegate.currentProfileTitle)
     }
 }
@@ -42,6 +104,13 @@ private struct MenuLabelView: View {
 private struct MenuContentView: View {
     @ObservedObject var delegate: AppDelegate
     @Environment(\.openWindow) private var openWindow
+    /// One-shot easter egg: when the user holds Option while the menu
+    /// opens (clicks anywhere then peeks the menu — close enough), an
+    /// extra "stats" line shows up. The flag flips back to false when
+    /// the menu closes (next reopen needs another modifier press),
+    /// which the SwiftUI scene resets automatically by reconstructing
+    /// the view.
+    @State private var showStats: Bool = false
 
     var body: some View {
         Text(delegate.currentProfileTitle)
@@ -55,21 +124,17 @@ private struct MenuContentView: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
+        if showStats || NSEvent.modifierFlags.contains(.option) {
+            Text(StatsCopy.line(for: delegate.profileSwitchCount))
+                .font(.caption)
+                .foregroundStyle(Theme.Color.highlight)
+        }
         Divider()
 
         if !delegate.availableProfiles.isEmpty {
             Menu("Switch to") {
                 ForEach(delegate.availableProfiles, id: \.name) { profile in
-                    Button {
-                        delegate.applyManually(profile)
-                    } label: {
-                        let isActive = profile.name == delegate.activeProfileSlug
-                        if isActive {
-                            Label(PrettyName.format(profile.name), systemImage: "checkmark")
-                        } else {
-                            Text(PrettyName.format(profile.name))
-                        }
-                    }
+                    profileMenuEntry(profile)
                 }
             }
             Divider()
@@ -96,6 +161,17 @@ private struct MenuContentView: View {
 
         Divider()
 
+        Button("Settings…") {
+            openWindow(id: settingsWindowID)
+            NSApp.activate(ignoringOtherApps: true)
+        }
+        .keyboardShortcut(",")
+
+        Button("About AV Pain Reliever") {
+            openWindow(id: aboutWindowID)
+            NSApp.activate(ignoringOtherApps: true)
+        }
+
         Button("Reveal Log in Console") {
             // Surface the os.Logger stream by opening Console.app.
             // The log stream filter for our subsystem can be applied
@@ -111,6 +187,58 @@ private struct MenuContentView: View {
             NSApp.terminate(nil)
         }
         .keyboardShortcut("q")
+    }
+
+    /// Each profile entry inside the "Switch to" submenu. The active
+    /// profile gets a checkmark; everything else shows its slug-mapped
+    /// SF Symbol. The button label includes a quiet sub-text line
+    /// describing what audio/camera the profile applies — answers the
+    /// at-a-glance "what does this profile actually do?" question.
+    @ViewBuilder
+    private func profileMenuEntry(_ profile: Profile) -> some View {
+        let pretty = PrettyName.format(profile.name)
+        let isActive = profile.name == delegate.activeProfileSlug
+        let symbol = isActive ? "checkmark" : ProfileIcon.symbol(for: profile.name)
+        Menu {
+            Button("Switch to “\(pretty)”") {
+                delegate.applyManually(profile)
+            }
+            Divider()
+            Button("Edit…") {
+                delegate.beginEditingProfile(profile)
+                openWindow(id: addProfileWindowID)
+                NSApp.activate(ignoringOtherApps: true)
+            }
+            Button("Delete…") {
+                delegate.requestDelete(profile)
+            }
+        } label: {
+            Label {
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(pretty)
+                    if let summary = profileSummary(profile),
+                       delegate.showAudioCameraInMenu {
+                        Text(summary)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            } icon: {
+                Image(systemName: symbol)
+            }
+        }
+    }
+
+    /// One-line summary of the audio / camera the profile would apply.
+    /// Uses bullet separators when both are present. Returns nil when
+    /// the profile doesn't change anything (rare — usually a stub).
+    private func profileSummary(_ profile: Profile) -> String? {
+        var parts: [String] = []
+        if let mic = profile.audioInput { parts.append("🎙 \(mic)") }
+        if let out = profile.audioOutput { parts.append("🔈 \(out)") }
+        if let cam = profile.camera { parts.append("📷 \(cam)") }
+        guard !parts.isEmpty else { return nil }
+        return parts.joined(separator: "  •  ")
     }
 }
 
@@ -131,6 +259,7 @@ private struct AddProfileWindowContent: View {
             audioController: deps.audioController,
             cameraController: deps.cameraController,
             configURL: deps.configURL,
+            editing: deps.editing,
             onSaved: deps.onSaved
         ))
     }
