@@ -197,15 +197,6 @@ private struct MenuContentView: View {
         }
         .keyboardShortcut("n")
 
-        Button("Re-evaluate Now") {
-            delegate.reevaluate()
-        }
-        .keyboardShortcut("r")
-        Button("Reload Config") {
-            delegate.reloadConfig()
-        }
-        .keyboardShortcut("l")
-
         Divider()
 
         Button("Settings…") {
@@ -219,13 +210,30 @@ private struct MenuContentView: View {
             NSApp.activate(ignoringOtherApps: true)
         }
 
-        Button("Reveal Log in Console") {
-            // Surface the os.Logger stream by opening Console.app.
-            // The log stream filter for our subsystem can be applied
-            // there manually; deep-linking to a filtered view requires
-            // a private URL scheme we don't want to bake in.
-            let consoleURL = URL(fileURLWithPath: "/System/Applications/Utilities/Console.app")
-            NSWorkspace.shared.openApplication(at: consoleURL, configuration: .init())
+        // Power-user / diagnostic actions live under Advanced so the
+        // top-level menu stays focused on the things people actually
+        // use day-to-day (Switch / Add / Settings). Re-evaluate +
+        // Reload are useful when the engine's state has drifted from
+        // reality (a missed USB event, a hand-edited config); the
+        // log link is for diagnosing what the engine saw.
+        Menu("Advanced") {
+            Button("Re-evaluate Now") {
+                delegate.reevaluate()
+            }
+            .keyboardShortcut("r")
+            Button("Reload Config") {
+                delegate.reloadConfig()
+            }
+            .keyboardShortcut("l")
+            Divider()
+            Button("Reveal Log in Console") {
+                // Surface the os.Logger stream by opening Console.app.
+                // The log stream filter for our subsystem can be applied
+                // there manually; deep-linking to a filtered view requires
+                // a private URL scheme we don't want to bake in.
+                let consoleURL = URL(fileURLWithPath: "/System/Applications/Utilities/Console.app")
+                NSWorkspace.shared.openApplication(at: consoleURL, configuration: .init())
+            }
         }
 
         Divider()
