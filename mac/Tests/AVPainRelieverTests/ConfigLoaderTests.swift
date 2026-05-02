@@ -73,6 +73,22 @@ struct ConfigLoaderTests {
         #expect(names == ["work-office", "conference-room"])
     }
 
+    @Test("serialNumber is read from TOML when present and stays nil when absent")
+    func serialNumberFromTOML() throws {
+        let profiles = try loader.parseProfiles("""
+        [profiles.home-office]
+        fingerprint = [
+          { vendorID = 0x1, productID = 0x2, serialNumber = "HOME-ABC" },
+          { vendorID = 0x3, productID = 0x4 },
+        ]
+        """)
+        let p = profiles.first!
+        let pinned = p.fingerprint.first { $0.serialNumber != nil }!
+        let loose = p.fingerprint.first { $0.serialNumber == nil }!
+        #expect(pinned.serialNumber == "HOME-ABC")
+        #expect(loose.vendorID == 0x3 && loose.productID == 0x4)
+    }
+
     @Test("decimal vendor/product IDs parse to the same integers as hex")
     func decimalIDs() throws {
         let profiles = try loader.parseProfiles("""

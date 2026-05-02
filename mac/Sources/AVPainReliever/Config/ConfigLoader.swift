@@ -33,8 +33,13 @@ public enum ConfigError: Error, Equatable {
 /// audioOutput = "CalDigit Thunderbolt 3 Audio"
 /// obsScene    = "Home Office"
 /// fingerprint = [
-///   { vendorID = 0x2188, productID = 0x6533, name = "CalDigit Thunderbolt 3 Audio (dock)" },
-///   { vendorID = 0x043e, productID = 0x9a68, name = "LG UltraFine Display Camera" },
+///   { vendorID = 0x2188, productID = 0x6533, name = "CalDigit dock" },
+///   # `serialNumber` is optional. When present, the entry only matches
+///   # that exact unit — useful when you have two of the same model at
+///   # different locations (e.g., identical LG monitors at home and
+///   # work). Omit it to match any unit of the (vid, pid).
+///   { vendorID = 0x043e, productID = 0x9a68, serialNumber = "ABC123",
+///     name = "Home LG UltraFine" },
 /// ]
 /// ```
 ///
@@ -124,10 +129,18 @@ private struct FingerprintEntry: Decodable {
     let vendorID: Int
     let productID: Int
     /// For human reading in the config file. Ignored at match time —
-    /// the resolver matches by `(vendorID, productID)` only.
+    /// the resolver matches by `(vendorID, productID)` (with optional
+    /// serial-number disambiguation, see below) and never by `name`.
     let name: String?
+    /// Optional USB serial number. When present, the resolver
+    /// matches strictly: this fingerprint entry only fires when an
+    /// attached device with the same `(vid, pid)` ALSO has this
+    /// exact serial. Used to disambiguate physically-identical
+    /// devices at different locations (e.g., two LG monitors of the
+    /// same model at home and work).
+    let serialNumber: String?
 
     var usbDevice: USBDevice {
-        USBDevice(vendorID: vendorID, productID: productID)
+        USBDevice(vendorID: vendorID, productID: productID, serialNumber: serialNumber)
     }
 }

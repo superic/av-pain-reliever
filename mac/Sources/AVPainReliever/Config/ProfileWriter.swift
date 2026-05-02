@@ -135,6 +135,9 @@ public struct ProfileWriter {
                 var entry = "  { "
                 entry += "vendorID = 0x\(String(format: "%04x", d.vendorID)), "
                 entry += "productID = 0x\(String(format: "%04x", d.productID))"
+                if let serial = d.serialNumber, !serial.isEmpty {
+                    entry += ", serialNumber = \(tomlString(serial))"
+                }
                 if let name = deviceNames[d] ?? nil, !name.isEmpty {
                     entry += ", name = \(tomlString(name))"
                 }

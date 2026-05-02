@@ -267,7 +267,24 @@ public final class IOKitUSBWatcher: USBWatcher {
               let pid = intProperty(entry, "idProduct") else {
             return nil
         }
-        return USBDevice(vendorID: vid, productID: pid)
+        return USBDevice(
+            vendorID: vid,
+            productID: pid,
+            serialNumber: serialNumber(entry)
+        )
+    }
+
+    private static func serialNumber(_ entry: io_object_t) -> String? {
+        guard let raw = IORegistryEntryCreateCFProperty(
+            entry, "USB Serial Number" as CFString, kCFAllocatorDefault, 0
+        ) else {
+            return nil
+        }
+        guard let serial = raw.takeRetainedValue() as? String,
+              !serial.isEmpty else {
+            return nil
+        }
+        return serial
     }
 
     private static func productName(_ entry: io_object_t) -> String? {

@@ -113,6 +113,35 @@ struct ProfileWriterTests {
         #expect(written.contains("audioInput  = \"Yeti\""))
     }
 
+    @Test("serial numbers are emitted into fingerprint entries when present")
+    func writesSerialNumbers() throws {
+        let url = tempTOMLURL()
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        let pinned = USBDevice(
+            vendorID: 0x2188,
+            productID: 0x6533,
+            serialNumber: "HOME-ABC123"
+        )
+        let loose = USBDevice(vendorID: 0x043e, productID: 0x9a68)
+        try writer.append(
+            profile: Profile(name: "home", fingerprint: [pinned, loose]),
+            to: url
+        )
+
+        let written = try String(contentsOf: url, encoding: .utf8)
+        #expect(written.contains("serialNumber = \"HOME-ABC123\""))
+        // The unpinned entry stays serial-less.
+        #expect(written.range(of: "vendorID = 0x043e[^\\n]*serialNumber", options: .regularExpression) == nil)
+
+        // Round-trip the file and verify the serial survives.
+        let reloaded = try ConfigLoader().loadProfiles(from: url)
+        let reloadedPinned = reloaded.first!.fingerprint.first { $0.serialNumber != nil }!
+        let reloadedLoose = reloaded.first!.fingerprint.first { $0.serialNumber == nil }!
+        #expect(reloadedPinned.serialNumber == "HOME-ABC123")
+        #expect(reloadedLoose.serialNumber == nil)
+    }
+
     @Test("device names are rendered into fingerprint entries when supplied")
     func writesDeviceNames() throws {
         let url = tempTOMLURL()

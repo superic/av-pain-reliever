@@ -106,7 +106,7 @@ struct AddProfileView: View {
                         VStack(alignment: .leading, spacing: 1) {
                             Text(entry.displayName)
                                 .font(.callout)
-                            Text(String(format: "vid=0x%04x  pid=0x%04x", entry.device.vendorID, entry.device.productID))
+                            Text(idLine(for: entry.device))
                                 .font(.caption.monospaced())
                                 .foregroundStyle(.secondary)
                         }
@@ -123,6 +123,19 @@ struct AddProfileView: View {
                 Text(device.name).tag(String?.some(device.name))
             }
         }
+    }
+
+    /// Caption line under each device row. Shows vid/pid and the
+    /// serial number when present — both are useful for the user to
+    /// verify what's being captured (especially when two of the same
+    /// model exist at different locations and the serial is what
+    /// disambiguates them).
+    private func idLine(for device: USBDevice) -> String {
+        var parts = [String(format: "vid=0x%04x  pid=0x%04x", device.vendorID, device.productID)]
+        if let serial = device.serialNumber, !serial.isEmpty {
+            parts.append("serial \(serial)")
+        }
+        return parts.joined(separator: "  •  ")
     }
 
     private func binding(for device: USBDevice) -> Binding<Bool> {

@@ -269,13 +269,14 @@ public struct ConfigImporter {
         let vid = extractIntField("vendorID", in: entryBody)
         let pid = extractIntField("productID", in: entryBody)
         let name = extractStringField("name", in: entryBody)
+        let serial = extractStringField("serialNumber", in: entryBody)
         guard let vid else {
             throw ImporterError.missingFingerprintField(profile: profileName, field: "vendorID")
         }
         guard let pid else {
             throw ImporterError.missingFingerprintField(profile: profileName, field: "productID")
         }
-        return ImportedDevice(vendorID: vid, productID: pid, name: name)
+        return ImportedDevice(vendorID: vid, productID: pid, name: name, serialNumber: serial)
     }
 
     private func extractIntField(_ key: String, in body: Substring) -> Int? {
@@ -449,6 +450,9 @@ public struct ConfigImporter {
                 var entry = "  { "
                 entry += "vendorID = 0x\(hex4(d.vendorID)), "
                 entry += "productID = 0x\(hex4(d.productID))"
+                if let serial = d.serialNumber, !serial.isEmpty {
+                    entry += ", serialNumber = \(tomlString(serial))"
+                }
                 if let name = d.name {
                     entry += ", name = \(tomlString(name))"
                 }
@@ -500,7 +504,12 @@ private struct ImportedProfile {
     init(profile: Profile) {
         self.name = profile.name
         self.fingerprint = profile.fingerprint.map {
-            ImportedDevice(vendorID: $0.vendorID, productID: $0.productID, name: nil)
+            ImportedDevice(
+                vendorID: $0.vendorID,
+                productID: $0.productID,
+                name: nil,
+                serialNumber: $0.serialNumber
+            )
         }
         self.audioInput = profile.audioInput
         self.audioOutput = profile.audioOutput
@@ -510,7 +519,13 @@ private struct ImportedProfile {
     var profile: Profile {
         Profile(
             name: name,
-            fingerprint: fingerprint.map { USBDevice(vendorID: $0.vendorID, productID: $0.productID) },
+            fingerprint: fingerprint.map {
+                USBDevice(
+                    vendorID: $0.vendorID,
+                    productID: $0.productID,
+                    serialNumber: $0.serialNumber
+                )
+            },
             audioInput: audioInput,
             audioOutput: audioOutput,
             obsScene: obsScene
@@ -522,4 +537,5 @@ private struct ImportedDevice {
     let vendorID: Int
     let productID: Int
     let name: String?
+    let serialNumber: String?
 }

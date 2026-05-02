@@ -31,7 +31,13 @@ public struct ProfileResolver: Sendable {
         var best: Profile?
         var bestSpecificity = -1
         for profile in sorted {
-            let matches = profile.fingerprint.allSatisfy { attached.contains($0) }
+            // Asymmetric matching: each fingerprint entry must match
+            // *some* attached device. Entries with nil serial match
+            // any unit of (vid, pid); entries with a serial match only
+            // that exact unit. See USBDevice.matchesAttachedDevice.
+            let matches = profile.fingerprint.allSatisfy { entry in
+                attached.contains { device in entry.matchesAttachedDevice(device) }
+            }
             guard matches else { continue }
             let specificity = profile.fingerprint.count
             if specificity > bestSpecificity {

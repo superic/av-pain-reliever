@@ -98,6 +98,60 @@ struct ProfileResolverTests {
         #expect(resolver.resolve(attached: [Self.caldigitDock])?.name == "conference-room")
     }
 
+    // MARK: - Serial-number disambiguation
+
+    @Test("a fingerprint entry with a serial only matches that exact serial")
+    func serialPinningRestrictsMatch() {
+        let pinned = Profile(
+            name: "home",
+            fingerprint: [USBDevice(vendorID: 0x1, productID: 0x1, serialNumber: "HOME")]
+        )
+        let resolver = ProfileResolver(profiles: [pinned])
+
+        let workMonitor = USBDevice(vendorID: 0x1, productID: 0x1, serialNumber: "WORK")
+        #expect(resolver.resolve(attached: [workMonitor]) == nil)
+
+        let homeMonitor = USBDevice(vendorID: 0x1, productID: 0x1, serialNumber: "HOME")
+        #expect(resolver.resolve(attached: [homeMonitor])?.name == "home")
+    }
+
+    @Test("a serial-less fingerprint entry matches any unit of the model")
+    func serialNilEntryMatchesAnyUnit() {
+        let loose = Profile(
+            name: "any-dock",
+            fingerprint: [USBDevice(vendorID: 0x1, productID: 0x1)]
+        )
+        let resolver = ProfileResolver(profiles: [loose])
+
+        let attached: Set<USBDevice> = [
+            USBDevice(vendorID: 0x1, productID: 0x1, serialNumber: "WHATEVER"),
+        ]
+        #expect(resolver.resolve(attached: attached)?.name == "any-dock")
+    }
+
+    @Test("serial disambiguates two locations with the same model")
+    func serialDisambiguatesLocations() {
+        let home = Profile(
+            name: "home-office",
+            fingerprint: [USBDevice(vendorID: 0x1, productID: 0x1, serialNumber: "HOME-SERIAL")]
+        )
+        let work = Profile(
+            name: "work-office",
+            fingerprint: [USBDevice(vendorID: 0x1, productID: 0x1, serialNumber: "WORK-SERIAL")]
+        )
+        let resolver = ProfileResolver(profiles: [home, work])
+
+        let homeAttached: Set<USBDevice> = [
+            USBDevice(vendorID: 0x1, productID: 0x1, serialNumber: "HOME-SERIAL")
+        ]
+        let workAttached: Set<USBDevice> = [
+            USBDevice(vendorID: 0x1, productID: 0x1, serialNumber: "WORK-SERIAL")
+        ]
+
+        #expect(resolver.resolve(attached: homeAttached)?.name == "home-office")
+        #expect(resolver.resolve(attached: workAttached)?.name == "work-office")
+    }
+
     @Test("evaluation result is independent of input ordering")
     func orderingIsIrrelevant() {
         // Same data, two construction orders → same result. Guards
