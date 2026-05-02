@@ -17,21 +17,18 @@ public enum ConfigError: Error, Equatable {
 
 /// Loads `[Profile]` from a TOML config file.
 ///
-/// Schema (lives in `~/Library/Application Support/AVPainReliever/profiles.toml`
-/// once the app target ships):
+/// Schema (lives in `~/Library/Application Support/AVPainReliever/profiles.toml`):
 ///
 /// ```toml
 /// [profiles.laptop]
 /// audioInput  = "MacBook Pro Microphone"
 /// audioOutput = "MacBook Pro Speakers"
-/// obsScene    = "Laptop"
 /// # fingerprint omitted = empty list (always matches with specificity 0,
 /// # making this profile the implicit fallback)
 ///
 /// [profiles.home-office]
 /// audioInput  = "Yeti Stereo Microphone"
 /// audioOutput = "CalDigit Thunderbolt 3 Audio"
-/// obsScene    = "Home Office"
 /// fingerprint = [
 ///   { vendorID = 0x2188, productID = 0x6533, name = "CalDigit dock" },
 ///   # `serialNumber` is optional. When present, the entry only matches
@@ -45,8 +42,9 @@ public enum ConfigError: Error, Equatable {
 ///
 /// All body fields are optional. Inside a fingerprint entry, `vendorID`
 /// and `productID` are required; `name` is for human reading and is
-/// ignored at match time (the resolver matches on `(vendorID, productID)`
-/// only — see `SWIFT_PORT.md` → "Validated design decisions").
+/// ignored at match time. Unknown fields (including `obsScene` from
+/// older Hammerspoon-imported configs) are silently ignored, so V1
+/// reads V2-and-beyond TOML cleanly minus features it doesn't know.
 ///
 /// The top-level `[profiles.<name>]` namespace reserves the file's top
 /// level for future settings (debounce override, log path, etc.) without
@@ -111,8 +109,7 @@ private struct ConfigFile: Decodable {
                 name: name,
                 fingerprint: body.fingerprint?.map(\.usbDevice) ?? [],
                 audioInput: body.audioInput,
-                audioOutput: body.audioOutput,
-                obsScene: body.obsScene
+                audioOutput: body.audioOutput
             )
         }
     }
@@ -121,7 +118,6 @@ private struct ConfigFile: Decodable {
 private struct ProfileBody: Decodable {
     let audioInput: String?
     let audioOutput: String?
-    let obsScene: String?
     let fingerprint: [FingerprintEntry]?
 }
 

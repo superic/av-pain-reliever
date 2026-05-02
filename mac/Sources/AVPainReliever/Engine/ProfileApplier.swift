@@ -8,26 +8,25 @@ public protocol ApplierLogger {
     func warn(_ message: String)
 }
 
-/// Applies a resolved profile: switches default audio in/out and the
-/// OBS scene to match. Idempotent — a re-apply of the *same* profile
-/// is a logged no-op (matches `init.lua`'s `lastAppliedProfile` check).
+/// Applies a resolved profile: switches default audio in/out to
+/// match. Idempotent — a re-apply of the *same* profile is a logged
+/// no-op (matches `init.lua`'s `lastAppliedProfile` check).
 ///
 /// Owns no policy beyond "did we just apply this?": the caller is
 /// responsible for resolving the right profile (`ProfileResolver`),
 /// debouncing USB bursts (`Debouncer`), and choosing a fallback when
 /// no profile matches. The applier just executes the side effects.
+///
+/// OBS scene-switching is intentionally not part of V1; planned for
+/// V2. When it lands, it'll arrive as a separate optional injectable
+/// alongside `AudioController`.
 public final class ProfileApplier {
     private let audio: AudioController
-    private let obs: OBSController?
     private let logger: ApplierLogger
     private var lastAppliedName: String?
 
-    /// `obs` is optional: when nil (e.g. `obs-cmd` isn't installed),
-    /// any profile that requests a scene switch logs a warning and is
-    /// otherwise applied normally.
-    public init(audio: AudioController, obs: OBSController?, logger: ApplierLogger) {
+    public init(audio: AudioController, logger: ApplierLogger) {
         self.audio = audio
-        self.obs = obs
         self.logger = logger
     }
 
@@ -44,9 +43,6 @@ public final class ProfileApplier {
         if let output = profile.audioOutput {
             applyAudio(output, role: .output)
         }
-        if let scene = profile.obsScene {
-            applyScene(scene)
-        }
 
         lastAppliedName = profile.name
     }
@@ -61,24 +57,6 @@ public final class ProfileApplier {
             logger.warn("audio device '\(name)' exists but is not an \(role.rawValue) — skipping")
         case .setFailed(let status):
             logger.warn("setDefault\(role.rawValue) failed for: \(name) (OSStatus=\(status))")
-        }
-    }
-
-    private func applyScene(_ name: String) {
-        guard let obs else {
-            // OBS isn't configured for this engine. The decision was
-            // made at construction time (likely because obs-cmd isn't
-            // installed) and the configuration layer is responsible
-            // for announcing that — typically once at startup.
-            // Silently skipping per-profile avoids one warning per
-            // change for users who simply don't use OBS.
-            return
-        }
-        do {
-            try obs.switchScene(name)
-            logger.info("OBS scene switched: \(name)")
-        } catch {
-            logger.warn("OBS scene switch failed for '\(name)': \(error)")
         }
     }
 }

@@ -1,13 +1,12 @@
 import Foundation
 
 /// A location profile — a named set of USB devices (the "fingerprint")
-/// that, when all simultaneously attached, identifies the location, plus
-/// the audio + OBS settings the engine should apply when that profile
+/// that, when all simultaneously attached, identifies the location,
+/// plus the audio settings the engine should apply when that profile
 /// wins.
 ///
-/// Mirrors an entry in `profiles.lua`. All apply-time fields are
-/// optional: a profile may switch only audio (no OBS scene), only the
-/// scene (rare but legal), or all three.
+/// Audio fields are optional. OBS scene-switching is intentionally
+/// omitted from V1 of the Swift app; planned for V2.
 public struct Profile: Hashable, Sendable {
     /// The slug-cased profile name, e.g. `"home-office"`. Pretty-cased
     /// to "Home Office" at notification time, not here.
@@ -26,22 +25,15 @@ public struct Profile: Hashable, Sendable {
     /// to leave the current output untouched.
     public let audioOutput: String?
 
-    /// OBS scene name to switch to via `obs-cmd scene switch`, or nil
-    /// to skip the OBS step (e.g. profiles for locations where OBS
-    /// isn't relevant).
-    public let obsScene: String?
-
     public init(
         name: String,
         fingerprint: [USBDevice],
         audioInput: String? = nil,
-        audioOutput: String? = nil,
-        obsScene: String? = nil
+        audioOutput: String? = nil
     ) {
         self.name = name
         self.fingerprint = fingerprint
         self.audioInput = audioInput
         self.audioOutput = audioOutput
-        self.obsScene = obsScene
     }
 }

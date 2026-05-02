@@ -18,7 +18,6 @@ final class AddProfileViewModel: ObservableObject {
     @Published var name: String = ""
     @Published var audioInput: String? = nil
     @Published var audioOutput: String? = nil
-    @Published var obsScene: String = ""
 
     /// Currently-attached USB devices the user can include in the
     /// fingerprint. Refreshed on demand from the watcher.
@@ -99,22 +98,42 @@ final class AddProfileViewModel: ObservableObject {
         guard !trimmedName.isEmpty else { return false }
         let allowed = CharacterSet(charactersIn:
             "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_")
-        return trimmedName.unicodeScalars.allSatisfy(allowed.contains(_:))
+        return trimmedName.unicodeScalars.allSatisfy { allowed.contains($0) }
     }
 
+    /// True only while the save operation is in flight. The button
+    /// itself is otherwise always clickable so the user gets a clear
+    /// inline error if the name is invalid (the previous design
+    /// disabled the button silently and gave no feedback when a name
+    /// like "Home Office" with a space failed validation).
     var canSave: Bool {
-        !isSaving && isNameValid
+        !isSaving
+    }
+
+    /// Inline hint shown under the Name field. Empty when nothing's
+    /// typed yet (the placeholder + caption do that work); explicit
+    /// red error when the typed name has invalid characters; nil
+    /// otherwise.
+    var nameValidationHint: String? {
+        guard !name.isEmpty else { return nil }
+        guard isNameValid else {
+            return "Use only letters, numbers, hyphens, or underscores."
+        }
+        return nil
     }
 
     // MARK: - Save
 
     func save() {
-        guard canSave else { return }
+        guard !isSaving else { return }
+        guard isNameValid else {
+            lastError = "Profile name can only contain letters, numbers, hyphens, or underscores."
+            return
+        }
         isSaving = true
         lastError = nil
         defer { isSaving = false }
 
-        let trimmedScene = obsScene.trimmingCharacters(in: .whitespacesAndNewlines)
         let fingerprint = attachedDevices
             .filter { selectedDeviceIDs.contains($0.device) }
             .map(\.device)
@@ -128,8 +147,7 @@ final class AddProfileViewModel: ObservableObject {
             name: trimmedName,
             fingerprint: fingerprint,
             audioInput: audioInput,
-            audioOutput: audioOutput,
-            obsScene: trimmedScene.isEmpty ? nil : trimmedScene
+            audioOutput: audioOutput
         )
 
         do {

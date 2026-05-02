@@ -160,11 +160,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         let watcher = IOKitUSBWatcher()
         let resolver = ProfileResolver(profiles: profiles)
         let audio = CoreAudioController()
-        let obs = ProcessOBSController() // nil if obs-cmd not installed
-        if obs == nil {
-            logger.warn("obs-cmd not installed — OBS scene switching will be skipped")
-        }
-        let applier = ProfileApplier(audio: audio, obs: obs, logger: logger)
+        let applier = ProfileApplier(audio: audio, logger: logger)
         return Engine(
             watcher: watcher,
             resolver: resolver,
@@ -266,21 +262,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
     # no docked profile does (typical state: undocked MacBook).
     audioInput  = "MacBook Pro Microphone"
     audioOutput = "MacBook Pro Speakers"
-    # obsScene = "Laptop"  # uncomment if you use OBS scenes
 
     # Add a docked profile here, e.g.:
     #
     # [profiles.home-office]
     # audioInput  = "Yeti Stereo Microphone"
     # audioOutput = "External DAC"
-    # obsScene    = "Home Office"
     # fingerprint = [
     #   { vendorID = 0x2188, productID = 0x6533, name = "Dock" },
     #   { vendorID = 0x043e, productID = 0x9a68, name = "External camera" },
     # ]
     #
-    # Click the menu-bar item → "Reveal Log in Console" while docked
-    # to see the (vendorID, productID) pairs of attached devices.
+    # Easier: click the menu bar → Add Profile… and the wizard
+    # captures your currently-attached devices automatically.
 
     """
 

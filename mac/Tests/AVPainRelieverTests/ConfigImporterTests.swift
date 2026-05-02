@@ -19,7 +19,6 @@ struct ConfigImporterTests {
             },
             audioInput  = "Yeti Stereo Microphone",
             audioOutput = "CalDigit Thunderbolt 3 Audio",
-            obsScene    = "Home Office",
           },
         }
         """
@@ -29,7 +28,6 @@ struct ConfigImporterTests {
         #expect(p.name == "home-office")
         #expect(p.audioInput == "Yeti Stereo Microphone")
         #expect(p.audioOutput == "CalDigit Thunderbolt 3 Audio")
-        #expect(p.obsScene == "Home Office")
         #expect(Set(p.fingerprint) == [
             USBDevice(vendorID: 0x2188, productID: 0x6533),
             USBDevice(vendorID: 0x043e, productID: 0x9a68),
@@ -44,7 +42,6 @@ struct ConfigImporterTests {
             fingerprint = { },
             audioInput  = "MacBook Pro Microphone",
             audioOutput = "MacBook Pro Speakers",
-            obsScene    = "Laptop",
           },
         }
         """
@@ -60,7 +57,6 @@ struct ConfigImporterTests {
             fingerprint = { },
             audioInput  = "MacBook Pro Microphone",
             audioOutput = "MacBook Pro Speakers",
-            obsScene    = "Laptop",
           },
           ["home-office"] = {
             fingerprint = {
@@ -68,7 +64,6 @@ struct ConfigImporterTests {
             },
             audioInput  = "Yeti",
             audioOutput = "CalDigit",
-            obsScene    = "Home Office",
           },
         }
         """
@@ -87,11 +82,9 @@ struct ConfigImporterTests {
         return {
           ["hex"] = {
             fingerprint = { { vendorID = 0x2188, productID = 0x6533 } },
-            obsScene = "Hex",
           },
           ["dec"] = {
             fingerprint = { { vendorID = 8584, productID = 25907 } },
-            obsScene = "Dec",
           },
         }
         """
@@ -113,14 +106,12 @@ struct ConfigImporterTests {
             },
             audioInput  = "MacBook Pro Microphone", -- trailing comment
             -- between fields
-            obsScene    = "Laptop",
           }, -- after profile close
         } -- end
         """
         let profiles = try importer.parse(lua)
         #expect(profiles.count == 1)
         #expect(profiles.first?.audioInput == "MacBook Pro Microphone")
-        #expect(profiles.first?.obsScene == "Laptop")
     }
 
     @Test("string values containing `--` are not treated as comments")
@@ -151,7 +142,6 @@ struct ConfigImporterTests {
         let p = profiles.first!
         #expect(p.audioInput == "Yeti")
         #expect(p.audioOutput == nil)
-        #expect(p.obsScene == nil)
     }
 
     // MARK: - End-to-end (importer → TOML → ConfigLoader → Profile)
@@ -164,7 +154,6 @@ struct ConfigImporterTests {
             fingerprint = { },
             audioInput  = "MacBook Pro Microphone",
             audioOutput = "MacBook Pro Speakers",
-            obsScene    = "Laptop",
           },
           ["home-office"] = {
             fingerprint = {
@@ -173,7 +162,6 @@ struct ConfigImporterTests {
             },
             audioInput  = "Yeti Stereo Microphone",
             audioOutput = "CalDigit Thunderbolt 3 Audio",
-            obsScene    = "Home Office",
           },
         }
         """
@@ -189,7 +177,6 @@ struct ConfigImporterTests {
             let d = directByName[name]!
             #expect(l.audioInput == d.audioInput)
             #expect(l.audioOutput == d.audioOutput)
-            #expect(l.obsScene == d.obsScene)
             #expect(Set(l.fingerprint) == Set(d.fingerprint))
         }
     }
@@ -202,7 +189,7 @@ struct ConfigImporterTests {
             fingerprint = {
               { vendorID = 0x2188, productID = 0x6533, name = "CalDigit dock" },
             },
-            obsScene = "Home Office",
+            audioInput = "Yeti",
           },
         }
         """
@@ -247,7 +234,6 @@ struct ConfigImporterTests {
         ])
         #expect(homeOffice.audioInput == "Yeti Stereo Microphone")
         #expect(homeOffice.audioOutput == "CalDigit Thunderbolt 3 Audio")
-        #expect(homeOffice.obsScene == "Home Office")
     }
 
     // MARK: - Unconfigured-profile filtering
@@ -260,19 +246,16 @@ struct ConfigImporterTests {
             fingerprint = { },
             audioInput  = "MacBook Pro Microphone",
             audioOutput = "MacBook Pro Speakers",
-            obsScene    = "Laptop",
           },
           ["work-office"] = {
             fingerprint = { },
             audioInput  = "FILL ME IN",
             audioOutput = "FILL ME IN",
-            obsScene    = "Work Office",
           },
           ["conference-room"] = {
             fingerprint = { },
             audioInput  = "FILL ME IN",
             audioOutput = "FILL ME IN",
-            obsScene    = "Conference Room",
           },
         }
         """
@@ -290,7 +273,6 @@ struct ConfigImporterTests {
             fingerprint = { },
             audioInput  = "Yeti",
             audioOutput = "FILL ME IN",
-            obsScene    = "Half",
           },
         }
         """
@@ -306,13 +288,11 @@ struct ConfigImporterTests {
             fingerprint = { },
             audioInput  = "MacBook Pro Microphone",
             audioOutput = "MacBook Pro Speakers",
-            obsScene    = "Laptop",
           },
           ["work-office"] = {
             fingerprint = { },
             audioInput  = "FILL ME IN",
             audioOutput = "FILL ME IN",
-            obsScene    = "Work Office",
           },
         }
         """
@@ -330,8 +310,7 @@ struct ConfigImporterTests {
                 name: "laptop",
                 fingerprint: [],
                 audioInput: "MacBook Pro Microphone",
-                audioOutput: "MacBook Pro Speakers",
-                obsScene: "Laptop"
+                audioOutput: "MacBook Pro Speakers"
             ),
             Profile(
                 name: "home-office",
@@ -339,8 +318,7 @@ struct ConfigImporterTests {
                     USBDevice(vendorID: 0x2188, productID: 0x6533),
                 ],
                 audioInput: "Yeti",
-                audioOutput: "CalDigit",
-                obsScene: "Home Office"
+                audioOutput: "CalDigit"
             ),
         ]
         let toml = importer.encodeTOML(profiles)

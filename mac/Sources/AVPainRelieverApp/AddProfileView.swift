@@ -14,12 +14,29 @@ struct AddProfileView: View {
             header
 
             Form {
-                Section("Name") {
-                    TextField("e.g. home-office", text: $viewModel.name)
-                        .textFieldStyle(.roundedBorder)
-                    Text("Letters, numbers, hyphens, or underscores. Pretty-cased automatically (\"home-office\" → \"Home Office\").")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                Section {
+                    // Wrapping the TextField in a left-aligned VStack
+                    // overrides Form(.grouped)'s default label/value
+                    // pair layout (which renders the field's title
+                    // arg as a left label and pushes the input right).
+                    VStack(alignment: .leading, spacing: 6) {
+                        TextField("e.g. home-office", text: $viewModel.name)
+                            .textFieldStyle(.roundedBorder)
+                            .labelsHidden()
+                            .frame(maxWidth: .infinity)
+                        if let hint = viewModel.nameValidationHint {
+                            Text(hint)
+                                .font(.caption)
+                                .foregroundStyle(.red)
+                        } else {
+                            Text("Letters, numbers, hyphens, or underscores. Pretty-cased automatically (\"home-office\" → \"Home Office\").")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                } header: {
+                    Text("Name")
                 }
 
                 Section {
@@ -48,11 +65,6 @@ struct AddProfileView: View {
                         selection: $viewModel.audioOutput,
                         devices: viewModel.outputDevices
                     )
-                }
-
-                Section("OBS scene (optional)") {
-                    TextField("Leave blank if you don't use OBS", text: $viewModel.obsScene)
-                        .textFieldStyle(.roundedBorder)
                 }
             }
             .formStyle(.grouped)

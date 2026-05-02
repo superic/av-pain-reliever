@@ -31,7 +31,6 @@ struct ConfigLoaderTests {
         #expect(p.fingerprint.isEmpty)
         #expect(p.audioInput == nil)
         #expect(p.audioOutput == nil)
-        #expect(p.obsScene == nil)
     }
 
     // MARK: - Full profile
@@ -42,7 +41,6 @@ struct ConfigLoaderTests {
         [profiles.home-office]
         audioInput  = "Yeti Stereo Microphone"
         audioOutput = "CalDigit Thunderbolt 3 Audio"
-        obsScene    = "Home Office"
         fingerprint = [
           { vendorID = 0x2188, productID = 0x6533, name = "CalDigit Thunderbolt 3 Audio (dock)" },
           { vendorID = 0x043e, productID = 0x9a68, name = "LG UltraFine Display Camera" },
@@ -53,7 +51,6 @@ struct ConfigLoaderTests {
         #expect(p.name == "home-office")
         #expect(p.audioInput == "Yeti Stereo Microphone")
         #expect(p.audioOutput == "CalDigit Thunderbolt 3 Audio")
-        #expect(p.obsScene == "Home Office")
         #expect(Set(p.fingerprint) == [
             USBDevice(vendorID: 0x2188, productID: 0x6533),
             USBDevice(vendorID: 0x043e, productID: 0x9a68),
@@ -64,13 +61,28 @@ struct ConfigLoaderTests {
     func hyphenatedNames() throws {
         let profiles = try loader.parseProfiles("""
         [profiles.work-office]
-        obsScene = "Work Office"
+        audioInput = "Work Mic"
 
         [profiles.conference-room]
-        obsScene = "Conference Room"
+        audioInput = "Conference Mic"
         """)
         let names = Set(profiles.map(\.name))
         #expect(names == ["work-office", "conference-room"])
+    }
+
+    @Test("legacy obsScene field in existing TOML is silently ignored")
+    func ignoresUnknownObsSceneField() throws {
+        // Users migrated from the Hammerspoon Phase 1 setup may have
+        // obsScene fields persisted in their TOML. The V1 Swift app
+        // doesn't support OBS — Codable's "unknown keys are tolerated"
+        // default means we read past those without error.
+        let profiles = try loader.parseProfiles("""
+        [profiles.home-office]
+        audioInput = "Yeti"
+        obsScene   = "Home Office"
+        """)
+        #expect(profiles.count == 1)
+        #expect(profiles.first?.audioInput == "Yeti")
     }
 
     @Test("serialNumber is read from TOML when present and stays nil when absent")
@@ -111,7 +123,6 @@ struct ConfigLoaderTests {
         [profiles.laptop]
         audioInput  = "MacBook Pro Microphone"
         audioOutput = "MacBook Pro Speakers"
-        obsScene    = "Laptop"
 
         [profiles.home-office]
         audioInput  = "Yeti Stereo Microphone"
@@ -135,7 +146,7 @@ struct ConfigLoaderTests {
         logPath = "/tmp/whatever.log"
 
         [profiles.laptop]
-        obsScene = "Laptop"
+        audioInput = "MacBook Pro Microphone"
         """)
         #expect(profiles.count == 1)
         #expect(profiles.first?.name == "laptop")

@@ -4,14 +4,13 @@ import Foundation
 
 /// Engine tests run against an integration-style fixture: real
 /// `Debouncer` (with `TestClock`), real `ProfileResolver` (with
-/// fixture profiles), and real `ProfileApplier` against
-/// recording-mock `AudioController` / `OBSController`. Only
-/// `USBWatcher` itself is faked, since IOKit can't deliver simulated
-/// events.
+/// fixture profiles), and real `ProfileApplier` against a
+/// recording-mock `AudioController`. Only `USBWatcher` itself is
+/// faked, since IOKit can't deliver simulated events.
 ///
 /// Each test reads as a small scenario: "given a docked setup, when X
 /// happens, the engine applies Y". This catches wiring bugs across the
-/// engine's four layers without re-testing the algorithms each layer
+/// engine's layers without re-testing the algorithms each layer
 /// already has dedicated unit tests for.
 @Suite("Engine")
 struct EngineTests {
@@ -26,16 +25,14 @@ struct EngineTests {
         name: "laptop",
         fingerprint: [],
         audioInput: "MacBook Pro Microphone",
-        audioOutput: "MacBook Pro Speakers",
-        obsScene: "Laptop"
+        audioOutput: "MacBook Pro Speakers"
     )
 
     static let homeOffice = Profile(
         name: "home-office",
         fingerprint: [caldigit, lgCamera],
         audioInput: "Yeti Stereo Microphone",
-        audioOutput: "CalDigit Thunderbolt 3 Audio",
-        obsScene: "Home Office"
+        audioOutput: "CalDigit Thunderbolt 3 Audio"
     )
 
     /// Builds a fully-wired engine plus handles to every fake the test
@@ -45,7 +42,6 @@ struct EngineTests {
         let engine: Engine
         let watcher: RecordingUSBWatcher
         let audio: ProfileApplierTests.MockAudio
-        let obs: ProfileApplierTests.MockOBS
         let logger: ProfileApplierTests.MockLogger
         let clock: TestClock
     }
@@ -56,9 +52,8 @@ struct EngineTests {
         let watcher = RecordingUSBWatcher()
         let resolver = ProfileResolver(profiles: profiles)
         let audio = ProfileApplierTests.MockAudio()
-        let obs = ProfileApplierTests.MockOBS()
         let logger = ProfileApplierTests.MockLogger()
-        let applier = ProfileApplier(audio: audio, obs: obs, logger: logger)
+        let applier = ProfileApplier(audio: audio, logger: logger)
         let clock = TestClock()
         let engine = Engine(
             watcher: watcher,
@@ -72,7 +67,6 @@ struct EngineTests {
             engine: engine,
             watcher: watcher,
             audio: audio,
-            obs: obs,
             logger: logger,
             clock: clock
         )
@@ -87,9 +81,10 @@ struct EngineTests {
         h.engine.start()
 
         // The home-office profile fired on startup — no clock advance
-        // required.
-        #expect(h.obs.calls == ["Home Office"])
+        // required. 2 audio calls (input + output).
         #expect(h.audio.calls.count == 2)
+        #expect(h.audio.calls.contains { $0.name == "Yeti Stereo Microphone" && $0.role == .input })
+        #expect(h.audio.calls.contains { $0.name == "CalDigit Thunderbolt 3 Audio" && $0.role == .output })
         #expect(h.logger.infos.contains { $0.contains("evaluation → home-office") })
     }
 
@@ -99,7 +94,8 @@ struct EngineTests {
         h.watcher.devices = [] // not docked
         h.engine.start()
 
-        #expect(h.obs.calls == ["Laptop"])
+        #expect(h.audio.calls.contains { $0.name == "MacBook Pro Microphone" && $0.role == .input })
+        #expect(h.audio.calls.contains { $0.name == "MacBook Pro Speakers" && $0.role == .output })
         #expect(h.logger.infos.contains { $0.contains("evaluation → laptop") })
     }
 
@@ -111,7 +107,6 @@ struct EngineTests {
         h.watcher.devices = []
         h.engine.start()
 
-        #expect(h.obs.calls.isEmpty)
         #expect(h.audio.calls.isEmpty)
         #expect(h.logger.warns.contains { $0.contains("no profile matched") })
     }
@@ -123,8 +118,8 @@ struct EngineTests {
         let h = makeHarness()
         h.watcher.devices = []
         h.engine.start()
-        // Initial: laptop.
-        #expect(h.obs.calls == ["Laptop"])
+        // Initial: laptop = 2 audio calls.
+        #expect(h.audio.calls.count == 2)
 
         // User docks. New devices appear; watcher fires onChange.
         h.watcher.devices = [Self.caldigit, Self.lgCamera]
@@ -132,11 +127,11 @@ struct EngineTests {
 
         // Within debounce window — no re-eval yet.
         h.clock.advance(by: 1.0)
-        #expect(h.obs.calls == ["Laptop"])
+        #expect(h.audio.calls.count == 2)
 
-        // Past debounce window → home-office applies.
+        // Past debounce window → home-office applies (2 more calls).
         h.clock.advance(by: 0.6)
-        #expect(h.obs.calls == ["Laptop", "Home Office"])
+        #expect(h.audio.calls.count == 4)
     }
 
     @Test("a 14-event dock burst coalesces into a single re-evaluation")
@@ -144,7 +139,7 @@ struct EngineTests {
         let h = makeHarness()
         h.watcher.devices = []
         h.engine.start()
-        #expect(h.obs.calls == ["Laptop"])
+        #expect(h.audio.calls.count == 2)
 
         // Simulate a real CalDigit dock burst — devices appear in
         // pieces, each delivering a watcher onChange.
@@ -154,11 +149,11 @@ struct EngineTests {
             h.clock.advance(by: 0.07) // ~1 s of bursts, all under 1.5 s
         }
         // Still inside the debounce window since the LAST event.
-        #expect(h.obs.calls == ["Laptop"])
+        #expect(h.audio.calls.count == 2)
 
         h.clock.advance(by: 1.5)
-        // One — exactly one — apply for the entire burst.
-        #expect(h.obs.calls == ["Laptop", "Home Office"])
+        // One — exactly one — apply for the entire burst (2 more calls).
+        #expect(h.audio.calls.count == 4)
     }
 
     @Test("re-applying the same profile is a no-op via ProfileApplier dedup")
@@ -167,7 +162,6 @@ struct EngineTests {
         h.watcher.devices = [Self.caldigit, Self.lgCamera]
         h.engine.start()
         let initialAudioCalls = h.audio.calls.count
-        let initialObsCalls = h.obs.calls.count
 
         // Trigger a change without changing the device set.
         h.watcher.triggerChange()
@@ -175,7 +169,6 @@ struct EngineTests {
 
         // Side effects should not have fired again.
         #expect(h.audio.calls.count == initialAudioCalls)
-        #expect(h.obs.calls.count == initialObsCalls)
         #expect(h.logger.infos.contains { $0.contains("profile unchanged (home-office)") })
     }
 
@@ -186,8 +179,7 @@ struct EngineTests {
         let h = makeHarness()
         h.watcher.devices = []
         h.engine.start()
-        // Clear startup state so the assertion is unambiguous.
-        let baselineObsCalls = h.obs.calls.count
+        let baseline = h.audio.calls.count
 
         h.watcher.devices = [Self.caldigit, Self.lgCamera]
         h.watcher.triggerChange()
@@ -196,7 +188,7 @@ struct EngineTests {
         h.engine.stop()
         h.clock.advance(by: 10.0)
 
-        #expect(h.obs.calls.count == baselineObsCalls)
+        #expect(h.audio.calls.count == baseline)
         #expect(h.watcher.isStarted == false)
     }
 
@@ -206,9 +198,8 @@ struct EngineTests {
         h.watcher.devices = [Self.caldigit, Self.lgCamera]
         h.engine.start()
         h.engine.start() // second call must not double-apply
-        // One initial apply: 2 audio + 1 OBS.
+        // One initial apply: 2 audio calls.
         #expect(h.audio.calls.count == 2)
-        #expect(h.obs.calls.count == 1)
         #expect(h.watcher.startCount == 1)
     }
 
@@ -227,21 +218,22 @@ struct EngineTests {
     func evaluateRunsImmediatelyAndCancelsPending() {
         let h = makeHarness()
         h.watcher.devices = []
-        h.engine.start() // initial: laptop
-        let baselineObsCalls = h.obs.calls.count
+        h.engine.start() // initial: laptop = 2 calls
+        let baseline = h.audio.calls.count
 
         // Schedule a debounced eval, then immediately call evaluate().
         h.watcher.devices = [Self.caldigit, Self.lgCamera]
         h.watcher.triggerChange()
         h.engine.evaluate() // should fire NOW
 
-        // home-office applied without advancing the clock.
-        #expect(h.obs.calls == ["Laptop", "Home Office"])
+        // home-office applied without advancing the clock — 2 more
+        // calls.
+        #expect(h.audio.calls.count == baseline + 2)
 
         // Pending debounced eval should be cancelled — advancing the
         // clock past the window should not produce another apply.
         h.clock.advance(by: 5)
-        #expect(h.obs.calls.count == baselineObsCalls + 1)
+        #expect(h.audio.calls.count == baseline + 2)
     }
 
     @Test("evaluate() before start() is a no-op")
@@ -249,7 +241,6 @@ struct EngineTests {
         let h = makeHarness()
         h.watcher.devices = [Self.caldigit, Self.lgCamera]
         h.engine.evaluate()
-        #expect(h.obs.calls.isEmpty)
         #expect(h.audio.calls.isEmpty)
     }
 
@@ -320,14 +311,15 @@ struct EngineTests {
         let h = makeHarness()
         h.watcher.devices = [Self.caldigit, Self.lgCamera]
 
-        h.engine.start() // applies home-office
+        h.engine.start() // applies home-office (2 calls)
         h.engine.stop()
 
         // State changes while the engine is stopped — user undocked.
         h.watcher.devices = []
 
-        h.engine.start() // must re-evaluate and apply laptop
-        #expect(h.obs.calls == ["Home Office", "Laptop"])
+        h.engine.start() // must re-evaluate and apply laptop (2 more calls)
+        #expect(h.audio.calls.count == 4)
+        #expect(h.audio.calls.last?.name == "MacBook Pro Speakers")
         #expect(h.watcher.startCount == 2)
     }
 }

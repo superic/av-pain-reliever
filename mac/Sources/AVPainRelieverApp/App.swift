@@ -69,9 +69,6 @@ private struct MenuContentView: View {
 
         Divider()
 
-        Button("Open OBS") {
-            NSWorkspace.shared.open(URL(fileURLWithPath: "/Applications/OBS.app"))
-        }
         Button("Reveal Log in Console") {
             // Surface the os.Logger stream by opening Console.app.
             // The log stream filter for our subsystem can be applied

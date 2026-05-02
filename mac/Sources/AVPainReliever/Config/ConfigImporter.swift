@@ -184,14 +184,15 @@ public struct ConfigImporter {
     private func parseProfileBody(name: String, body: Substring) throws -> ImportedProfile {
         let audioInput = extractStringField("audioInput", in: body)
         let audioOutput = extractStringField("audioOutput", in: body)
-        let obsScene = extractStringField("obsScene", in: body)
+        // obsScene from the Lua source is intentionally dropped:
+        // OBS scene-switching is V2 work for the Swift app. When V2
+        // adds it, we'll re-extract here.
         let fingerprint = try extractFingerprint(in: body, profileName: name)
         return ImportedProfile(
             name: name,
             fingerprint: fingerprint,
             audioInput: audioInput,
-            audioOutput: audioOutput,
-            obsScene: obsScene
+            audioOutput: audioOutput
         )
     }
 
@@ -441,9 +442,6 @@ public struct ConfigImporter {
         if let v = profile.audioOutput {
             out += "audioOutput = \(tomlString(v))\n"
         }
-        if let v = profile.obsScene {
-            out += "obsScene    = \(tomlString(v))\n"
-        }
         if !profile.fingerprint.isEmpty {
             out += "fingerprint = [\n"
             for d in profile.fingerprint {
@@ -485,20 +483,17 @@ private struct ImportedProfile {
     let fingerprint: [ImportedDevice]
     let audioInput: String?
     let audioOutput: String?
-    let obsScene: String?
 
     init(
         name: String,
         fingerprint: [ImportedDevice],
         audioInput: String?,
-        audioOutput: String?,
-        obsScene: String?
+        audioOutput: String?
     ) {
         self.name = name
         self.fingerprint = fingerprint
         self.audioInput = audioInput
         self.audioOutput = audioOutput
-        self.obsScene = obsScene
     }
 
     init(profile: Profile) {
@@ -513,7 +508,6 @@ private struct ImportedProfile {
         }
         self.audioInput = profile.audioInput
         self.audioOutput = profile.audioOutput
-        self.obsScene = profile.obsScene
     }
 
     var profile: Profile {
@@ -527,8 +521,7 @@ private struct ImportedProfile {
                 )
             },
             audioInput: audioInput,
-            audioOutput: audioOutput,
-            obsScene: obsScene
+            audioOutput: audioOutput
         )
     }
 }

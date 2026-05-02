@@ -26,8 +26,7 @@ struct ProfileWriterTests {
                 USBDevice(vendorID: 0x043e, productID: 0x9a68),
             ],
             audioInput: "Yeti Stereo Microphone",
-            audioOutput: "CalDigit Thunderbolt 3 Audio",
-            obsScene: "Home Office"
+            audioOutput: "CalDigit Thunderbolt 3 Audio"
         )
         try writer.append(profile: homeOffice, to: url)
 
@@ -36,7 +35,6 @@ struct ProfileWriterTests {
         let ho = loaded.first { $0.name == "home-office" }!
         #expect(ho.audioInput == "Yeti Stereo Microphone")
         #expect(ho.audioOutput == "CalDigit Thunderbolt 3 Audio")
-        #expect(ho.obsScene == "Home Office")
         #expect(Set(ho.fingerprint) == [
             USBDevice(vendorID: 0x2188, productID: 0x6533),
             USBDevice(vendorID: 0x043e, productID: 0x9a68),
@@ -100,8 +98,7 @@ struct ProfileWriterTests {
                 name: "laptop",
                 fingerprint: [],
                 audioInput: "Yeti",
-                audioOutput: nil,
-                obsScene: nil
+                audioOutput: nil
             ),
             to: url,
             startingHeader: "# Header banner.\n\n"
