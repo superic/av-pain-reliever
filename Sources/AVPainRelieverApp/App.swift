@@ -193,14 +193,6 @@ private struct MenuContentView: View {
 
         if !delegate.availableProfiles.isEmpty {
             Menu("Switch to") {
-                // Disabled text item at the top of the submenu —
-                // SwiftUI renders bare Text inside MenuBarExtra menus
-                // as a non-interactive caption. Surfaces the modifier
-                // affordance without needing a separate "Edit" action
-                // on every row.
-                Text("Hold ⌥ to edit instead of switching")
-                    .font(.caption)
-                Divider()
                 ForEach(delegate.availableProfiles, id: \.name) { profile in
                     profileMenuEntry(profile)
                 }
