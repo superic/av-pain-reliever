@@ -237,11 +237,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         notifiedUnknownLocation = true
         guard settings.notificationsEnabled else { return }
 
-        let count = devices.count
-        let unitNoun = count == 1 ? "device" : "devices"
         notifier.notify(
             title: "New location detected",
-            body: "\(count) USB \(unitNoun) attached. Add it to your profiles so AV Pain Reliever can switch automatically."
+            body: NotificationCopy.unknownLocationBody(deviceCount: devices.count)
         )
     }
 

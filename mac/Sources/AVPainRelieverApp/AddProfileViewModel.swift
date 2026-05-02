@@ -174,6 +174,14 @@ final class AddProfileViewModel: ObservableObject {
         return slug.isEmpty ? "" : PrettyName.format(slug)
     }
 
+    /// Slug used to drive the wizard's live profile-icon preview.
+    /// Falls back to a generic placeholder slug while the field is
+    /// empty so the icon isn't a flickering question-mark.
+    var previewSlug: String {
+        let slug = Slug.format(name)
+        return slug.isEmpty ? "_placeholder_" : slug
+    }
+
     /// True only while the save operation is in flight. Otherwise
     /// the button is always clickable; validation runs at click time
     /// with a clear inline error so the user knows why save was

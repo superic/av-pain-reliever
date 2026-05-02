@@ -20,10 +20,26 @@ struct AddProfileView: View {
                     // pair layout (which renders the field's title
                     // arg as a left label and pushes the input right).
                     VStack(alignment: .leading, spacing: 6) {
-                        TextField("e.g. Home Office", text: $viewModel.name)
-                            .textFieldStyle(.roundedBorder)
-                            .labelsHidden()
-                            .frame(maxWidth: .infinity)
+                        HStack(spacing: 10) {
+                            TextField("e.g. Home Office", text: $viewModel.name)
+                                .textFieldStyle(.roundedBorder)
+                                .labelsHidden()
+                                .frame(maxWidth: .infinity)
+                            // Live preview of the SF Symbol the menu
+                            // will render for this profile. Picks an
+                            // icon from the typed slug (auto-mapping —
+                            // V1 doesn't expose a picker). Subtle, but
+                            // it surfaces the product feature ("each
+                            // location gets its own icon") visually
+                            // and tells the user what their slug
+                            // matched on.
+                            Image(systemName: ProfileIcon.symbol(for: viewModel.previewSlug))
+                                .font(.title2)
+                                .foregroundStyle(Theme.Color.primary)
+                                .frame(width: 32, height: 24)
+                                .help("Menu icon for this profile (auto-picked from the name)")
+                                .animation(.easeInOut(duration: 0.18), value: viewModel.previewSlug)
+                        }
                         // Hint defaults to brief instructions; switches
                         // to a quiet preview the moment a name is being
                         // typed so the user sees how it'll appear in
@@ -210,8 +226,29 @@ struct AddProfileView: View {
                 ForEach(viewModel.attachedDevices) { entry in
                     Toggle(isOn: binding(for: entry.device)) {
                         VStack(alignment: .leading, spacing: 1) {
-                            Text(entry.displayName)
-                                .font(.callout)
+                            HStack(spacing: 6) {
+                                Text(entry.displayName)
+                                    .font(.callout)
+                                if let category = DevicePortability
+                                    .portabilityCategory(deviceName: entry.name) {
+                                    // Yellow "Suggested: untick" pill so
+                                    // the user immediately spots the
+                                    // travelling peripherals (keyboards,
+                                    // mice, phones) that shouldn't go in
+                                    // a location fingerprint. Hint, not
+                                    // an instruction — the user is free
+                                    // to keep them ticked.
+                                    Text("Suggested: untick (\(category))")
+                                        .font(.caption2.weight(.semibold))
+                                        .foregroundStyle(.black)
+                                        .padding(.horizontal, 6)
+                                        .padding(.vertical, 2)
+                                        .background(
+                                            Theme.Color.warn.opacity(0.85),
+                                            in: Capsule()
+                                        )
+                                }
+                            }
                             Text(idLine(for: entry.device))
                                 .font(.caption.monospaced())
                                 .foregroundStyle(.secondary)

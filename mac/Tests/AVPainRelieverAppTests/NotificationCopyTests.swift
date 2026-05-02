@@ -57,6 +57,17 @@ struct NotificationCopyTests {
         let valid: Set<String> = ["Studio", "Studio time", "Tracking now"]
         #expect(valid.contains(title))
     }
+
+    @Test("unknown-location body pluralizes correctly")
+    func unknownLocationBodyPluralizes() {
+        let zero = NotificationCopy.unknownLocationBody(deviceCount: 0)
+        let one = NotificationCopy.unknownLocationBody(deviceCount: 1)
+        let many = NotificationCopy.unknownLocationBody(deviceCount: 5)
+        #expect(zero.contains("Open the menu"))
+        #expect(one.contains("1 USB device"))
+        #expect(!one.contains("devices"))
+        #expect(many.contains("5 USB devices"))
+    }
 }
 
 @Suite("StatsCopy")

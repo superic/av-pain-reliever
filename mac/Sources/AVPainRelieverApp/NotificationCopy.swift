@@ -33,6 +33,20 @@ enum NotificationCopy {
         return title(forSlug: slug, dayOfYear: day)
     }
 
+    /// Body text for the "new location detected" toast — warmer than
+    /// the bare "N USB devices attached" version, while still telling
+    /// the user the next concrete action they can take.
+    static func unknownLocationBody(deviceCount: Int) -> String {
+        switch deviceCount {
+        case 0:
+            return "Open the menu to set it up."
+        case 1:
+            return "1 USB device joined the party. Open the menu to teach me this spot."
+        default:
+            return "\(deviceCount) USB devices joined the party. Open the menu to teach me this spot."
+        }
+    }
+
     private static func alternates(forSlug slug: String, pretty: String) -> [String] {
         if slug.hasPrefix("home") {
             return [pretty, "Home, sweet home", "Welcome back home", "Home base"]
