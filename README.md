@@ -70,15 +70,6 @@ The engine has no network calls, no analytics, no telemetry, no third-party serv
 
 ---
 
-## What's NOT in V1
-
-- **Per-app routing.** "Same as System" in Zoom/Slack/Teams is the supported pattern. The app does not poke their plists or UI-script them — too fragile, too fiddly.
-- **Detection signals beyond USB.** No WiFi, Bluetooth, calendar, or time-of-day matching. USB-device fingerprints have been sufficient for every location tested.
-
-If you have a use case either of these blocks, file an issue.
-
----
-
 ## Nerd zone
 
 The rest of this section is for developers / contributors. Skip if you just want to use the app.
@@ -89,11 +80,16 @@ The rest of this section is for developers / contributors. Skip if you just want
 av-pain-reliever/
 ├── Package.swift              # SPM manifest — single source of truth for deps + targets
 ├── Sources/
-│   ├── AVPainReliever/        # Engine library (resolver, debouncer, applier, USB/audio/camera adapters, config loader)
-│   └── AVPainRelieverApp/     # SwiftUI menu-bar app target (App, AppDelegate, views)
+│   ├── AVPainReliever/        # Engine library (resolver, debouncer, applier, USB/audio/camera adapters, config loader, notifier)
+│   └── AVPainRelieverApp/     # SwiftUI menu-bar app target (App, AppDelegate, views, Sparkle Updater wrapper)
 ├── Tests/
 │   ├── AVPainRelieverTests/         # Engine + adapter tests
 │   └── AVPainRelieverAppTests/      # App-target helper tests (Theme, ProfileIcon, NotificationCopy, SettingsStore, view model)
+├── Resources/                 # Bundled into the .app — Info.plist, entitlements, AppIcon.icns
+├── scripts/                   # make-app.sh, build-icon.sh, sign-appcast.sh, icon-exporter.swift
+├── .github/workflows/         # release.yml — tag-driven signed/notarized release pipeline
+├── docs/RELEASING.md          # Runbook: cert + Sparkle key generation, GitHub Secrets, first-tag checklist
+├── appcast.xml                # Sparkle update feed served via raw.githubusercontent.com
 ├── SWIFT_PORT.md              # Running design log + lessons learned
 ├── prototypes/                # Archive of earlier research code (see prototypes/README.md)
 ├── LICENSE
@@ -116,15 +112,21 @@ Login items via `SMAppService` only register when running from a signed `.app` b
 
 ```sh
 swift build                                  # compile
-swift run AVPainRelieverApp                  # launch the menu-bar app
+swift run AVPainRelieverApp                  # launch the menu-bar app (unsigned dev mode)
 swift test                                   # full test suite
 swift test --filter ConfigLoader             # narrow to one suite
-scripts/make-app.sh                          # build a signed .app under dist/ (see docs/RELEASING.md for signed builds)
+scripts/make-app.sh                          # produce dist/AVPainReliever.app (ad-hoc signed)
 ```
+
+`scripts/make-app.sh` outputs an installable `dist/AVPainReliever.app` with embedded Sparkle.framework. With `MAC_CERT_NAME` and `VERSION` env vars set it produces a Developer-ID-signed bundle ready for notarization. See [`docs/RELEASING.md`](docs/RELEASING.md) for the full release pipeline.
+
+### Releasing
+
+Tag-driven via [`.github/workflows/release.yml`](.github/workflows/release.yml): pushing `vX.Y.Z` triggers a build + Developer-ID sign + notarization + Sparkle EdDSA sign + draft GitHub Release + appcast update. [`docs/RELEASING.md`](docs/RELEASING.md) is the runbook (Apple Developer Program enrollment, Sparkle key generation, the seven `gh secret set` commands, the first-tag checklist, troubleshooting).
 
 ### Architecture in one paragraph
 
-`Engine` (`Sources/AVPainReliever/Engine/Engine.swift`) wires `USBWatcher → Debouncer → ProfileResolver → ProfileApplier`. The watcher is a thin IOKit wrapper; the debouncer collapses USB event bursts; the resolver picks the best-matching `Profile` against attached devices; the applier orchestrates the audio + camera side effects via the `AudioController` and `CameraController` adapter protocols (production: CoreAudio + AVFoundation, tests: recording mocks). `ConfigLoader` parses `profiles.toml` via TOMLKit; `ProfileWriter` handles append/replace/delete on the TOML, preserving comments and surrounding content. The SwiftUI app target (`AVPainRelieverApp`) owns an `AppDelegate` that wires the engine to a `MenuBarExtra` plus four `Window` scenes (Add Profile wizard, Settings, About, Welcome).
+`Engine` (`Sources/AVPainReliever/Engine/Engine.swift`) wires `USBWatcher → Debouncer → ProfileResolver → ProfileApplier`. The watcher is a thin IOKit wrapper; the debouncer collapses USB event bursts; the resolver picks the best-matching `Profile` against attached devices; the applier orchestrates the audio + camera side effects via the `AudioController` and `CameraController` adapter protocols (production: CoreAudio + AVFoundation, tests: recording mocks). `ConfigLoader` parses `profiles.toml` via TOMLKit; `ProfileWriter` handles append/replace/delete on the TOML, preserving comments and surrounding content. Notifications post via `UNUserNotificationCenter` inside the bundled `.app` (or `osascript` from `swift run`). The SwiftUI app target (`AVPainRelieverApp`) owns an `AppDelegate` that wires the engine to a `MenuBarExtra` plus four `Window` scenes (Add Profile wizard, Settings, About, Welcome) and a Sparkle 2 updater for tag-driven auto-updates.
 
 ### Design log
 
