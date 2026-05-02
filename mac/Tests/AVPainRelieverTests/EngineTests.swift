@@ -244,6 +244,60 @@ struct EngineTests {
         #expect(h.audio.calls.isEmpty)
     }
 
+    @Test("applyManually applies the picked profile regardless of USB state")
+    func applyManuallyOverridesResolver() {
+        let h = makeHarness()
+        // Undocked — resolver would pick laptop. User force-picks
+        // home-office anyway (e.g., wants to test it before plugging in).
+        h.watcher.devices = []
+        h.engine.start() // initial: laptop
+        let baseline = h.audio.calls.count
+
+        h.engine.applyManually(Self.homeOffice)
+
+        // Side effects fired for home-office, not laptop.
+        let new = h.audio.calls.suffix(2)
+        #expect(new.contains(where: {
+            $0.name == "Yeti Stereo Microphone" && $0.role == .input
+        }))
+        #expect(new.contains(where: {
+            $0.name == "CalDigit Thunderbolt 3 Audio" && $0.role == .output
+        }))
+        #expect(h.audio.calls.count == baseline + 2)
+        #expect(h.logger.infos.contains { $0.contains("manual override → home-office") })
+    }
+
+    @Test("applyManually cancels any pending debounced eval")
+    func applyManuallyCancelsPending() {
+        let h = makeHarness()
+        h.watcher.devices = []
+        h.engine.start() // initial: laptop applied, lastAppliedName=laptop
+        let baseline = h.audio.calls.count
+
+        // Pending debounced eval queued — would resolve to home-office.
+        h.watcher.devices = [Self.caldigit, Self.lgCamera]
+        h.watcher.triggerChange()
+
+        // Force-apply laptop (already current, so applier dedups —
+        // no new audio calls). The point is whether the pending
+        // debounce is also cancelled.
+        h.engine.applyManually(Self.laptop)
+
+        h.clock.advance(by: 5)
+        // If the debounce hadn't been cancelled, it would have run,
+        // resolved to home-office, and fired Yeti+CalDigit. Audio
+        // calls staying empty proves the cancel worked.
+        #expect(h.audio.calls.count == baseline)
+        #expect(!h.audio.calls.contains { $0.name == "Yeti Stereo Microphone" })
+    }
+
+    @Test("applyManually before start() is a no-op")
+    func applyManuallyBeforeStartIsNoop() {
+        let h = makeHarness()
+        h.engine.applyManually(Self.homeOffice)
+        #expect(h.audio.calls.isEmpty)
+    }
+
     // MARK: - Unknown-location detection
 
     @Test("onUnknownLocation fires when fallback profile resolves with devices attached")

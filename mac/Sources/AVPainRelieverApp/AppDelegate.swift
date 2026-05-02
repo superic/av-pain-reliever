@@ -30,6 +30,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
     /// those apps.
     @Published var currentCameraDisplay: String? = nil
 
+    /// Slug of the most-recently-applied profile. Used by the menu's
+    /// "Switch to" submenu to put a checkmark next to the active
+    /// entry. Differs from `currentProfileTitle` (pretty-cased,
+    /// defaults to the product name) — this stays nil until the
+    /// engine actually applies something.
+    @Published var activeProfileSlug: String? = nil
+
+    /// All profiles loaded from the canonical TOML config — drives
+    /// the menu's "Switch to" submenu so the user can force a
+    /// specific profile regardless of what's plugged in.
+    @Published var availableProfiles: [Profile] = []
+
     private var engine: Engine?
     private let notifier: Notifier = AppleScriptNotifier()
 
@@ -74,6 +86,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
 
         let logger = ConsoleLogger()
         let profiles = loadProfiles(logger: logger)
+        availableProfiles = profiles
         let engine = buildEngine(profiles: profiles, logger: logger)
         engine.onProfileApplied = { [weak self] profile in
             // Engine fires onProfileApplied on the same thread the
@@ -93,6 +106,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         let pretty = PrettyName.format(profile.name)
         currentProfileTitle = pretty
         currentCameraDisplay = profile.camera
+        activeProfileSlug = profile.name
 
         // Toast only on actual changes (different profile name from
         // the previous evaluation). The initial evaluation on launch
@@ -147,6 +161,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
     /// changes picked up without a full app restart.
     func reloadConfig() {
         bootEngine()
+    }
+
+    /// Menu-bar entry point — force-apply a specific profile,
+    /// bypassing the resolver. The override is one-shot: the next
+    /// genuine USB event re-runs the resolver normally and may pick
+    /// a different profile. Useful when the user wants to test a
+    /// configuration or apply a "wrong-for-now" profile (e.g. set
+    /// home-office audio defaults while undocked).
+    func applyManually(_ profile: Profile) {
+        engine?.applyManually(profile)
     }
 
     /// Build a fresh dependency bundle for the Add-Profile wizard.

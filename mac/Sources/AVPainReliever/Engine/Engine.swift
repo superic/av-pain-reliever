@@ -116,6 +116,21 @@ public final class Engine {
         evaluateAndApply()
     }
 
+    /// Apply a specific profile, bypassing the resolver entirely.
+    /// Used by the menu bar's "Switch to" UI when the user wants to
+    /// force a profile that doesn't match the current USB state — for
+    /// example, applying the home-office profile while undocked to
+    /// pre-set audio defaults before plugging in. The next genuine
+    /// USB event re-runs the resolver normally; this override is
+    /// one-shot, not sticky.
+    public func applyManually(_ profile: Profile) {
+        guard started else { return }
+        debouncer?.cancel()
+        logger.info("manual override → \(profile.name)")
+        applier.apply(profile)
+        onProfileApplied?(profile)
+    }
+
     private func evaluateAndApply() {
         let attached = watcher.currentDevices()
         guard let profile = resolver.resolve(attached: attached) else {

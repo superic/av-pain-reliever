@@ -57,6 +57,24 @@ private struct MenuContentView: View {
         }
         Divider()
 
+        if !delegate.availableProfiles.isEmpty {
+            Menu("Switch to") {
+                ForEach(delegate.availableProfiles, id: \.name) { profile in
+                    Button {
+                        delegate.applyManually(profile)
+                    } label: {
+                        let isActive = profile.name == delegate.activeProfileSlug
+                        if isActive {
+                            Label(PrettyName.format(profile.name), systemImage: "checkmark")
+                        } else {
+                            Text(PrettyName.format(profile.name))
+                        }
+                    }
+                }
+            }
+            Divider()
+        }
+
         Button("Add Profile…") {
             openWindow(id: addProfileWindowID)
             // Accessory apps (LSUIElement-style) don't auto-activate
