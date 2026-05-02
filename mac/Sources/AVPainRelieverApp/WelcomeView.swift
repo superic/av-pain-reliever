@@ -23,11 +23,10 @@ struct WelcomeView: View {
             VStack(spacing: 8) {
                 Text("Welcome to \(Theme.Copy.appName)")
                     .font(.system(size: 24, weight: .bold, design: .rounded))
-                    .foregroundStyle(Theme.Color.primary)
                     .multilineTextAlignment(.center)
                 Text(Theme.Copy.tagline)
                     .font(.title3)
-                    .foregroundStyle(Theme.Color.highlight)
+                    .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
             }
 
@@ -50,13 +49,11 @@ struct WelcomeView: View {
                         .padding(.vertical, 4)
                 }
                 .buttonStyle(.borderedProminent)
-                .tint(Theme.Color.primary)
                 .controlSize(.large)
                 .keyboardShortcut(.defaultAction)
 
                 Button("Skip — I'll set up later", action: onSkip)
                     .buttonStyle(.link)
-                    .foregroundStyle(Theme.Color.highlight)
                     .keyboardShortcut(.cancelAction)
             }
         }
@@ -66,15 +63,15 @@ struct WelcomeView: View {
         .background(.background)
     }
 
-    /// Three bullet rows below the tagline. Each pairs a brand-tinted
-    /// SF Symbol with one short sentence — easier to scan than a
-    /// single dense paragraph and gives the user a sense of the
-    /// product shape on first read.
+    /// Three bullet rows below the tagline. Each pairs an SF Symbol
+    /// with one short sentence — easier to scan than a single dense
+    /// paragraph and gives the user a sense of the product shape on
+    /// first read.
     private func bullet(symbol: String, text: String) -> some View {
         HStack(alignment: .top, spacing: 12) {
             Image(systemName: symbol)
                 .font(.body.weight(.semibold))
-                .foregroundStyle(Theme.Color.primary)
+                .foregroundStyle(.secondary)
                 .frame(width: 24, alignment: .center)
             Text(text)
                 .font(.callout)

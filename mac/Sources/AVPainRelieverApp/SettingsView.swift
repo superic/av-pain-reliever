@@ -40,7 +40,6 @@ private struct GeneralSettingsTab: View {
                 Toggle("Show audio + camera details in menu", isOn: $settings.showAudioCameraInMenu)
             } header: {
                 Label("Behavior", systemImage: "wand.and.stars")
-                    .foregroundStyle(Theme.Color.primary)
             }
 
             Section {
@@ -60,7 +59,6 @@ private struct GeneralSettingsTab: View {
                 .padding(.vertical, 4)
             } header: {
                 Label("Detection", systemImage: "cable.connector")
-                    .foregroundStyle(Theme.Color.primary)
             }
         }
         .formStyle(.grouped)
@@ -132,7 +130,6 @@ private struct ProfilesSettingsTab: View {
                     Label("Add Profile", systemImage: "plus")
                 }
                 .buttonStyle(.borderedProminent)
-                .tint(Theme.Color.primary)
                 Spacer()
                 Text("\(delegate.availableProfiles.count) profile\(delegate.availableProfiles.count == 1 ? "" : "s")")
                     .font(.caption)
@@ -157,7 +154,6 @@ private struct ProfilesSettingsTab: View {
             VStack(spacing: 4) {
                 Text("Set up your first location")
                     .font(.title3.weight(.semibold))
-                    .foregroundStyle(Theme.Color.primary)
                 Text("Plug in your dock or peripherals, then capture them as a profile. AV Pain Reliever will switch your audio + camera defaults whenever you dock there again.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
@@ -175,7 +171,6 @@ private struct ProfilesSettingsTab: View {
                     .padding(.vertical, 2)
             }
             .buttonStyle(.borderedProminent)
-            .tint(Theme.Color.primary)
             .controlSize(.large)
             Spacer()
         }
@@ -193,7 +188,7 @@ private struct ProfileRow: View {
         HStack(spacing: 10) {
             Image(systemName: ProfileIcon.symbol(for: profile.name))
                 .font(.title3)
-                .foregroundStyle(isActive ? Theme.Color.primary : Theme.Color.chrome)
+                .foregroundStyle(isActive ? .primary : .secondary)
                 .frame(width: 28)
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
@@ -205,7 +200,7 @@ private struct ProfileRow: View {
                             .foregroundStyle(.white)
                             .padding(.horizontal, 6)
                             .padding(.vertical, 2)
-                            .background(Theme.Color.success.opacity(0.85), in: Capsule())
+                            .background(Color.green, in: Capsule())
                     }
                 }
                 if let summary = summary {

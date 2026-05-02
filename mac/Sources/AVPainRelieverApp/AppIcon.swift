@@ -1,13 +1,20 @@
 import AppKit
 import SwiftUI
 
-/// Generates the app icon used at runtime — a magenta-to-cyan radial
-/// gradient with a white pill SF Symbol on top. We render this in
-/// memory rather than ship a `.icns` so a v1 palette tweak doesn't
+/// Generates the app icon used at runtime — a neutral gray-gradient
+/// squircle with a white pill SF Symbol on top. Rendered in memory
+/// rather than shipped as a `.icns` so a palette tweak doesn't
 /// require regenerating an Xcode asset catalog. The signed `.app`
 /// bundle will use a proper Asset Catalog AppIcon when distribution
 /// lands; until then this is what shows up in About windows,
-/// notifications (`os_log`-routed), and any window's title-bar icon.
+/// notifications, and any window's title-bar icon.
+///
+/// History: an earlier iteration used a magenta→cyan brand gradient
+/// matching the Hammerspoon TUI palette. The user reverted that
+/// direction (2026-05-02) — the app should look like a plain native
+/// macOS utility, no custom accent colors. The icon now uses the
+/// same neutral gray you'd see on Apple's own utility apps so it
+/// blends with the system rather than shouting brand identity.
 ///
 /// The size is chosen high enough (1024×1024) that macOS's automatic
 /// downscaling for menu items, Dock previews, and notifications all
@@ -45,19 +52,17 @@ enum AppIcon {
         )
         path.addClip()
 
-        // 2. Radial gradient — magenta core, cyan rim. Tunes the
-        //    magenta intensity by mixing in slightly desaturated
-        //    pinks at the centre so the symbol on top still pops.
-        let magenta = NSColor(red: 1.00, green: 0.529, blue: 0.843, alpha: 1.0)
-        let deepMagenta = NSColor(red: 0.85, green: 0.30, blue: 0.70, alpha: 1.0)
-        let cyan = NSColor(red: 0.00, green: 1.00, blue: 1.00, alpha: 1.0)
-        if let gradient = NSGradient(colors: [magenta, deepMagenta, cyan]) {
+        // 2. Linear gradient — neutral grays, light at the top to
+        //    mimic the soft top-down lighting Apple uses on its own
+        //    utility-style icons. Brighter top → darker bottom gives
+        //    just enough depth to feel three-dimensional without
+        //    looking branded.
+        let topGray = NSColor(red: 0.62, green: 0.62, blue: 0.64, alpha: 1.0)
+        let bottomGray = NSColor(red: 0.34, green: 0.34, blue: 0.36, alpha: 1.0)
+        if let gradient = NSGradient(colors: [topGray, bottomGray]) {
             gradient.draw(
-                fromCenter: NSPoint(x: size.width / 2, y: size.height * 0.62),
-                radius: 0,
-                toCenter: NSPoint(x: size.width / 2, y: size.height * 0.45),
-                radius: size.width * 0.65,
-                options: []
+                in: NSRect(origin: .zero, size: size),
+                angle: -90  // top → bottom
             )
         }
 

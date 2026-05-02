@@ -35,7 +35,7 @@ struct AddProfileView: View {
                             // matched on.
                             Image(systemName: ProfileIcon.symbol(for: viewModel.previewSlug))
                                 .font(.title2)
-                                .foregroundStyle(Theme.Color.primary)
+                                .foregroundStyle(.secondary)
                                 .frame(width: 32, height: 24)
                                 .help("Menu icon for this profile (auto-picked from the name)")
                                 .animation(.easeInOut(duration: 0.18), value: viewModel.previewSlug)
@@ -47,11 +47,11 @@ struct AddProfileView: View {
                         if !viewModel.prettyPreview.isEmpty {
                             Text("Will appear as “\(viewModel.prettyPreview)”")
                                 .font(.caption)
-                                .foregroundStyle(Theme.Color.highlight)
+                                .foregroundStyle(.secondary)
                         } else {
                             Text("Pick anything human — letters, spaces, punctuation are fine.")
                                 .font(.caption)
-                                .foregroundStyle(Theme.Color.chrome)
+                                .foregroundStyle(.secondary)
                         }
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -71,7 +71,7 @@ struct AddProfileView: View {
                 } footer: {
                     Text("Uncheck peripherals that aren't unique to this location (keyboards, mice, phones). The profile matches when every checked device is attached.")
                         .font(.caption)
-                        .foregroundStyle(Theme.Color.chrome)
+                        .foregroundStyle(.secondary)
                 }
 
                 Section {
@@ -96,7 +96,7 @@ struct AddProfileView: View {
                 } footer: {
                     Text("Sets macOS's preferred camera. Apps with their own camera picker (Zoom, Slack, Teams) won't follow this — configure those once per location and they'll remember.")
                         .font(.caption)
-                        .foregroundStyle(Theme.Color.chrome)
+                        .foregroundStyle(.secondary)
                 }
             }
             .formStyle(.grouped)
@@ -141,7 +141,6 @@ struct AddProfileView: View {
                     }
                 }
                 .buttonStyle(.borderedProminent)
-                .tint(viewModel.didSave ? Theme.Color.success : Theme.Color.primary)
                 .disabled(!viewModel.canSave)
                 .keyboardShortcut(.defaultAction)
                 .animation(.easeInOut(duration: 0.18), value: viewModel.didSave)
@@ -194,22 +193,14 @@ struct AddProfileView: View {
     // MARK: - Subviews
 
     private var header: some View {
-        HStack(alignment: .center, spacing: 12) {
-            Image(systemName: Theme.Symbol.appIcon)
-                .font(.system(size: 28, weight: .semibold))
-                .foregroundStyle(Theme.Color.primary)
-                .symbolRenderingMode(.hierarchical)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(viewModel.editingExisting ? "Edit Profile" : "Add a Profile")
-                    .font(.title2.bold())
-                    .foregroundStyle(Theme.Color.primary)
-                Text(viewModel.editingExisting
-                     ? "Tweak how this location switches your audio + camera."
-                     : "Capture the dock you're at right now.")
-                    .font(.callout)
-                    .foregroundStyle(Theme.Color.highlight)
-            }
-            Spacer()
+        VStack(alignment: .leading, spacing: 2) {
+            Text(viewModel.editingExisting ? "Edit Profile" : "Add a Profile")
+                .font(.title2.bold())
+            Text(viewModel.editingExisting
+                 ? "Tweak how this location switches your audio + camera."
+                 : "Capture the dock you're at right now.")
+                .font(.callout)
+                .foregroundStyle(.secondary)
         }
     }
 
@@ -220,7 +211,6 @@ struct AddProfileView: View {
             Text(title)
         } icon: {
             Image(systemName: symbol)
-                .foregroundStyle(Theme.Color.primary)
         }
     }
 

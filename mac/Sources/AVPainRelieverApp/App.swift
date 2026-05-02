@@ -149,7 +149,7 @@ private struct MenuContentView: View {
         if showStats || NSEvent.modifierFlags.contains(.option) {
             Text(StatsCopy.line(for: delegate.profileSwitchCount))
                 .font(.caption)
-                .foregroundStyle(Theme.Color.highlight)
+                .foregroundStyle(.secondary)
         }
         Divider()
 

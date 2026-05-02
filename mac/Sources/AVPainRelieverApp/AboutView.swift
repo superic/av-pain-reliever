@@ -33,10 +33,9 @@ struct AboutView: View {
             VStack(spacing: 6) {
                 Text(Theme.Copy.appName)
                     .font(.system(size: 26, weight: .bold, design: .rounded))
-                    .foregroundStyle(Theme.Color.primary)
                 Text(Theme.Copy.tagline)
                     .font(.callout)
-                    .foregroundStyle(Theme.Color.highlight)
+                    .foregroundStyle(.secondary)
             }
 
             VStack(spacing: 4) {
@@ -66,7 +65,6 @@ struct AboutView: View {
             }
             .buttonStyle(.link)
             .font(.caption)
-            .foregroundStyle(Theme.Color.highlight)
         }
         .padding(.vertical, 28)
         .padding(.horizontal, 28)
