@@ -73,6 +73,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
     /// "add new" mode to "edit existing".
     private(set) var profileBeingEdited: Profile?
 
+    /// Bumped every time a wizard session begins (Add or Edit). The
+    /// wizard window's content view applies this as a SwiftUI `.id`,
+    /// which forces a fresh `@StateObject` view model on every open.
+    /// Without this, SwiftUI reuses the prior session's view model —
+    /// the wizard would appear with stale state from the previous
+    /// open (empty Name field on Edit, or vice versa).
+    @Published var wizardOpenToken: UUID = UUID()
+
     private var cancellables: Set<AnyCancellable> = []
 
     override init() {
@@ -318,10 +326,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         )
     }
 
-    /// Stash the profile to edit. The wizard's window-content view
-    /// pulls this into its bundle on construction, then clears it.
+    /// Stash the profile to edit + bump the wizard-session token so
+    /// SwiftUI tears down any prior wizard view model and rebuilds
+    /// it with this profile pre-filled. Call this immediately before
+    /// `openWindow(id: addProfileWindowID)`.
     func beginEditingProfile(_ profile: Profile) {
         profileBeingEdited = profile
+        wizardOpenToken = UUID()
+    }
+
+    /// Prep the wizard for a fresh "add new profile" session — clears
+    /// any pending edit and bumps the session token. Mirror of
+    /// `beginEditingProfile(_:)`; both should be called immediately
+    /// before `openWindow(id: addProfileWindowID)`.
+    func beginAddingProfile() {
+        profileBeingEdited = nil
+        wizardOpenToken = UUID()
     }
 
     /// Confirm + delete a profile. Shown as a modal alert so the user

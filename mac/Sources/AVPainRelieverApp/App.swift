@@ -80,6 +80,7 @@ private struct WelcomeWindowContent: View {
         WelcomeView(
             onAddProfile: {
                 delegate.dismissWelcome()
+                delegate.beginAddingProfile()
                 openWindow(id: addProfileWindowID)
                 NSApp.activate(ignoringOtherApps: true)
                 dismissWindow(id: welcomeWindowID)
@@ -159,6 +160,7 @@ private struct MenuContentView: View {
             // devices anyway, so the user just needs to pick a name
             // and hit Save.
             Button {
+                delegate.beginAddingProfile()
                 openWindow(id: addProfileWindowID)
                 NSApp.activate(ignoringOtherApps: true)
             } label: {
@@ -185,6 +187,7 @@ private struct MenuContentView: View {
         }
 
         Button("Add Profile…") {
+            delegate.beginAddingProfile()
             openWindow(id: addProfileWindowID)
             // Accessory apps (LSUIElement-style) don't auto-activate
             // when a window opens — the new window appears behind
@@ -329,17 +332,43 @@ private struct MenuContentView: View {
     }
 }
 
-/// Wrapper view inside the Add-Profile Window scene. Owns the
-/// `AddProfileViewModel` as a `@StateObject` so its lifetime matches
-/// the window's, even though SwiftUI may rebuild the surrounding view
-/// when the AppDelegate publishes elsewhere.
+/// Wrapper view inside the Add-Profile Window scene. Watches the
+/// AppDelegate's `wizardOpenToken` and stamps it as a SwiftUI `.id`
+/// on the child form. When the token changes (i.e. the user opens
+/// the wizard for a new Add or Edit session), SwiftUI tears down the
+/// prior subtree — including its `@StateObject` view model — and
+/// builds a fresh one with the current `addProfileDependencies()`.
+///
+/// Without the `.id` dance, SwiftUI's StateObject lifetime is tied
+/// to the surrounding view's identity, which the Window scene
+/// preserves across open/dismiss cycles. The result was that the
+/// second wizard open (e.g. Edit after Add, or Add after Edit)
+/// reused the prior session's view model and silently ignored the
+/// new `editing:` argument.
 private struct AddProfileWindowContent: View {
     @ObservedObject var delegate: AppDelegate
     @Environment(\.dismissWindow) private var dismissWindow
+
+    var body: some View {
+        WizardForm(
+            delegate: delegate,
+            onDismiss: { dismissWindow(id: addProfileWindowID) }
+        )
+        .id(delegate.wizardOpenToken)
+    }
+}
+
+/// Inner wizard view — owns the `AddProfileViewModel` as a
+/// `@StateObject`. Recreated by SwiftUI whenever its parent
+/// re-stamps the `.id` with a new wizard-session token.
+private struct WizardForm: View {
+    @ObservedObject var delegate: AppDelegate
+    let onDismiss: () -> Void
     @StateObject private var viewModel: AddProfileViewModel
 
-    init(delegate: AppDelegate) {
+    init(delegate: AppDelegate, onDismiss: @escaping () -> Void) {
         self.delegate = delegate
+        self.onDismiss = onDismiss
         let deps = delegate.addProfileDependencies()
         _viewModel = StateObject(wrappedValue: AddProfileViewModel(
             watcher: deps.watcher,
@@ -352,8 +381,6 @@ private struct AddProfileWindowContent: View {
     }
 
     var body: some View {
-        AddProfileView(viewModel: viewModel) {
-            dismissWindow(id: addProfileWindowID)
-        }
+        AddProfileView(viewModel: viewModel, dismiss: onDismiss)
     }
 }

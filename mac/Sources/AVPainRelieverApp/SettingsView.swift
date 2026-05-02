@@ -125,6 +125,7 @@ private struct ProfilesSettingsTab: View {
 
             HStack {
                 Button {
+                    delegate.beginAddingProfile()
                     openWindow(id: addProfileWindowID)
                     NSApp.activate(ignoringOtherApps: true)
                 } label: {
@@ -165,6 +166,7 @@ private struct ProfilesSettingsTab: View {
                     .padding(.horizontal, 32)
             }
             Button {
+                delegate.beginAddingProfile()
                 openWindow(id: addProfileWindowID)
                 NSApp.activate(ignoringOtherApps: true)
             } label: {
