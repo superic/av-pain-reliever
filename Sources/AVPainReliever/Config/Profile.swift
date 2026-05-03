@@ -37,6 +37,16 @@ public struct Profile: Hashable, Sendable {
     /// route through OBS Virtual Camera.
     public let camera: String?
 
+    /// User-picked SF Symbol name to display next to this profile's
+    /// label in the menu and Settings list. `nil` means "use the
+    /// auto-mapper's pick" — the wizard exposes a curated picker
+    /// (`ProfileIcon.catalog`) that lets users override the
+    /// auto-pick. Never causes a parse failure for older app
+    /// versions: missing field → `nil` → auto-mapper. Excluded from
+    /// `Hashable` / `Equatable` so semantically-identical profiles
+    /// stay equal regardless of the cosmetic override.
+    public let icon: String?
+
     /// Display-only names for fingerprint devices, keyed by
     /// `(vid, pid, serial)` USBDevice. Populated by `ConfigLoader`
     /// and `ConfigImporter` from the `name = "..."` field on each
@@ -56,6 +66,7 @@ public struct Profile: Hashable, Sendable {
         audioInput: String? = nil,
         audioOutput: String? = nil,
         camera: String? = nil,
+        icon: String? = nil,
         fingerprintNames: [USBDevice: String] = [:]
     ) {
         self.name = name
@@ -63,6 +74,7 @@ public struct Profile: Hashable, Sendable {
         self.audioInput = audioInput
         self.audioOutput = audioOutput
         self.camera = camera
+        self.icon = icon
         self.fingerprintNames = fingerprintNames
     }
 

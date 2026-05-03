@@ -190,7 +190,13 @@ private struct ProfileRow: View {
 
     var body: some View {
         HStack(spacing: 10) {
-            Image(systemName: ProfileIcon.symbol(for: profile.name))
+            // Leading icon mirrors the Switch To submenu: profile's
+            // user-picked icon when set, slug-driven auto-mapper
+            // fallback when not.
+            Image(systemName: ProfileIcon.effectiveSymbol(
+                for: profile.name,
+                override: profile.icon
+            ))
                 .font(.title3)
                 .foregroundStyle(isActive ? .primary : .secondary)
                 .frame(width: 28)
@@ -207,8 +213,8 @@ private struct ProfileRow: View {
                             .background(Color.green, in: Capsule())
                     }
                 }
-                if let summary = summary {
-                    Text(summary)
+                if let summary = summaryText {
+                    summary
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .lineLimit(2)
@@ -257,17 +263,34 @@ private struct ProfileRow: View {
         .padding(.vertical, 4)
     }
 
-    private var summary: String? {
-        var parts: [String] = []
-        if let mic = profile.audioInput { parts.append("🎙 \(mic)") }
-        if let out = profile.audioOutput { parts.append("🔈 \(out)") }
-        if let cam = profile.camera { parts.append("📷 \(cam)") }
+    /// Caption-line under each profile name. Renders inline SF Symbols
+    /// (mic / speaker / camera) instead of the emoji prefixes the
+    /// earlier draft used — emoji at caption size read as cheap and
+    /// clash with the otherwise-monochrome SF Symbol vocabulary used
+    /// throughout the menu and wizard. `Text + Text(Image:)`
+    /// concatenation keeps it a single flowing line that wraps and
+    /// respects `.lineLimit(2)` cleanly.
+    private var summaryText: Text? {
+        var parts: [Text] = []
+        if let mic = profile.audioInput {
+            parts.append(Text(Image(systemName: "mic")) + Text(" \(mic)"))
+        }
+        if let out = profile.audioOutput {
+            parts.append(Text(Image(systemName: "speaker.wave.2")) + Text(" \(out)"))
+        }
+        if let cam = profile.camera {
+            parts.append(Text(Image(systemName: "camera")) + Text(" \(cam)"))
+        }
         if profile.fingerprint.isEmpty {
-            parts.append("Always matches when undocked")
+            parts.append(Text("Always matches when undocked"))
         } else {
             let count = profile.fingerprint.count
-            parts.append("\(count) USB device\(count == 1 ? "" : "s")")
+            parts.append(Text("\(count) USB device\(count == 1 ? "" : "s")"))
         }
-        return parts.isEmpty ? nil : parts.joined(separator: "  •  ")
+        guard !parts.isEmpty else { return nil }
+        let separator = Text("  •  ")
+        return parts.dropFirst().reduce(parts[0]) { acc, next in
+            acc + separator + next
+        }
     }
 }

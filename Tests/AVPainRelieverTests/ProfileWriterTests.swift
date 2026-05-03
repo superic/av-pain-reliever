@@ -311,6 +311,73 @@ struct ProfileWriterTests {
         }
     }
 
+    @Test("icon field round-trips through writer + ConfigLoader")
+    func iconRoundTrips() throws {
+        let url = tempTOMLURL()
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        let withIcon = Profile(
+            name: "studio",
+            fingerprint: [],
+            audioInput: "Shure MV7",
+            icon: "music.mic"
+        )
+        try writer.append(profile: withIcon, to: url)
+
+        let written = try String(contentsOf: url, encoding: .utf8)
+        #expect(written.contains("icon        = \"music.mic\""))
+
+        let loaded = try ConfigLoader().loadProfiles(from: url)
+        let studio = loaded.first { $0.name == "studio" }!
+        #expect(studio.icon == "music.mic")
+    }
+
+    @Test("a profile without an icon writes no icon line")
+    func iconAbsentWritesNothing() throws {
+        let url = tempTOMLURL()
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        let plain = Profile(
+            name: "laptop",
+            fingerprint: [],
+            audioInput: "MacBook Pro Microphone"
+        )
+        try writer.append(profile: plain, to: url)
+
+        let written = try String(contentsOf: url, encoding: .utf8)
+        #expect(!written.contains("icon"))
+
+        // ConfigLoader should leave .icon nil when the field is absent.
+        let loaded = try ConfigLoader().loadProfiles(from: url)
+        #expect(loaded.first { $0.name == "laptop" }?.icon == nil)
+    }
+
+    @Test("replace preserves an icon override on a partial update")
+    func replaceCarriesIconForward() throws {
+        let url = tempTOMLURL()
+        defer { try? FileManager.default.removeItem(at: url) }
+        try """
+        [profiles.home-office]
+        audioInput = "Old Yeti"
+        icon       = "star.fill"
+        """.write(to: url, atomically: true, encoding: .utf8)
+
+        // Caller passes a fresh Profile with the updated icon (the
+        // wizard always re-supplies the full profile).
+        let updated = Profile(
+            name: "home-office",
+            fingerprint: [],
+            audioInput: "New Yeti",
+            icon: "house.fill"
+        )
+        try writer.replace(profile: updated, in: url)
+
+        let loaded = try ConfigLoader().loadProfiles(from: url)
+        let homeOffice = loaded.first { $0.name == "home-office" }!
+        #expect(homeOffice.audioInput == "New Yeti")
+        #expect(homeOffice.icon == "house.fill")
+    }
+
     @Test("deleted profile can be re-added")
     func deleteThenAppendRoundTrips() throws {
         let url = tempTOMLURL()

@@ -1,15 +1,75 @@
 import Foundation
 
-/// Maps a profile's slug to an SF Symbol name. V1 is fully automatic —
-/// the user can't pick the icon, the slug picks it. The mapping is
-/// intentionally case-insensitive and prefix-friendly so common naming
-/// patterns (`home-office`, `home-2`, `work-1`, `work-office`) land on
-/// recognizable icons without requiring exact slugs.
+/// Picks the SF Symbol used to represent a profile. Two modes:
 ///
-/// V2 will let users override the icon per-profile; until then this
-/// keeps the menu's "Switch to" submenu glanceable without any user
-/// configuration.
+/// - Auto-mapping (default): the slug picks the symbol. The mapping is
+///   case-insensitive and prefix-friendly so common naming patterns
+///   (`home-office`, `home-2`, `work-1`, `work-office`) land on
+///   recognizable icons without requiring exact slugs.
+/// - User override: the wizard exposes a curated picker
+///   (`ProfileIcon.catalog`) and stores the choice on the profile's
+///   `icon` field. When set, that wins.
+///
+/// `effectiveSymbol(for:override:)` collapses the two modes into a
+/// single resolved symbol; callers (menu rendering, Settings list,
+/// wizard preview) all go through it.
 enum ProfileIcon {
+    /// Resolved SF Symbol for a profile. If `override` is non-nil,
+    /// it wins outright — the user explicitly chose this. Otherwise,
+    /// fall back to the slug-driven auto-mapper.
+    static func effectiveSymbol(for slug: String, override: String?) -> String {
+        if let override, !override.isEmpty { return override }
+        return symbol(for: slug)
+    }
+
+    /// Curated catalog of SF Symbol names the wizard's icon picker
+    /// surfaces, in display order (workspaces → home → travel →
+    /// education → fitness → content creation → fallbacks). Includes
+    /// every symbol the auto-mapper can produce so a manual pick can
+    /// match what auto-mapping would have chosen, plus location-themed
+    /// extras for variety. ~30 symbols — small enough to render in a
+    /// single popover grid, large enough to cover the situations
+    /// users name profiles after.
+    static let catalog: [String] = [
+        // Workspaces
+        "house.fill",
+        "building.2.fill",
+        "building.fill",
+        "building.columns.fill",
+        "briefcase.fill",
+        "person.3.fill",
+        "laptopcomputer",
+        "desktopcomputer",
+        // Home / lifestyle
+        "bed.double.fill",
+        "sofa.fill",
+        "fork.knife",
+        "cup.and.saucer.fill",
+        "cart.fill",
+        // Travel / outdoor
+        "suitcase.fill",
+        "car.fill",
+        "airplane",
+        "mountain.2.fill",
+        "tent.fill",
+        // Education / institution
+        "graduationcap.fill",
+        "books.vertical.fill",
+        "testtube.2",
+        // Health / fitness
+        "dumbbell.fill",
+        // Content creation
+        "music.mic",
+        "video.fill",
+        "camera.fill",
+        "headphones",
+        "tv",
+        // Generic / fallbacks
+        "globe",
+        "star.fill",
+        "mappin.and.ellipse",
+    ]
+
     /// SF Symbol name for `slug`. Always returns a valid symbol — when
     /// nothing matches, falls back to `mappin.and.ellipse` (a generic
     /// "this is a place" pin).

@@ -123,6 +123,7 @@ private struct ConfigFile: Decodable {
                 audioInput: body.audioInput,
                 audioOutput: body.audioOutput,
                 camera: body.camera,
+                icon: body.icon,
                 fingerprintNames: names
             )
         }
@@ -133,6 +134,7 @@ private struct ProfileBody: Decodable {
     let audioInput: String?
     let audioOutput: String?
     let camera: String?
+    let icon: String?
     let fingerprint: [FingerprintEntry]?
 }
 

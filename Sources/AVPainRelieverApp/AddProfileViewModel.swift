@@ -35,6 +35,11 @@ final class AddProfileViewModel: ObservableObject {
     @Published var audioInput: String? = nil
     @Published var audioOutput: String? = nil
     @Published var camera: String? = nil
+    /// User-picked SF Symbol for this profile. `nil` means "use the
+    /// auto-mapper based on the slug" — that's the default until the
+    /// user opens the icon picker and chooses something. Persisted to
+    /// the TOML's `icon` field on save.
+    @Published var icon: String? = nil
 
     /// Devices shown in the wizard's USB-fingerprint list. Union of
     /// (currently-attached devices) and (devices the editing profile
@@ -119,6 +124,7 @@ final class AddProfileViewModel: ObservableObject {
             self.audioInput = profile.audioInput
             self.audioOutput = profile.audioOutput
             self.camera = profile.camera
+            self.icon = profile.icon
             self.savedFingerprint = profile.fingerprint
             self.savedFingerprintNames = profile.fingerprintNames
             // Default to keeping every saved device ticked. The user
@@ -330,7 +336,8 @@ final class AddProfileViewModel: ObservableObject {
             fingerprint: fingerprint,
             audioInput: audioInput,
             audioOutput: audioOutput,
-            camera: camera
+            camera: camera,
+            icon: icon
         )
 
         do {

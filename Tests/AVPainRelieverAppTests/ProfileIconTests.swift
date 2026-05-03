@@ -103,4 +103,56 @@ struct ProfileIconTests {
         ])
         #expect(suggested == nil)
     }
+
+    // MARK: - effectiveSymbol
+
+    @Test("effectiveSymbol returns override when one is supplied")
+    func effectiveSymbolHonoursOverride() {
+        #expect(ProfileIcon.effectiveSymbol(for: "home", override: "star.fill") == "star.fill")
+        // Override wins even when it's a symbol that doesn't appear
+        // in the auto-mapper's vocabulary — manual choice is final.
+        #expect(ProfileIcon.effectiveSymbol(for: "home", override: "tent.fill") == "tent.fill")
+    }
+
+    @Test("effectiveSymbol falls back to auto-mapper when override is nil")
+    func effectiveSymbolFallsBackOnNil() {
+        #expect(ProfileIcon.effectiveSymbol(for: "home-office", override: nil) == "house.fill")
+        #expect(ProfileIcon.effectiveSymbol(for: "studio", override: nil) == "music.mic")
+    }
+
+    @Test("effectiveSymbol falls back to auto-mapper when override is empty")
+    func effectiveSymbolFallsBackOnEmpty() {
+        // Empty-string overrides round-tripped from a hand-edited
+        // TOML shouldn't disable the auto-mapper.
+        #expect(ProfileIcon.effectiveSymbol(for: "studio", override: "") == "music.mic")
+    }
+
+    @Test("catalog includes every symbol the auto-mapper can produce")
+    func catalogCoversAutoMapper() {
+        // Manual picks should be able to match what the auto-mapper
+        // would have chosen — otherwise users opening the picker
+        // can't reproduce the auto pick. This guard catches drift if
+        // someone adds a new mapping entry without a catalog update.
+        let autoSymbols: Set<String> = [
+            "person.3.fill",
+            "music.mic",
+            "books.vertical.fill",
+            "car.fill",
+            "testtube.2",
+            "cup.and.saucer.fill",
+            "suitcase.fill",
+            "graduationcap.fill",
+            "house.fill",
+            "building.2.fill",
+            "laptopcomputer",
+            "mappin.and.ellipse",
+        ]
+        let catalog = Set(ProfileIcon.catalog)
+        #expect(autoSymbols.isSubset(of: catalog))
+    }
+
+    @Test("catalog has no duplicates")
+    func catalogHasNoDuplicates() {
+        #expect(ProfileIcon.catalog.count == Set(ProfileIcon.catalog).count)
+    }
 }

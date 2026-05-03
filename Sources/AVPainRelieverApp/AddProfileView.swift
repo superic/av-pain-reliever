@@ -9,6 +9,9 @@ struct AddProfileView: View {
     /// in AppDelegate; this view stays AppKit-free.
     let dismiss: () -> Void
 
+    /// Drives the icon-picker popover anchored to the icon button.
+    @State private var showIconPicker = false
+
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             Form {
@@ -23,20 +26,35 @@ struct AddProfileView: View {
                                 .textFieldStyle(.roundedBorder)
                                 .labelsHidden()
                                 .frame(maxWidth: .infinity)
-                            // Live preview of the SF Symbol the menu
-                            // will render for this profile. Picks an
-                            // icon from the typed slug (auto-mapping —
-                            // V1 doesn't expose a picker). Subtle, but
-                            // it surfaces the product feature ("each
-                            // location gets its own icon") visually
-                            // and tells the user what their slug
-                            // matched on.
-                            Image(systemName: ProfileIcon.symbol(for: viewModel.previewSlug))
-                                .font(.title2)
-                                .foregroundStyle(.secondary)
-                                .frame(width: 32, height: 24)
-                                .help("Menu icon for this profile (auto-picked from the name)")
-                                .animation(.easeInOut(duration: 0.18), value: viewModel.previewSlug)
+                            // Tappable icon preview — defaults to the
+                            // slug-driven auto-pick, but clicking opens
+                            // a popover with the curated catalog so
+                            // users can override. Selecting "Auto" in
+                            // the popover clears the override and
+                            // returns to the slug-driven default.
+                            Button {
+                                showIconPicker = true
+                            } label: {
+                                Image(systemName: ProfileIcon.effectiveSymbol(
+                                    for: viewModel.previewSlug,
+                                    override: viewModel.icon
+                                ))
+                                    .font(.title2)
+                                    .foregroundStyle(.primary)
+                                    .frame(width: 32, height: 24)
+                                    .contentShape(Rectangle())
+                                    .animation(.easeInOut(duration: 0.18), value: viewModel.previewSlug)
+                                    .animation(.easeInOut(duration: 0.18), value: viewModel.icon)
+                            }
+                            .buttonStyle(.plain)
+                            .help("Click to pick a custom icon for this profile")
+                            .popover(isPresented: $showIconPicker, arrowEdge: .top) {
+                                IconPickerView(
+                                    selection: $viewModel.icon,
+                                    slug: viewModel.previewSlug,
+                                    onPick: { showIconPicker = false }
+                                )
+                            }
                         }
                         // Hint defaults to brief instructions; switches
                         // to a quiet preview the moment a name is being

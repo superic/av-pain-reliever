@@ -46,6 +46,28 @@ struct AddProfileViewModelTests {
         #expect(vm.camera == "Built-in")
         #expect(vm.editingExisting == true)
         #expect(vm.selectedDeviceIDs == [USBDevice(vendorID: 0x2188, productID: 0x6533)])
+        // No icon override on the editing profile → viewModel.icon
+        // stays nil so the wizard's preview picks up the auto-mapper.
+        #expect(vm.icon == nil)
+    }
+
+    @Test("opening on an existing profile with an icon pre-fills the override")
+    func editModePreFillsIcon() {
+        let editing = Profile(
+            name: "studio",
+            fingerprint: [],
+            audioInput: "Shure MV7",
+            icon: "music.mic"
+        )
+        let vm = AddProfileViewModel(
+            watcher: FakeWatcher(),
+            audioController: FakeAudio(devices: []),
+            cameraController: FakeCamera(cameras: []),
+            configURL: URL(fileURLWithPath: "/tmp/x.toml"),
+            editing: editing,
+            onSaved: {}
+        )
+        #expect(vm.icon == "music.mic")
     }
 
     @Test("opening fresh auto-suggests a name for a recognized dock")

@@ -298,20 +298,21 @@ private struct MenuContentView: View {
     /// switches immediately — single-click is the right interaction
     /// for "switch to". Edit/Delete live in Settings → Profiles.
     ///
-    /// Layout: name on the top line, audio/camera summary on a
-    /// smaller secondary line below. The active profile gets a
-    /// checkmark in a fixed-width leading slot; inactive rows
-    /// reserve the same slot empty so all names line up.
-    ///
-    /// No leading SF Symbol icon — the user only wanted iconography
-    /// on top-level items, and the submenu was getting way too wide
-    /// with both the icon and the inlined summary on the same row.
-    /// Pulling the summary onto a sub-line + dropping the icon keeps
-    /// the submenu tight.
+    /// Layout: leading SF Symbol icon (the profile's chosen icon, or
+    /// the slug-driven auto-pick if none is set), then the pretty
+    /// name. The active profile renders bold — the macOS-native cue
+    /// for "this is the current selection" (see System Settings
+    /// sidebar, Calendar's left rail). No checkmark: with a real
+    /// icon column, the bold weight + icon is enough signal, and
+    /// dropping the checkmark frees a column without losing clarity.
     @ViewBuilder
     private func profileMenuEntry(_ profile: Profile) -> some View {
         let pretty = PrettyName.format(profile.name)
         let isActive = profile.name == delegate.activeProfileSlug
+        let iconSymbol = ProfileIcon.effectiveSymbol(
+            for: profile.name,
+            override: profile.icon
+        )
         Button {
             // Modifier-aware action: ⌥-click opens the wizard pre-
             // filled for editing this profile (single-affordance,
@@ -328,28 +329,14 @@ private struct MenuContentView: View {
                 delegate.applyManually(profile)
             }
         } label: {
-            // Active row gets a real checkmark icon; inactive rows
-            // omit the icon entirely. NSMenu reserves the image
-            // column for every row in a menu as long as at least one
-            // item has an image — the Edit Profiles… entry below
-            // (with its list.bullet.rectangle icon) keeps the column
-            // pinned even when no profile is active. SwiftUI's
-            // bridge silently ignores `.opacity(0)` on a Label icon,
-            // so a real conditional is the only reliable way to
-            // hide the glyph.
-            //
-            // The Text label is multi-line: name on the first row,
-            // optional audio/camera summary on a smaller secondary
-            // line. AttributedString carries the per-run weight +
-            // color; SwiftUI bridges it via NSMenuItem.attributedTitle.
-            if isActive {
-                Label {
-                    Text(menuLabel(for: profile, pretty: pretty, isActive: true))
-                } icon: {
-                    Image(systemName: "checkmark")
-                }
-            } else {
-                Text(menuLabel(for: profile, pretty: pretty, isActive: false))
+            // Per-profile SF Symbol in NSMenu's image column; the
+            // AttributedString in the title carries the per-run
+            // weight (semibold when active) that NSMenuItem honours
+            // via `attributedTitle`.
+            Label {
+                Text(menuLabel(for: profile, pretty: pretty, isActive: isActive))
+            } icon: {
+                Image(systemName: iconSymbol)
             }
         }
     }
