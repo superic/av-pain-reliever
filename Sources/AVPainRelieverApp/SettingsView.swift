@@ -37,7 +37,37 @@ struct SettingsView: View {
         }
         .frame(width: 480, height: 380)
         .padding(.top, 8)
+        // Strip the minimize traffic-light button — settings panes
+        // don't belong in the Dock as miniaturized icons. macOS 14
+        // doesn't expose this through SwiftUI; bridge to AppKit to
+        // remove .miniaturizable from the host NSWindow's style mask.
+        .background(WindowConfigurator { window in
+            window.styleMask.remove(.miniaturizable)
+        })
     }
+}
+
+/// Reaches up to the SwiftUI Window's underlying NSWindow once it's
+/// attached to the view hierarchy and runs the supplied configure
+/// block on it. Used by SettingsView to drop the minimize traffic
+/// light, an option SwiftUI's Window scene doesn't expose directly
+/// on macOS 14.
+private struct WindowConfigurator: NSViewRepresentable {
+    let configure: (NSWindow) -> Void
+
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView()
+        // Window isn't attached yet at make-time; defer to the next
+        // run loop so view.window resolves.
+        DispatchQueue.main.async {
+            if let window = view.window {
+                configure(window)
+            }
+        }
+        return view
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {}
 }
 
 private struct GeneralSettingsTab: View {
@@ -46,7 +76,7 @@ private struct GeneralSettingsTab: View {
     var body: some View {
         Form {
             Section {
-                Toggle("Launch AV Pain Reliever at login", isOn: $settings.launchAtLogin)
+                Toggle("Launch at login", isOn: $settings.launchAtLogin)
                 Toggle("Send notifications when profiles change", isOn: $settings.notificationsEnabled)
                 Toggle("Show current profile in the menu bar", isOn: $settings.showProfileNameInMenuBar)
             } header: {
@@ -74,16 +104,6 @@ private struct GeneralSettingsTab: View {
         }
         .formStyle(.grouped)
         .padding(8)
-        .safeAreaInset(edge: .bottom) {
-            HStack {
-                Spacer()
-                Text(VersionInfo.short)
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                Spacer()
-            }
-            .padding(.bottom, 6)
-        }
     }
 }
 
