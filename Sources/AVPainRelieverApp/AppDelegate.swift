@@ -148,16 +148,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         bootEngine()
         applyLaunchAtLoginPreference()
         // Spin up Sparkle only inside a real .app bundle that has a
-        // real EdDSA public key embedded. Running via `swift run`
-        // produces a binary with no Info.plist; an unfinished build
-        // ships with the `__SPARKLE_PUBLIC_KEY__` placeholder. Either
-        // case would surface Sparkle's "Unable to Check For Updates"
-        // dialog at the user. Skip the wire-up when the key is missing
-        // or placeholder — Check for Updates… becomes a quiet no-op.
-        let key = Bundle.main.object(forInfoDictionaryKey: "SUPublicEDKey") as? String
-        let bundleID = Bundle.main.bundleIdentifier
-        let hasRealKey = (key?.isEmpty == false) && key != "__SPARKLE_PUBLIC_KEY__"
-        if bundleID == "com.ericwillis.avpainreliever" && hasRealKey {
+        // real EdDSA public key embedded. The full predicate (and
+        // the reasoning behind each branch) lives on Updater itself
+        // so tests can exercise the gate without needing a bundle.
+        if Updater.shouldEnable(
+            bundleIdentifier: Bundle.main.bundleIdentifier,
+            publicKey: Bundle.main.object(forInfoDictionaryKey: "SUPublicEDKey") as? String
+        ) {
             updater = Updater()
         }
         maybeShowWelcomeWindow()
