@@ -128,6 +128,7 @@ SPARKLE_NESTED=(
     "$SPARKLE_DIR/XPCServices/Downloader.xpc"
     "$SPARKLE_DIR/XPCServices/Installer.xpc"
     "$SPARKLE_DIR/Updater.app"
+    "$SPARKLE_DIR/Autoupdate"
 )
 
 if [[ -n "${MAC_CERT_NAME:-}" ]]; then
