@@ -30,7 +30,16 @@ let package = Package(
         // updates with no server of our own. Only the
         // AVPainRelieverApp target links it; the engine library has
         // no awareness of bundling or updates.
-        .package(url: "https://github.com/sparkle-project/Sparkle.git", from: "2.6.0"),
+        //
+        // Pinned to upToNextMinor because Sparkle is the most
+        // notarization-sensitive dependency in the build (its nested
+        // Updater.app + XPC services + Autoupdate helper all need to
+        // re-sign cleanly inside-out — see scripts/make-app.sh).
+        // A new minor could re-shuffle that layout and break our
+        // SPARKLE_NESTED list silently. Bumping to a new minor is a
+        // deliberate decision, not an automatic Package.resolved
+        // refresh.
+        .package(url: "https://github.com/sparkle-project/Sparkle.git", .upToNextMinor(from: "2.9.0")),
     ],
     targets: [
         .target(
