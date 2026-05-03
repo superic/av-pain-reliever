@@ -70,5 +70,6 @@ struct AboutView: View {
         .padding(.horizontal, 28)
         .frame(width: 360, height: 460)
         .background(.background)
+        .dialogWindowChrome()
     }
 }

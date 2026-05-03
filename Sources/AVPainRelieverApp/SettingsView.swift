@@ -37,37 +37,8 @@ struct SettingsView: View {
         }
         .frame(width: 480, height: 380)
         .padding(.top, 8)
-        // Strip the minimize traffic-light button — settings panes
-        // don't belong in the Dock as miniaturized icons. macOS 14
-        // doesn't expose this through SwiftUI; bridge to AppKit to
-        // remove .miniaturizable from the host NSWindow's style mask.
-        .background(WindowConfigurator { window in
-            window.styleMask.remove(.miniaturizable)
-        })
+        .dialogWindowChrome()
     }
-}
-
-/// Reaches up to the SwiftUI Window's underlying NSWindow once it's
-/// attached to the view hierarchy and runs the supplied configure
-/// block on it. Used by SettingsView to drop the minimize traffic
-/// light, an option SwiftUI's Window scene doesn't expose directly
-/// on macOS 14.
-private struct WindowConfigurator: NSViewRepresentable {
-    let configure: (NSWindow) -> Void
-
-    func makeNSView(context: Context) -> NSView {
-        let view = NSView()
-        // Window isn't attached yet at make-time; defer to the next
-        // run loop so view.window resolves.
-        DispatchQueue.main.async {
-            if let window = view.window {
-                configure(window)
-            }
-        }
-        return view
-    }
-
-    func updateNSView(_ nsView: NSView, context: Context) {}
 }
 
 private struct GeneralSettingsTab: View {
