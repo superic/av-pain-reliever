@@ -145,92 +145,20 @@ private struct MenuContentView: View {
     @State private var showStats: Bool = false
 
     var body: some View {
-        // Render the header as a single Text(AttributedString) rather
-        // than separate headline/caption views. Each SwiftUI Text in
-        // a MenuBarExtra menu becomes its own NSMenuItem with its
-        // own vertical padding — combining them into one item with a
-        // newline-bearing AttributedString visibly tightens the
-        // header.
-        //
-        // Wrapped in a no-op Button so the menu treats it as enabled
-        // and renders text at full opacity. Plain Text views bridge
-        // to *disabled* NSMenuItems (greyed out, hard to read);
-        // taking the click as a no-op is a small price for legible
-        // text. The menu auto-dismisses after click, which is fine
-        // for a header.
-        Button(action: {}) {
-            Text(headerAttributedString())
-        }
+        // No persistent header. The active profile name is already
+        // visible on the menu bar pill itself, the Switch to submenu
+        // marks the active row with a checkmark, and audio/camera
+        // detail lives in Settings → Profiles. Removing the header
+        // keeps the menu focused on actions and avoids fighting the
+        // disabled-NSMenuItem dim treatment that comes with non-
+        // interactive items in NSMenu.
         if showStats || NSEvent.modifierFlags.contains(.option) {
             Text(StatsCopy.line(for: delegate.profileSwitchCount))
                 .font(.caption)
                 .foregroundStyle(.secondary)
+            Divider()
         }
-        Divider()
-        // Continue with action items below; the original layout
-        // resumed after a Divider so this stays equivalent.
         bodyActions
-    }
-
-    /// First line: profile name (or "New location detected"), in
-    /// headline weight. Optional second line: dot-separated audio +
-    /// camera summary (or USB device count when at an unknown
-    /// location), in caption-secondary. Returns a single
-    /// AttributedString so the menu bridges to a single NSMenuItem.
-    private func headerAttributedString() -> AttributedString {
-        if delegate.atUnknownLocation {
-            // Headline replaces the misleading fallback profile name
-            // ("Laptop") with an honest "New location detected" so
-            // the user knows the engine is in fallback mode rather
-            // than assuming they're somehow undocked.
-            var first = AttributedString("New location detected")
-            first.font = .headline
-            first.paragraphStyle = Self.headerParagraphStyle
-            let count = delegate.lastUnknownDevices.count
-            var second = AttributedString("\n\(count) USB device\(count == 1 ? "" : "s") attached")
-            second.font = .caption
-            second.foregroundColor = .secondary
-            first.append(second)
-            return first
-        }
-        var first = AttributedString(delegate.currentProfileTitle)
-        first.font = .headline
-        guard
-            delegate.showAudioCameraInMenu,
-            let summary = activeProfileSummary()
-        else {
-            return first
-        }
-        first.paragraphStyle = Self.headerParagraphStyle
-        var second = AttributedString("\n" + summary)
-        second.font = .caption
-        second.foregroundColor = .secondary
-        first.append(second)
-        return first
-    }
-
-    /// Paragraph style for the headline run of the header. Adds a
-    /// few points of trailing space so the summary line below isn't
-    /// crowded against the profile name. Bridges through to
-    /// NSMenuItem.attributedTitle's paragraph layout.
-    private static let headerParagraphStyle: NSParagraphStyle = {
-        let style = NSMutableParagraphStyle()
-        style.paragraphSpacing = 3
-        return style
-    }()
-
-    /// Look up the currently-applied profile by slug and produce its
-    /// dot-separated mic/speaker/camera summary. Returns nil when
-    /// nothing has been applied yet, the profile is gone (race), or
-    /// it has no AV fields configured.
-    private func activeProfileSummary() -> String? {
-        guard
-            let slug = delegate.activeProfileSlug,
-            let profile = delegate.availableProfiles.first(where: { $0.name == slug })
-        else {
-            return nil
-        }
-        return profileSummary(profile)
     }
 
     @ViewBuilder
@@ -430,53 +358,6 @@ private struct MenuContentView: View {
         return label
     }
 
-    /// One-line summary of the audio / camera the profile would
-    /// apply, formatted for the main-menu header. Each segment gets
-    /// an emoji prefix (🎙 / 🔈 / 📷) and trims trailing device-type
-    /// words ("Microphone", "HD Camera", etc.) since the emoji
-    /// already communicates the kind. When mic and speaker compact
-    /// to the same name (built-in MacBook case), they collapse into
-    /// a single 🎙🔈 segment instead of being printed twice.
-    /// Returns nil for profiles with no apply fields configured.
-    private func profileSummary(_ profile: Profile) -> String? {
-        let mic = profile.audioInput.map(Self.compactDeviceName)
-        let spk = profile.audioOutput.map(Self.compactDeviceName)
-        let cam = profile.camera.map(Self.compactDeviceName)
-
-        var parts: [String] = []
-        if let mic, let spk, mic == spk {
-            parts.append("🎙🔈 \(mic)")
-        } else {
-            if let mic { parts.append("🎙 \(mic)") }
-            if let spk { parts.append("🔈 \(spk)") }
-        }
-        if let cam { parts.append("📷 \(cam)") }
-        guard !parts.isEmpty else { return nil }
-        return parts.joined(separator: " · ")
-    }
-
-    /// Trim well-known trailing device-type words off a human-readable
-    /// device name so the menu header doesn't echo what the emoji
-    /// prefix already says. Stop list is case-insensitive and applied
-    /// iteratively from the end — "FaceTime HD Camera" peels to
-    /// "FaceTime HD" then to "FaceTime". If trimming would leave an
-    /// empty string (a device literally named "Microphone"), fall
-    /// back to the original.
-    private static let compactStopWords: Set<String> = [
-        "camera", "cam",
-        "microphone", "mic",
-        "speakers", "speaker", "headphones",
-        "audio", "hd"
-    ]
-
-    private static func compactDeviceName(_ name: String) -> String {
-        var words = name.split(separator: " ").map(String.init)
-        while let last = words.last, compactStopWords.contains(last.lowercased()) {
-            words.removeLast()
-        }
-        let result = words.joined(separator: " ")
-        return result.isEmpty ? name : result
-    }
 }
 
 /// Wrapper view inside the Add-Profile Window scene. Watches the
