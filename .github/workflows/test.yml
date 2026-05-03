@@ -1,0 +1,55 @@
+# Continuous integration: runs `swift test` on every pull request and
+# every push to main, so a regression in the engine library or the
+# app helper code lands as a red check before it merges (and before
+# release.yml ever sees it).
+#
+# Intentionally narrow: we only run the test suite. The release
+# workflow handles signing, notarization, and the rest of the
+# distribution pipeline — this file is the cheap, fast feedback loop.
+
+name: Test
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+    # Skip on tag pushes — release.yml fires on v*.*.* and runs the
+    # full build anyway. Avoid double-running on tag-on-main events.
+    tags-ignore: ["**"]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: macos-14
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Select Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      - name: Cache SPM artifacts
+        uses: actions/cache@v4
+        with:
+          path: |
+            .build
+            ~/Library/Caches/org.swift.swiftpm
+          key: ${{ runner.os }}-spm-${{ hashFiles('Package.resolved') }}
+          restore-keys: |
+            ${{ runner.os }}-spm-
+
+      - name: Resolve dependencies
+        run: swift package resolve
+
+      - name: Build
+        run: swift build --build-tests
+
+      - name: Test
+        run: swift test --parallel
