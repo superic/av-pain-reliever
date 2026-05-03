@@ -124,11 +124,16 @@ struct AddProfileView: View {
 
             HStack {
                 Spacer()
-                Button("Cancel", action: dismiss)
-                    .keyboardShortcut(.cancelAction)
+                Button(action: dismiss) {
+                    Label("Cancel", systemImage: "xmark")
+                }
+                .keyboardShortcut(.cancelAction)
                 Button(action: { viewModel.save() }) {
                     HStack(spacing: 6) {
                         if viewModel.didSave {
+                            // Custom-coloured success state — keep the
+                            // explicit Image so we can tint just the
+                            // checkmark, which Label can't do cleanly.
                             Image(systemName: "checkmark.circle.fill")
                                 .foregroundStyle(Theme.Color.success)
                             Text("Saved")
@@ -138,6 +143,13 @@ struct AddProfileView: View {
                                 .tint(.white)
                             Text("Saving…")
                         } else {
+                            // Idle state: pencil for edit (matches the
+                            // Settings → Profiles row's Edit button),
+                            // plus for add (matches the menu's
+                            // "Add Profile…" item icon). Keeps the
+                            // wizard's commit action visually paired
+                            // with whichever entry point launched it.
+                            Image(systemName: viewModel.editingExisting ? "pencil" : "plus")
                             Text(viewModel.editingExisting ? "Update Profile" : "Save Profile")
                         }
                     }
