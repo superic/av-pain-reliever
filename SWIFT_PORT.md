@@ -2063,6 +2063,115 @@ generation) gating the first real release.
 
 ---
 
+## v0.1.0 shipped (2026-05-03)
+
+Apple Developer Program approved 2026-05-02 evening. The full
+Phase 4 (cut v0.1.0) ran the same night. Tag landed, release
+workflow turned green, draft GitHub Release published with a
+notarized + stapled `AVPainReliever.app.zip`, and `appcast.xml`
+on `main` carries a signed `<item>` for v0.1.0. The remaining
+local smoke test (drag to /Applications, double-click, no
+Gatekeeper warning) is queued for the morning, with the v0.1.1
+auto-update exercise immediately after.
+
+### What landed for v0.1.0
+
+- Sparkle EdDSA keypair: public key embedded at
+  `Resources/Info.plist:44`, private key in user's login keychain
+  + 1Password + as `SPARKLE_PRIVATE_KEY` GitHub Secret.
+- Developer ID Application certificate generated via Apple's CSR
+  flow, installed in login keychain, exported to `cert.p12`,
+  base64'd into `MACOS_CERTIFICATE` GitHub Secret. Cert identity:
+  `Developer ID Application: Eric Willis (HLH4LEWS9S)`.
+- App-specific password for `notarytool` generated at
+  appleid.apple.com, stored as `APPLE_ID_PASSWORD` Secret AND
+  locally as keychain profile `avpain-notary` so future
+  `xcrun notarytool …` calls can use `--keychain-profile
+  avpain-notary` instead of typing it.
+- All seven GitHub Secrets populated. The release workflow
+  (`.github/workflows/release.yml`) runs end-to-end with no
+  skipped steps.
+- v0.1.0 tag pushed → workflow green in 1m41s on the second
+  attempt (first attempt failed at notarization; see Lessons).
+
+### Lessons learned (v0.1.0 ship)
+
+- **`Sparkle.framework/Versions/B/Autoupdate` was missing from
+  `SPARKLE_NESTED`.** It's a bare Mach-O sibling of the framework's
+  main `Sparkle` binary, not a bundle, which is why it slipped
+  past the inside-out signing pass. The notarytool log called it
+  out cleanly: "The binary is not signed with a valid Developer ID
+  certificate" + "The signature does not include a secure
+  timestamp" for both arm64 and x86_64 slices. Fix: add the path
+  to the array. Documented in `docs/RELEASING.md` post-mortem
+  section so a future Sparkle version bump prompts a re-walk of
+  `Versions/B/`.
+- **`xcrun notarytool log <id>` is the must-have diagnostic.** A
+  notary submission status of `Invalid` says nothing useful on its
+  own; the JSON log lists exactly which path/architecture failed
+  and why. First thing to run on any failure.
+- **Double-clicking a `.cer` to install can hit `errSecKeychainItemNoAccess
+  -25294`** if Keychain Access has the iCloud keychain selected
+  in the sidebar at install time. `security import …
+  developerID_application.cer -k ~/Library/Keychains/login.keychain-db`
+  bypasses the GUI ambiguity entirely.
+- **Markdown-aware chat clients autolink emails inside code
+  blocks.** Pasting `gh secret set APPLE_ID --body 'you@example.com'`
+  back through chat → terminal yielded
+  `'[you@example.com](mailto:you@example.com)'` as the literal
+  Secret value. Twice. Fix is to type the email directly into the
+  terminal, or use `gh secret set NAME` with no `--body` so it
+  reads from a `?` prompt. Captured in the post-mortem because
+  it'll happen to anyone scripting Apple-account Secrets via chat.
+- **Notarization is the moment Apple actually inspects the
+  bundle.** Ad-hoc dev builds happily ignore signing miss-matches
+  that hard-fail under notary. Plan for at least one tag-fail-fix
+  cycle on the first signed release and don't pre-publish the
+  draft until smoke-tested.
+
+### Hardening done concurrently with v0.1.0
+
+To make a recurrence less likely:
+
+- `Updater.shouldEnable(bundleIdentifier:publicKey:)` — the
+  build-time placeholder gate is now a pure function on `Updater`
+  with `UpdaterGatingTests` covering all six branches. Previously
+  inline in `AppDelegate.applicationDidFinishLaunching`,
+  un-testable. A placeholder slipping into a release tag would
+  pop "Unable to Check For Updates" at every user; this catches
+  it in CI.
+- `.github/workflows/test.yml` — runs `swift test` on every PR
+  and on every push to `main`. Cheap fast feedback so a
+  regression doesn't have to wait for a release tag to surface.
+- `Package.swift` Sparkle pin tightened from `from: "2.6.0"`
+  (allows up to <3.0) to `.upToNextMinor(from: "2.9.0")` (allows
+  2.9.x patches only). New minor needs a deliberate bump and a
+  fresh walk of `Versions/B/` to confirm no new nested helpers.
+- `docs/RELEASING.md` post-mortem section captures the four
+  lessons above + the diagnostic incantations.
+
+### Pending after v0.1.0 (small)
+
+- Smoke test the published v0.1.0 `.app.zip` end-to-end on a
+  fresh install (queued for morning of 2026-05-04).
+- Tag v0.1.1 with a one-line README change to exercise Sparkle
+  auto-update from a v0.1.0 install.
+- (Once Sparkle bumps to 2.10/3.0) walk `Sparkle.framework/Versions/B/`,
+  update `SPARKLE_NESTED`, do a `v0.0.0-dryrun` tag.
+
+### Pending after v0.1.0 (larger, deferred)
+
+- AppDelegate is 577 lines. Lots of small responsibilities live
+  there: engine boot, Sparkle gate, login-item apply, welcome
+  state, profile-edit session lifecycle. A natural break is
+  `EngineBootManager` + `EditingSessionManager` + leaving
+  AppDelegate as the SwiftUI scene wiring + lifecycle. Not
+  blocking anything; the file is dense but understandable.
+- Homebrew-cask distribution path (still on the v2 list per
+  `docs/RELEASING.md`).
+
+---
+
 ## How to use this document
 
 - **When we ship a Phase 1 fix or feature**, ask: does this teach us

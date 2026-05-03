@@ -78,7 +78,7 @@ repository secret**. Add these seven:
 | `MACOS_CERTIFICATE`           | `base64 -i cert.p12 \| pbcopy` — paste                                  |
 | `MACOS_CERTIFICATE_PASSWORD`  | The password you set when exporting the `.p12`                          |
 | `MACOS_KEYCHAIN_PASSWORD`     | Random — `openssl rand -base64 32 \| pbcopy`                            |
-| `APPLE_ID`                    | Your developer Apple ID email (e.g. `eric.willis@bactrack.com`)         |
+| `APPLE_ID`                    | Your developer Apple ID email (the one you used to enrol in the Developer Program) |
 | `APPLE_ID_PASSWORD`           | App-specific password from step 4 above                                 |
 | `APPLE_TEAM_ID`               | 10-char Team ID from step 5 above                                       |
 | `SPARKLE_PRIVATE_KEY`         | `cat sparkle-private-key.txt \| pbcopy` — paste raw (no extra newlines) |
@@ -89,7 +89,7 @@ Or via `gh` (run from the repo root once `gh auth login` is set up):
 gh secret set MACOS_CERTIFICATE          < <(base64 -i cert.p12)
 gh secret set MACOS_CERTIFICATE_PASSWORD --body 'your-p12-password'
 gh secret set MACOS_KEYCHAIN_PASSWORD    --body "$(openssl rand -base64 32)"
-gh secret set APPLE_ID                   --body 'eric.willis@bactrack.com'
+gh secret set APPLE_ID                   --body 'you@example.com'
 gh secret set APPLE_ID_PASSWORD          --body 'xxxx-xxxx-xxxx-xxxx'
 gh secret set APPLE_TEAM_ID              --body 'XXXXXXXXXX'
 gh secret set SPARKLE_PRIVATE_KEY        < sparkle-private-key.txt
@@ -190,3 +190,110 @@ GitHub Actions path is the supported one; this is here for emergencies.
   `Resources/Info.plist` is still `__SPARKLE_PUBLIC_KEY__` or got
   garbled. Re-run step 2 of the one-time setup, replace the
   placeholder, commit.
+
+---
+
+## Post-mortem: lessons from v0.1.0
+
+These all bit us on the very first signed-release tag. Captured here
+so the second person doing this — or you, six months from now — can
+short-circuit them.
+
+### 1. Sparkle's `Autoupdate` helper has to be in `SPARKLE_NESTED`
+
+The notarytool log on the first v0.1.0 attempt called out the
+`Sparkle.framework/Versions/B/Autoupdate` Mach-O binary as
+unsigned and lacking a secure timestamp. It's a sibling of the
+framework's main `Sparkle` binary inside `Versions/B/` — easy to
+miss because it isn't a bundle, just a bare executable. The fix
+is one line in `scripts/make-app.sh`:
+
+```sh
+SPARKLE_NESTED=(
+    "$SPARKLE_DIR/XPCServices/Downloader.xpc"
+    "$SPARKLE_DIR/XPCServices/Installer.xpc"
+    "$SPARKLE_DIR/Updater.app"
+    "$SPARKLE_DIR/Autoupdate"     # <-- add this when bumping Sparkle
+)
+```
+
+If you bump the Sparkle dependency, walk
+`Sparkle.framework/Versions/B/` and confirm every nested bundle
+and bare executable in there is named in `SPARKLE_NESTED`. Anything
+new will surface the same notarization error.
+
+Diagnostic command for any future "Invalid" notary submission:
+
+```sh
+xcrun notarytool log <submission-id> \
+    --keychain-profile avpain-notary
+```
+
+The submission ID is printed in the failed step's log. Save Apple's
+JSON — it lists the exact path + architecture of every flagged
+binary, which makes the fix obvious.
+
+### 2. Double-clicking a `.cer` can fail with error `-25294`
+
+When you install the Developer ID certificate by double-clicking
+`developerID_application.cer`, Keychain Access tries to import it
+into whichever keychain is currently selected in the sidebar. If
+that's **iCloud**, you get error `-25294` (`errSecNoDefaultKeychain`-
+adjacent — the iCloud keychain refuses the cert). The fix:
+
+```sh
+security import ~/Downloads/developerID_application.cer \
+    -k ~/Library/Keychains/login.keychain-db
+```
+
+Targets `login` explicitly, no GUI ambiguity. Verify with:
+
+```sh
+security find-identity -v -p codesigning | grep "Developer ID Application"
+```
+
+### 3. Save notarytool creds as a keychain profile
+
+Once you have the app-specific password from
+<https://appleid.apple.com>, store it as a `notarytool` keychain
+profile right away — Apple only shows the password once, and you'll
+want it again every time you debug a notarization (see Lesson 1):
+
+```sh
+xcrun notarytool store-credentials avpain-notary \
+    --apple-id you@example.com \
+    --team-id XXXXXXXXXX
+# (interactively prompts for the app-specific password)
+```
+
+After that, every local `xcrun notarytool` invocation can use
+`--keychain-profile avpain-notary` instead of typing the password
+again. The CI workflow doesn't need this — it has the secret
+plumbed through `APPLE_ID_PASSWORD` already.
+
+### 4. Don't paste shell commands containing emails out of a markdown
+   client
+
+Several chat / note-taking apps autolink bare email addresses to
+`[you@example.com](mailto:you@example.com)`. When you copy that
+text and paste it into a terminal, the brackets and `mailto:` come
+along for the ride and `gh secret set APPLE_ID` ends up storing a
+broken value. Either type the email directly, or use stdin:
+
+```sh
+gh secret set APPLE_ID
+# at the prompt: type the email by hand
+```
+
+`gh secret set` (no `--body`) reads the value from stdin/prompt
+without going through any markdown layer.
+
+### 5. The first tag will probably fail. Plan for it.
+
+Notarization is the moment Apple actually inspects the bundle, and
+small signing miss-matches that ad-hoc-signed dev builds happily
+ignore become hard errors. Budget a tag-fail-fix-tag-fail-fix loop
+into the schedule. The release workflow is fast (~90s through
+`Build .app`, then ~30-60s in notarytool), so each iteration is
+cheap. Don't pre-publish the draft release until after the smoke
+test in **First-tag checklist** above.

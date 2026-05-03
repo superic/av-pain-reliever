@@ -29,7 +29,7 @@ A Mac running **macOS 14 (Sonoma) or later**. That's it.
 
 The app updates itself: a new version downloads in the background and prompts you to install on next launch. Or check on demand via the menu → **Advanced → Check for Updates…**
 
-To stop it: click the pill icon → **Quit AV Pain Reliever** (or ⌘Q with the menu open).
+To stop it: click the pill icon → **Quit** (or ⌘Q with the menu open).
 
 ---
 
