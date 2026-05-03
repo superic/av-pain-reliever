@@ -147,7 +147,14 @@ struct AddProfileView: View {
             }
         }
         .padding(20)
-        .frame(minWidth: 460, idealWidth: 520, minHeight: 540, idealHeight: 600)
+        // Fixed dialog size — pairs with the dialog chrome (no
+        // resize/minimize/zoom) configured at the window scene. The
+        // Form itself scrolls internally if the device list overflows
+        // on a fingerprint-heavy location.
+        .frame(width: 520, height: 600)
+        // Window scene's static title is "Add Profile"; override it
+        // dynamically so the title bar tracks Add vs Edit mode.
+        .navigationTitle(viewModel.editingExisting ? "Edit Profile" : "Add Profile")
         .onChange(of: viewModel.didSave) { _, saved in
             // Brief save-success window (~0.45 s) so the green check
             // and "Saved" affordance read as a beat of feedback rather

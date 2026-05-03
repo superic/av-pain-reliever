@@ -388,6 +388,7 @@ private struct AddProfileWindowContent: View {
             onDismiss: { dismissWindow(id: addProfileWindowID) }
         )
         .id(delegate.wizardOpenToken)
+        .dialogWindowChrome()
     }
 }
 
