@@ -273,7 +273,7 @@ private struct MenuContentView: View {
 
         Divider()
 
-        Button("Quit AV Pain Reliever") {
+        Button("Quit") {
             NSApp.terminate(nil)
         }
         .keyboardShortcut("q")
