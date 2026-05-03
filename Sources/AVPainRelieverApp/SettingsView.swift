@@ -241,7 +241,7 @@ private struct ProfileRow: View {
                 } icon: {
                     Image(systemName: "pencil")
                         .font(.system(size: 14, weight: .regular))
-                        .frame(width: 14, height: 14)
+                        .frame(width: 16, height: 16)
                 }
             }
             .buttonStyle(.bordered)
@@ -253,7 +253,7 @@ private struct ProfileRow: View {
                 } icon: {
                     Image(systemName: "trash")
                         .font(.system(size: 14, weight: .regular))
-                        .frame(width: 14, height: 14)
+                        .frame(width: 16, height: 16)
                 }
             }
             .buttonStyle(.bordered)
