@@ -218,19 +218,19 @@ private struct MenuContentView: View {
         Divider()
 
         Button {
+            openWindow(id: aboutWindowID)
+            NSApp.activate(ignoringOtherApps: true)
+        } label: {
+            Label("About", systemImage: "info.circle")
+        }
+
+        Button {
             openWindow(id: settingsWindowID)
             NSApp.activate(ignoringOtherApps: true)
         } label: {
             Label("Settings…", systemImage: "gearshape")
         }
         .keyboardShortcut(",")
-
-        Button {
-            openWindow(id: aboutWindowID)
-            NSApp.activate(ignoringOtherApps: true)
-        } label: {
-            Label("About AV Pain Reliever", systemImage: "info.circle")
-        }
 
         // Power-user / diagnostic actions live under Advanced so the
         // top-level menu stays focused on the things people actually
