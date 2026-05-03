@@ -53,6 +53,7 @@ private struct GeneralSettingsTab: View {
                 Toggle("Launch at login", isOn: $settings.launchAtLogin)
                 Toggle("Send notifications when profiles change", isOn: $settings.notificationsEnabled)
                 Toggle("Show current profile in the menu bar", isOn: $settings.showProfileNameInMenuBar)
+                Toggle("Show current profile icon in the menu bar", isOn: $settings.showProfileIconInMenuBar)
             } header: {
                 Label("Behavior", systemImage: "wand.and.stars")
             }

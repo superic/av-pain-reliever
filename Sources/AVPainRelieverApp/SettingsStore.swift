@@ -14,6 +14,7 @@ final class SettingsStore: ObservableObject {
         static let notificationsEnabled = "notificationsEnabled"
         static let debounceInterval = "debounceInterval"
         static let showProfileNameInMenuBar = "showProfileNameInMenuBar"
+        static let showProfileIconInMenuBar = "showProfileIconInMenuBar"
         static let profileSwitchCount = "profileSwitchCount"
         static let suppressedWelcome = "suppressedWelcome"
         static let launchAtLogin = "launchAtLogin"
@@ -39,6 +40,15 @@ final class SettingsStore: ObservableObject {
     /// minimal status item.
     @Published var showProfileNameInMenuBar: Bool {
         didSet { defaults.set(showProfileNameInMenuBar, forKey: Key.showProfileNameInMenuBar) }
+    }
+
+    /// Swap the menu bar's `pills.fill` glyph for the active profile's
+    /// SF Symbol (resolved through `ProfileIcon.effectiveSymbol`).
+    /// Default off — the pill icon is the product's identity at a
+    /// glance, so opting in is what users do when they want the menu
+    /// bar to track location instead.
+    @Published var showProfileIconInMenuBar: Bool {
+        didSet { defaults.set(showProfileIconInMenuBar, forKey: Key.showProfileIconInMenuBar) }
     }
 
     /// Lifetime count of profile applications. Drives the easter-egg
@@ -76,6 +86,7 @@ final class SettingsStore: ObservableObject {
         self.notificationsEnabled = (defaults.object(forKey: Key.notificationsEnabled) as? Bool) ?? true
         self.debounceInterval = (defaults.object(forKey: Key.debounceInterval) as? Double) ?? 1.5
         self.showProfileNameInMenuBar = (defaults.object(forKey: Key.showProfileNameInMenuBar) as? Bool) ?? true
+        self.showProfileIconInMenuBar = (defaults.object(forKey: Key.showProfileIconInMenuBar) as? Bool) ?? false
         self.profileSwitchCount = (defaults.object(forKey: Key.profileSwitchCount) as? Int) ?? 0
         self.suppressedWelcome = (defaults.object(forKey: Key.suppressedWelcome) as? Bool) ?? false
         self.launchAtLogin = (defaults.object(forKey: Key.launchAtLogin) as? Bool) ?? false
