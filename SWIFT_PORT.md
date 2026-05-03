@@ -2172,6 +2172,38 @@ To make a recurrence less likely:
 
 ---
 
+## Menu bar profile-icon toggle (2026-05-03)
+
+Added an opt-in setting that swaps the menu bar's `pills.fill` glyph
+for the active profile's SF Symbol. Default off so the product's
+brand glyph stays the out-of-the-box look; users who want the menu
+bar to track location flip the toggle in Settings → General →
+Behavior ("Show current profile icon in the menu bar").
+
+Implementation reused existing pieces end-to-end:
+
+- `SettingsStore` — new `showProfileIconInMenuBar` Bool with the
+  same `@Published`/`didSet`/UserDefaults pattern as the other
+  toggles. Default decoded with `(object(forKey:) as? Bool) ?? false`
+  so "never set" stays distinct from "explicitly off".
+- `AppDelegate` — one-line passthrough mirror so `MenuLabelView`
+  re-renders via the existing `objectWillChange` republish.
+- `MenuLabelView` — new private `menuBarIcon` computed var routes
+  through `ProfileIcon.effectiveSymbol(for:override:)`, the same
+  resolver the "Switch to" submenu and Profiles list already use.
+  Falls back to `Theme.Symbol.appIcon` when the toggle is off, when
+  no active profile is known yet (fresh launch pre-evaluation), or
+  when the active slug isn't found in `availableProfiles`.
+- The unknown-location branch is intentionally untouched — when the
+  user is at a new dock there's no active profile to represent, so
+  the `questionmark.circle` + "New location" treatment stays the
+  right signal regardless of toggle state.
+
+No new types, no new files. Total diff: ~25 net lines across four
+files.
+
+---
+
 ## How to use this document
 
 - **When we ship a Phase 1 fix or feature**, ask: does this teach us
