@@ -413,10 +413,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         alert.messageText = "Delete “\(pretty)”?"
         alert.informativeText = "AV Pain Reliever will stop switching to this profile when its USB devices are attached. You can always recapture it later."
         alert.alertStyle = .warning
-        alert.addButton(withTitle: "Delete")
+        // Override the generic-app fallback icon NSAlert picks up when
+        // running unbundled (`swift run`, no Info.plist). Setting
+        // `alert.icon` makes the pill render in both bundled and
+        // unbundled contexts; `.warning` style still overlays its
+        // caution badge on top.
+        alert.icon = AppIcon.image
+        // Cancel first → default (Return) → safe accidental press.
+        // Delete second, destructive-styled (red on macOS 11+) so the
+        // dangerous action both looks dangerous and requires a
+        // deliberate click rather than a stray Return.
         alert.addButton(withTitle: "Cancel")
+        let deleteButton = alert.addButton(withTitle: "Delete")
+        deleteButton.hasDestructiveAction = true
         let response = alert.runModal()
-        guard response == .alertFirstButtonReturn else { return }
+        guard response == .alertSecondButtonReturn else { return }
         do {
             try ProfileWriter().delete(named: profile.name, in: Self.profilesTOMLURL)
             reloadConfig()
@@ -425,6 +436,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
             failure.messageText = "Couldn't delete “\(pretty)”"
             failure.informativeText = "\(error)"
             failure.alertStyle = .critical
+            failure.icon = AppIcon.image
             failure.runModal()
         }
     }
