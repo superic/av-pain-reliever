@@ -457,8 +457,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
     /// a separate observer plumbed through the view.
     var profileSwitchCount: Int { settings.profileSwitchCount }
 
-    /// Mirror of `settings.showAudioCameraInMenu` for the same reason.
-    var showAudioCameraInMenu: Bool { settings.showAudioCameraInMenu }
+    /// Mirror of `settings.showProfileNameInMenuBar` for the same reason.
+    var showProfileNameInMenuBar: Bool { settings.showProfileNameInMenuBar }
 
     /// Profile-config discovery in priority order. Mirrors what the
     /// eventual first-run wizard will codify, but for now lets a

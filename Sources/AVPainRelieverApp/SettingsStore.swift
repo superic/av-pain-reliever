@@ -13,7 +13,7 @@ final class SettingsStore: ObservableObject {
     enum Key {
         static let notificationsEnabled = "notificationsEnabled"
         static let debounceInterval = "debounceInterval"
-        static let showAudioCameraInMenu = "showAudioCameraInMenu"
+        static let showProfileNameInMenuBar = "showProfileNameInMenuBar"
         static let profileSwitchCount = "profileSwitchCount"
         static let suppressedWelcome = "suppressedWelcome"
         static let launchAtLogin = "launchAtLogin"
@@ -33,11 +33,12 @@ final class SettingsStore: ObservableObject {
         didSet { defaults.set(debounceInterval, forKey: Key.debounceInterval) }
     }
 
-    /// Show the audio + camera summary line under each profile in the
-    /// "Switch to" submenu. Default on; users who want a tighter menu
-    /// can hide it.
-    @Published var showAudioCameraInMenu: Bool {
-        didSet { defaults.set(showAudioCameraInMenu, forKey: Key.showAudioCameraInMenu) }
+    /// Show the active profile name next to the menu bar pill icon.
+    /// Default on — users get the at-a-glance "where am I" signal
+    /// without opening the menu. Off renders just the icon for a
+    /// minimal status item.
+    @Published var showProfileNameInMenuBar: Bool {
+        didSet { defaults.set(showProfileNameInMenuBar, forKey: Key.showProfileNameInMenuBar) }
     }
 
     /// Lifetime count of profile applications. Drives the easter-egg
@@ -74,7 +75,7 @@ final class SettingsStore: ObservableObject {
         // keys, which would silently flip our defaults.
         self.notificationsEnabled = (defaults.object(forKey: Key.notificationsEnabled) as? Bool) ?? true
         self.debounceInterval = (defaults.object(forKey: Key.debounceInterval) as? Double) ?? 1.5
-        self.showAudioCameraInMenu = (defaults.object(forKey: Key.showAudioCameraInMenu) as? Bool) ?? true
+        self.showProfileNameInMenuBar = (defaults.object(forKey: Key.showProfileNameInMenuBar) as? Bool) ?? true
         self.profileSwitchCount = (defaults.object(forKey: Key.profileSwitchCount) as? Int) ?? 0
         self.suppressedWelcome = (defaults.object(forKey: Key.suppressedWelcome) as? Bool) ?? false
         self.launchAtLogin = (defaults.object(forKey: Key.launchAtLogin) as? Bool) ?? false

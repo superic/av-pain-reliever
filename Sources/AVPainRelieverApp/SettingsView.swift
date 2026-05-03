@@ -48,7 +48,7 @@ private struct GeneralSettingsTab: View {
             Section {
                 Toggle("Launch AV Pain Reliever at login", isOn: $settings.launchAtLogin)
                 Toggle("Send notifications when profiles change", isOn: $settings.notificationsEnabled)
-                Toggle("Show audio + camera details in menu", isOn: $settings.showAudioCameraInMenu)
+                Toggle("Show current profile in the menu bar", isOn: $settings.showProfileNameInMenuBar)
             } header: {
                 Label("Behavior", systemImage: "wand.and.stars")
             }

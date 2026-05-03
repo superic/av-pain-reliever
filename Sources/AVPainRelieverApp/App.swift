@@ -123,12 +123,17 @@ private struct MenuLabelView: View {
             // The fallback profile name (typically "Laptop") would
             // imply "I'm undocked" — but the user is at a new dock
             // we don't recognise. Make that visible so they don't
-            // assume the app is misbehaving.
+            // assume the app is misbehaving. The "New location"
+            // text is shown unconditionally because it's the only
+            // signal we have for this state — the question-mark
+            // icon alone reads as "is the app broken?"
             Image(systemName: "questionmark.circle")
             Text("New location")
         } else {
             Image(systemName: Theme.Symbol.appIcon)
-            Text(delegate.currentProfileTitle)
+            if delegate.showProfileNameInMenuBar {
+                Text(delegate.currentProfileTitle)
+            }
         }
     }
 }

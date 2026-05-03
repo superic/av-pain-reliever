@@ -17,7 +17,7 @@ struct SettingsStoreTests {
     func defaultsAreCorrect() {
         let store = SettingsStore(defaults: makeSuite())
         #expect(store.notificationsEnabled == true)
-        #expect(store.showAudioCameraInMenu == true)
+        #expect(store.showProfileNameInMenuBar == true)
         #expect(store.debounceInterval == 1.5)
         #expect(store.profileSwitchCount == 0)
         #expect(store.suppressedWelcome == false)
