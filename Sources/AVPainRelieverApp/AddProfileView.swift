@@ -11,8 +11,6 @@ struct AddProfileView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            header
-
             Form {
                 Section {
                     // Wrapping the TextField in a left-aligned VStack
@@ -202,18 +200,6 @@ struct AddProfileView: View {
     }
 
     // MARK: - Subviews
-
-    private var header: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(viewModel.editingExisting ? "Edit Profile" : "Add a Profile")
-                .font(.title2.bold())
-            Text(viewModel.editingExisting
-                 ? "Tweak how this location switches your audio + camera."
-                 : "Capture the dock you're at right now.")
-                .font(.callout)
-                .foregroundStyle(.secondary)
-        }
-    }
 
     /// Section-header label shared by every Form section. Keeps
     /// title + section icon consistent across the wizard.

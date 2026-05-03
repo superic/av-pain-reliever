@@ -53,7 +53,7 @@ struct WelcomeView: View {
                 .keyboardShortcut(.defaultAction)
 
                 Button("Skip — I'll set up later", action: onSkip)
-                    .buttonStyle(.link)
+                    .buttonStyle(.borderless)
                     .keyboardShortcut(.cancelAction)
             }
         }
