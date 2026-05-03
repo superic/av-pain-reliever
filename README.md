@@ -50,11 +50,11 @@ Repeat once per location. The app switches automatically whenever you dock there
 
 The menu bar shows the current location ("Home Office", "Laptop", etc.) next to the pill icon. Click for the menu:
 
-- **Switch to ▶** — manually apply a different profile. ⌥-click any profile to edit it instead of switching.
+- **Switch to ▶** — manually apply a different profile. The active profile is checkmarked. ⌥-click any profile to edit it instead of switching, or pick **Edit Profiles…** at the bottom of the submenu to manage them in Settings.
 - **Add Profile…** — capture the dock you're at right now (⌘N).
-- **Settings…** — toggle notifications, set the debounce window, manage profiles, enable Launch-at-Login (⌘,).
 - **About** — version + a link to re-show the welcome window.
-- **Advanced** — power-user actions: re-evaluate immediately (⌘R), reload config from disk (⌘L), reveal the log in Console.
+- **Settings…** — notifications, menu-bar appearance (icon-only or icon + profile name), debounce window, profile management, Launch at Login (⌘,).
+- **Advanced ▶** — power-user actions: re-evaluate immediately (⌘R), reload config from disk (⌘L), check for updates, reveal the log in Console.
 
 When you dock somewhere AV Pain Reliever doesn't have a profile for, the menu bar shows **"New location"** with a `?` icon and a banner-style **Set Up This Location…** button at the top of the menu. The wizard pre-selects all currently-attached devices, so you just type a name and save.
 
