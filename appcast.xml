@@ -12,5 +12,15 @@
             fetching this feed correctly resolves to "you're up to
             date."
         -->
+        <item>
+            <title>Version 0.1.0</title>
+            <pubDate>Sun, 03 May 2026 07:04:30 +0000</pubDate>
+            <sparkle:version>0.1.0</sparkle:version>
+            <sparkle:shortVersionString>0.1.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/superic/av-pain-reliever/releases/download/v0.1.0/AVPainReliever.app.zip"
+                       type="application/octet-stream"
+                       sparkle:edSignature="H0NpvLhVBJ+M3bzbW5r+wWsbisj7nsp3Nu88+dTcLPNDgyaVnHD8N9ee3MK56EmkTy1ZCPIX/N3W0giYWZv2DQ==" length="2708870" />
+        </item>
     </channel>
 </rss>
