@@ -411,7 +411,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         let alert = NSAlert()
         let pretty = PrettyName.format(profile.name)
         alert.messageText = "Delete “\(pretty)”?"
-        alert.informativeText = "AV Pain Reliever will stop switching to this profile when its USB devices are attached. You can always recapture it later."
+        alert.informativeText = "This profile won't switch your audio + camera defaults when its USB devices are attached. You can always recapture it later."
         alert.alertStyle = .warning
         // Override the generic-app fallback icon NSAlert picks up when
         // running unbundled (`swift run`, no Info.plist). Setting
