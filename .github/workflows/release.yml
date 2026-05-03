@@ -60,6 +60,16 @@ jobs:
         with:
           xcode-version: latest-stable
 
+      - name: Reset SPM artifact cache
+        # The macos-14 runner sometimes carries a primed
+        # ~/Library/Caches/org.swift.swiftpm/artifacts directory (or
+        # an aborted prior download leaves a partial in place); SPM's
+        # binary-target downloader then fails on Sparkle's zip with
+        # "already exists in file system" because its move-into-place
+        # step isn't overwrite-safe. Wiping the cache here forces a
+        # clean fetch every time. Cheap (~3 MB redownload).
+        run: rm -rf ~/Library/Caches/org.swift.swiftpm
+
       - name: Resolve SPM dependencies
         run: swift package resolve
 
