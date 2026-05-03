@@ -215,14 +215,44 @@ private struct ProfileRow: View {
                 }
             }
             Spacer()
+            // Icon-only inline actions — keeps the profile name +
+            // summary in the visual centre of each row instead of
+            // fighting two text-bearing buttons for space. The Label
+            // (with `.iconOnly`) still feeds the accessibility label
+            // to VoiceOver, and `.help` exposes the same string as a
+            // hover tooltip for sighted users who don't recognise
+            // the icon at a glance.
+            //
+            // Each Image is pinned to a fixed 14×14 frame with a
+            // shared font size so the surrounding `.bordered` chrome
+            // measures both buttons identically — `pencil` and
+            // `trash` have different intrinsic bounds, which made
+            // the auto-sized buttons render at slightly different
+            // heights / widths without this.
             Button(action: onEdit) {
-                Label("Edit", systemImage: "pencil")
+                Label {
+                    Text("Edit")
+                } icon: {
+                    Image(systemName: "pencil")
+                        .font(.system(size: 14, weight: .regular))
+                        .frame(width: 14, height: 14)
+                }
             }
             .buttonStyle(.bordered)
+            .labelStyle(.iconOnly)
+            .help("Edit profile")
             Button(role: .destructive, action: onDelete) {
-                Label("Delete", systemImage: "trash")
+                Label {
+                    Text("Delete")
+                } icon: {
+                    Image(systemName: "trash")
+                        .font(.system(size: 14, weight: .regular))
+                        .frame(width: 14, height: 14)
+                }
             }
             .buttonStyle(.bordered)
+            .labelStyle(.iconOnly)
+            .help("Delete profile")
         }
         .padding(.vertical, 4)
     }
