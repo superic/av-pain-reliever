@@ -27,7 +27,7 @@ A Mac running **macOS 14 (Sonoma) or later**. That's it.
 3. Double-click to launch. The pill icon shows up in your menu bar; the engine starts watching USB events immediately.
 4. Open **Settings…** and toggle **Launch at Login** if you want it running every time you sign in.
 
-The app updates itself: a new version downloads in the background and prompts you to install on next launch. Or check on demand via the menu → **Advanced → Check for Updates…**
+The app updates itself: a new version downloads in the background and prompts you to install on next launch. Or check anytime via the menu → **Advanced → Check for Updates…**
 
 To stop it: click the pill icon → **Quit** (or ⌘Q with the menu open).
 
