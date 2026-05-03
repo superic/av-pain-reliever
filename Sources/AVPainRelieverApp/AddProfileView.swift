@@ -77,6 +77,19 @@ struct AddProfileView: View {
 
                 Section {
                     devicesList
+                    // Helper text rendered as the final section row,
+                    // not in the `footer:` slot — Form(.grouped)
+                    // forces footer content into the trailing
+                    // labels-column layout, which makes a multi-line
+                    // paragraph render as a narrow right-aligned
+                    // strip even with `.frame(maxWidth: .infinity)`.
+                    // As a row inside the section body it spans the
+                    // section's full content width naturally.
+                    Text("Uncheck peripherals that aren't unique to this location (keyboards, mice, phones). The profile matches when every checked device is attached.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .fixedSize(horizontal: false, vertical: true)
                 } header: {
                     HStack {
                         sectionHeader("USB fingerprint", symbol: Theme.Symbol.usbSection)
@@ -84,12 +97,6 @@ struct AddProfileView: View {
                         Button("Refresh", action: viewModel.refresh)
                             .controlSize(.small)
                     }
-                } footer: {
-                    Text("Uncheck peripherals that aren't unique to this location (keyboards, mice, phones). The profile matches when every checked device is attached.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .fixedSize(horizontal: false, vertical: true)
                 }
 
                 Section {
@@ -109,14 +116,16 @@ struct AddProfileView: View {
 
                 Section {
                     cameraPicker
-                } header: {
-                    sectionHeader("Camera", symbol: Theme.Symbol.cameraSection)
-                } footer: {
+                    // See USB fingerprint section above for why this
+                    // helper text lives in the section body rather
+                    // than the `footer:` slot.
                     Text("Sets macOS's preferred camera. Apps with their own camera picker (Zoom, Slack, Teams) won't follow this — configure those once per location and they'll remember.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .fixedSize(horizontal: false, vertical: true)
+                } header: {
+                    sectionHeader("Camera", symbol: Theme.Symbol.cameraSection)
                 }
             }
             .formStyle(.grouped)
@@ -187,6 +196,7 @@ struct AddProfileView: View {
         // Window scene's static title is "Add Profile"; override it
         // dynamically so the title bar tracks Add vs Edit mode.
         .navigationTitle(viewModel.editingExisting ? "Edit Profile" : "Add Profile")
+        .centeredOnScreen()
         .onChange(of: viewModel.didSave) { _, saved in
             // Brief save-success window (~0.45 s) so the green check
             // and "Saved" affordance read as a beat of feedback rather

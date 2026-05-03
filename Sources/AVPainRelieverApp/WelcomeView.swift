@@ -62,6 +62,7 @@ struct WelcomeView: View {
         .frame(width: 480, height: 540)
         .background(.background)
         .dialogWindowChrome()
+        .centeredOnScreen()
     }
 
     /// Three bullet rows below the tagline. Each pairs an SF Symbol

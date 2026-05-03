@@ -71,5 +71,6 @@ struct AboutView: View {
         .frame(width: 360, height: 460)
         .background(.background)
         .dialogWindowChrome()
+        .centeredOnScreen()
     }
 }

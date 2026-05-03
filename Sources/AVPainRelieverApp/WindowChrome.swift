@@ -66,3 +66,40 @@ private struct WindowChromeAccessor: NSViewRepresentable {
         window.standardWindowButton(.zoomButton)?.isEnabled = false
     }
 }
+
+// MARK: - centeredOnScreen
+
+/// SwiftUI view modifier that recenters the hosting `NSWindow` on the
+/// active screen every time the window appears. Without this, macOS
+/// remembers each window's last position and reopens it there, which
+/// produces the surprising "settings window opened in some random
+/// corner of the second monitor" experience for utility windows.
+struct CenteredOnScreen: ViewModifier {
+    func body(content: Content) -> some View {
+        content.background(WindowCenterer())
+    }
+}
+
+extension View {
+    /// Center the hosting window on the active screen on every open.
+    /// Idempotent — safe to combine with `dialogWindowChrome()`.
+    func centeredOnScreen() -> some View {
+        modifier(CenteredOnScreen())
+    }
+}
+
+private struct WindowCenterer: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView(frame: .zero)
+        DispatchQueue.main.async { [weak view] in
+            view?.window?.center()
+        }
+        return view
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {
+        // No-op on update. Centering on every state change would
+        // fight the user if they manually move the window mid-
+        // session. We only center on open.
+    }
+}
