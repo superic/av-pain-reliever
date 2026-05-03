@@ -102,5 +102,15 @@
                        type="application/octet-stream"
                        sparkle:edSignature="2gG5cENWC2mwI9NN3EDpPd8C0nmT6wZ0WSdUl33r4z+GZfKUL0sP/T3kguipH2EL534eeWh7n0rpyG/BG7a/DA==" length="2781608" />
         </item>
+        <item>
+            <title>Version 0.1.9</title>
+            <pubDate>Sun, 03 May 2026 23:52:55 +0000</pubDate>
+            <sparkle:version>0.1.9</sparkle:version>
+            <sparkle:shortVersionString>0.1.9</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/superic/av-pain-reliever/releases/download/v0.1.9/AVPainReliever.app.zip"
+                       type="application/octet-stream"
+                       sparkle:edSignature="6P51g90NdDBCqDF7RCYNaDIf/qbVShC6BH1vyKkkd94zA/GMIXBZpEEoKOe2r/TrMqu5sVAoUcwDkPMmJeTdBQ==" length="2783538" />
+        </item>
     </channel>
 </rss>
