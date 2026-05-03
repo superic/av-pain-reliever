@@ -34,10 +34,15 @@ struct AVPainRelieverApp: SwiftUI.App {
         }
         .windowResizability(.contentSize)
 
-        Window("Settings", id: settingsWindowID) {
+        // macOS's dedicated Settings scene — renders with the
+        // System-Settings-style toolbar tab chrome (white-container
+        // segmented control) that a generic Window scene doesn't
+        // produce for LSUIElement apps. Triggered programmatically
+        // via NSApp.sendAction(showSettingsWindow:) below; ⌘, on
+        // the menu item invokes the same path.
+        Settings {
             SettingsView(delegate: appDelegate, settings: appDelegate.settings)
         }
-        .windowResizability(.contentSize)
 
         Window("About AV Pain Reliever", id: aboutWindowID) {
             AboutView(delegate: appDelegate)
@@ -141,6 +146,11 @@ private struct MenuLabelView: View {
 private struct MenuContentView: View {
     @ObservedObject var delegate: AppDelegate
     @Environment(\.openWindow) private var openWindow
+    /// macOS 14+ way to programmatically open the SwiftUI Settings
+    /// scene. The AppKit-selector approach (showSettingsWindow:)
+    /// silently no-ops for LSUIElement apps because there's no
+    /// responder chain to route the action through.
+    @Environment(\.openSettings) private var openSettings
     /// One-shot easter egg: when the user holds Option while the menu
     /// opens (clicks anywhere then peeks the menu — close enough), an
     /// extra "stats" line shows up. The flag flips back to false when
@@ -196,7 +206,7 @@ private struct MenuContentView: View {
                     // remembers this across re-opens, mirroring macOS
                     // default tab persistence.
                     delegate.settingsTab = .profiles
-                    openWindow(id: settingsWindowID)
+                    openSettings()
                     NSApp.activate(ignoringOtherApps: true)
                 } label: {
                     Label("Edit Profiles…", systemImage: "list.bullet.rectangle")
@@ -230,7 +240,7 @@ private struct MenuContentView: View {
         }
 
         Button {
-            openWindow(id: settingsWindowID)
+            openSettings()
             NSApp.activate(ignoringOtherApps: true)
         } label: {
             Label("Settings…", systemImage: "gearshape")

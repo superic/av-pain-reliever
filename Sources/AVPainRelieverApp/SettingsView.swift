@@ -2,8 +2,6 @@ import SwiftUI
 import AppKit
 import AVPainReliever
 
-let settingsWindowID = "settings-window"
-
 /// Stable identifiers for the Settings tabs. Bound to the TabView's
 /// selection so callers (e.g. the menu's "Edit Profiles…" item) can
 /// pre-select a tab before opening the window. Tab choice persists
@@ -17,6 +15,12 @@ enum SettingsTab: Hashable {
 /// Profiles (list with edit/delete). Deliberately *no* mention of
 /// Hammerspoon, OBS, or any other third-party tool — the app must read
 /// as its own product.
+///
+/// Hosted inside SwiftUI's dedicated `Settings { ... }` scene rather
+/// than a generic `Window` scene so the TabView gets the System-
+/// Settings-style toolbar tab chrome (white-container segmented
+/// control). A generic Window scene rendered the bare-tabs-in-
+/// titlebar variant under LSUIElement, which read as styling drift.
 struct SettingsView: View {
     @ObservedObject var delegate: AppDelegate
     @ObservedObject var settings: SettingsStore
@@ -36,8 +40,6 @@ struct SettingsView: View {
                 .tag(SettingsTab.profiles)
         }
         .frame(width: 480, height: 380)
-        .padding(.top, 8)
-        .dialogWindowChrome()
     }
 }
 
@@ -213,10 +215,14 @@ private struct ProfileRow: View {
                 }
             }
             Spacer()
-            Button("Edit", action: onEdit)
-                .buttonStyle(.bordered)
-            Button("Delete", role: .destructive, action: onDelete)
-                .buttonStyle(.bordered)
+            Button(action: onEdit) {
+                Label("Edit", systemImage: "pencil")
+            }
+            .buttonStyle(.bordered)
+            Button(role: .destructive, action: onDelete) {
+                Label("Delete", systemImage: "trash")
+            }
+            .buttonStyle(.bordered)
         }
         .padding(.vertical, 4)
     }
