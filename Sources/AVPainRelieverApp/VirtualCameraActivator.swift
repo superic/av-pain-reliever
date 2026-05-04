@@ -1,5 +1,11 @@
 import Foundation
 import SystemExtensions
+import os.log
+
+private let logger = Logger(
+    subsystem: "com.ericwillis.avpainreliever",
+    category: "Activator"
+)
 
 /// M1 plumbing: triggers `OSSystemExtensionRequest` activation for
 /// the embedded Camera Extension when the env var
@@ -41,7 +47,7 @@ final class VirtualCameraActivator: NSObject, OSSystemExtensionRequestDelegate {
         // Retain across the async lifecycle. App-lifetime retention
         // is fine — there's at most one of these per launch.
         retained = activator
-        NSLog("[AVPR] Submitted Camera Extension activation request")
+        logger.info("Submitted Camera Extension activation request")
 
         // Start the host-side capture pipeline. The CMIOSinkWriter
         // lazily finds the device + sink stream on first enqueue,
@@ -60,7 +66,7 @@ final class VirtualCameraActivator: NSObject, OSSystemExtensionRequestDelegate {
         session.start()
         sinkWriter = writer
         captureSession = session
-        NSLog("[AVPR] Started host-side capture + CMIO sink writer")
+        logger.info("Started host-side capture + CMIO sink writer")
     }
 
     func request(
@@ -74,20 +80,20 @@ final class VirtualCameraActivator: NSObject, OSSystemExtensionRequestDelegate {
     }
 
     func requestNeedsUserApproval(_ request: OSSystemExtensionRequest) {
-        NSLog("[AVPR] Camera Extension needs user approval — open System Settings → Privacy & Security")
+        logger.info("Camera Extension needs user approval — open System Settings → Login Items & Extensions → Camera Extensions")
     }
 
     func request(
         _ request: OSSystemExtensionRequest,
         didFinishWithResult result: OSSystemExtensionRequest.Result
     ) {
-        NSLog("[AVPR] Camera Extension activation finished: result=\(result.rawValue)")
+        logger.info("Camera Extension activation finished: result=\(result.rawValue, privacy: .public)")
     }
 
     func request(
         _ request: OSSystemExtensionRequest,
         didFailWithError error: Error
     ) {
-        NSLog("[AVPR] Camera Extension activation failed: \(error)")
+        logger.error("Camera Extension activation failed: \(error.localizedDescription, privacy: .public)")
     }
 }

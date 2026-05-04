@@ -1,5 +1,13 @@
 import Foundation
 import CoreMediaIO
+import os.log
+
+private let mainLogger = Logger(
+    subsystem: "com.ericwillis.avpainreliever.CameraExtension",
+    category: "Main"
+)
+
+mainLogger.info("Camera Extension process starting up")
 
 // Camera Extension entry point. Lives in its own process — this
 // binary is wrapped as `.systemextension` by
@@ -20,5 +28,7 @@ import CoreMediaIO
 // IOSurfaces between processes for free, no XPC involved.
 
 let providerSource = CameraExtensionProviderSource(clientQueue: nil)
+mainLogger.info("Provider source initialised, calling CMIOExtensionProvider.startService")
 CMIOExtensionProvider.startService(provider: providerSource.provider)
+mainLogger.info("Service started, entering CFRunLoopRun")
 CFRunLoopRun()
