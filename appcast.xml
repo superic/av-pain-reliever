@@ -156,5 +156,21 @@
                        type="application/octet-stream"
                        sparkle:edSignature="UwRyqAb0128cImxlOvgdGtDuMd4mxVM3fJM+Cc4QlAzwWrmgQJgxzBTbj2IEVmVLYJFww4kK8u5iYp/6VtwpDg==" length="2639687" />
         </item>
+        <item>
+            <title>Version 0.1.13</title>
+            <description><![CDATA[
+<h2>What's new</h2>
+<p>Listen, the switch notification — the little banner that pops up when you change docks — used to show our app icon. Just the app icon. Every time. Fine, but generic. We're upgrading. Now the notification shows the active profile's icon: house for home office, laptop for laptop, whatever you set. Per-profile. Per-switch. Sharp.</p>
+<p>The "new location detected" notification gets the question-mark glyph too, same one the menu bar shows. Consistent system, top to bottom.</p>
+<p>That's the deal. New thumbnail on the toast. Money.</p>
+]]></description>
+            <pubDate>Mon, 04 May 2026 07:21:45 +0000</pubDate>
+            <sparkle:version>0.1.13</sparkle:version>
+            <sparkle:shortVersionString>0.1.13</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/superic/av-pain-reliever/releases/download/v0.1.13/AVPainReliever.app.zip"
+                       type="application/octet-stream"
+                       sparkle:edSignature="q+sHcRcb758O7eBFVzgMZ3RqNs+DZQusax31B7ebXefKeVDBs7k1LLK7FRBsRUg/jr3VSCzLHdy/3TVautLdBg==" length="2648951" />
+        </item>
     </channel>
 </rss>
