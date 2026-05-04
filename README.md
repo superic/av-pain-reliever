@@ -1,22 +1,22 @@
-# AV Pain Reliever 💊
+# AV Pain Reliever
 
-> Stop fiddling with your microphone, speakers, and webcam every time you switch desks. Your Mac will do it for you.
+> Auto-switch your microphone, speakers, and camera when you change desks.
 
 When you carry a MacBook between locations — your home office, a work desk, a conference room, a café — your audio defaults usually need fixing every time. Different microphone, different speakers, sometimes a different camera. **AV Pain Reliever** notices which dock you've connected to and automatically:
 
-- Sets your **system default microphone** to the right one for that location.
-- Sets your **system default speaker** to the right one for that location.
-- Sets your **system preferred camera** to the right one for that location.
+- Sets your **system default microphone** for that location.
+- Sets your **system default speaker** for that location.
+- Sets your **system preferred camera** for that location.
 
-You configure your video apps (Zoom, Slack, Teams) once to follow the system, and after that you never touch a microphone or camera setting again. Plug in, the right setup is active. Unplug, it goes back to your laptop's built-in mic and speakers.
+Configure your video apps (Zoom, Slack, Teams) once to follow the system, and after that the right setup is active the moment you plug in. Unplug and it returns to your laptop's built-in mic and speakers.
 
-The app lives in your menu bar — no Dock icon, no windows that get in your way. The current location's name shows next to a small pill icon. Click it for status, profile switching, and settings.
+The app lives in your menu bar — no Dock icon, no windows in your way.
 
 ---
 
-## What you'll need
+## Requirements
 
-A Mac running **macOS 14 (Sonoma) or later**. That's it.
+A Mac running **macOS 14 (Sonoma) or later**.
 
 ---
 
@@ -24,118 +24,51 @@ A Mac running **macOS 14 (Sonoma) or later**. That's it.
 
 1. Download the latest **AVPainReliever.app.zip** from the [Releases page](https://github.com/superic/av-pain-reliever/releases/latest).
 2. Unzip and drag **AVPainReliever.app** into your **Applications** folder.
-3. Double-click to launch. The pill icon shows up in your menu bar; the engine starts watching USB events immediately.
+3. Double-click to launch. The icon appears in your menu bar.
 4. Open **Settings…** and toggle **Launch at Login** if you want it running every time you sign in.
 
-The app updates itself: a new version downloads in the background and prompts you to install on next launch. Or check anytime via the menu → **Advanced → Check for Updates…**
+The app updates itself in the background. To check manually, open **About → Check for Updates**.
 
-To stop it: click the pill icon → **Quit** (or ⌘Q with the menu open).
+To stop it: click the menu bar icon → **Quit**.
 
 ---
 
 ## First-run setup
 
-If you've never used AV Pain Reliever before, you'll see a welcome window the first time the app launches. Click **Add Your First Location** and the wizard walks you through capturing the dock you're at right now:
+The first time you launch, the welcome window walks you through capturing the dock you're at right now:
 
-1. **Name the location.** "Home Office", "Work Desk", "Studio", "Conference Room" — anything human-readable. The app slugifies internally; you'll see the name as you typed it everywhere in the UI.
-2. **Pick which USB devices identify this location.** The wizard pre-checks every device currently attached. Untick anything that travels with you (keyboards, mice, phones) — the app shows yellow "Suggested: untick" pills next to the obvious ones to make this easy.
-3. **Pick the audio + camera defaults.** The wizard pre-fills with whatever is currently set in System Settings, so if you've already configured this location manually, you can usually just click Save.
-4. Hit Save. Done.
+1. **Name the location.** "Home Office", "Work Desk", "Studio", "Conference Room" — anything that makes sense to you.
+2. **Pick which USB devices identify this location.** Untick anything that travels with you (keyboards, mice, phones).
+3. **Pick the audio and camera defaults.** Pre-filled with your current System Settings.
+4. **Save.**
 
 Repeat once per location. The app switches automatically whenever you dock there.
+
+When you connect to a new dock the app doesn't recognise, the menu bar shows **"New location"** and offers to set it up.
 
 ---
 
 ## Using the app
 
-The menu bar shows the current location ("Home Office", "Laptop", etc.) next to the pill icon. Click for the menu:
+Click the menu bar icon for:
 
-- **Switch to ▶** — manually apply a different profile. The active profile is checkmarked. ⌥-click any profile to edit it instead of switching, or pick **Edit Profiles…** at the bottom of the submenu to manage them in Settings.
+- **Switch to** — manually apply a different profile.
 - **Add Profile…** — capture the dock you're at right now (⌘N).
-- **About** — version + a link to re-show the welcome window.
-- **Settings…** — notifications, menu-bar appearance (icon-only or icon + profile name), debounce window, profile management, Launch at Login (⌘,).
-- **Advanced ▶** — power-user actions: re-evaluate immediately (⌘R), reload config from disk (⌘L), check for updates, reveal the log in Console.
-
-When you dock somewhere AV Pain Reliever doesn't have a profile for, the menu bar shows **"New location"** with a `?` icon and a banner-style **Set Up This Location…** button at the top of the menu. The wizard pre-selects all currently-attached devices, so you just type a name and save.
+- **Settings…** — notifications, menu bar appearance, profile management, Launch at Login (⌘,).
+- **About** — version and updates.
 
 ---
 
-## How it works
+## Privacy
 
-A small in-process engine watches IOKit USB events on the main run loop. Each event triggers a 1.5-second debounce (so a dock-burst lands as a single evaluation), then resolves the currently-attached set against your configured profiles using a "most-specific match wins" algorithm. The chosen profile applies via CoreAudio (`kAudioHardwarePropertyDefaultInputDevice` / `Output`) and AVFoundation (`AVCaptureDevice.userPreferredCamera`).
-
-Profiles live in plain TOML at `~/Library/Application Support/AVPainReliever/profiles.toml`. The wizard reads + writes this file; nothing stops you from editing it by hand, and the app's "Reload Config" menu item picks up your changes without a restart.
-
-The engine has no network calls, no analytics, no telemetry, no third-party services. It's the whole product.
+The app makes no network calls beyond checking for its own updates. No analytics, no telemetry, no third-party services. Your profiles are stored as a plain text file on your Mac (`~/Library/Application Support/AVPainReliever/profiles.toml`) — you can read it, back it up, or edit it by hand.
 
 ---
 
-## Nerd zone
+## Support
 
-The rest of this section is for developers / contributors. Skip if you just want to use the app.
+Questions or bug reports: [open an issue](https://github.com/superic/av-pain-reliever/issues).
 
-### Project layout
+---
 
-```
-av-pain-reliever/
-├── Package.swift              # SPM manifest — single source of truth for deps + targets
-├── Sources/
-│   ├── AVPainReliever/        # Engine library (resolver, debouncer, applier, USB/audio/camera adapters, config loader, notifier)
-│   └── AVPainRelieverApp/     # SwiftUI menu-bar app target (App, AppDelegate, views, Sparkle Updater wrapper)
-├── Tests/
-│   ├── AVPainRelieverTests/         # Engine + adapter tests
-│   └── AVPainRelieverAppTests/      # App-target helper tests (Theme, ProfileIcon, NotificationCopy, SettingsStore, view model)
-├── Resources/                 # Bundled into the .app — Info.plist, entitlements, AppIcon.icns
-├── scripts/                   # make-app.sh, build-icon.sh, sign-appcast.sh, icon-exporter.swift
-├── .github/workflows/         # release.yml — tag-driven signed/notarized release pipeline
-├── docs/RELEASING.md          # Runbook: cert + Sparkle key generation, GitHub Secrets, first-tag checklist
-├── appcast.xml                # Sparkle update feed served via raw.githubusercontent.com
-├── SWIFT_PORT.md              # Running design log + lessons learned
-├── prototypes/                # Archive of earlier research code (see prototypes/README.md)
-├── LICENSE
-└── README.md                  # This file
-```
-
-### Build from source
-
-If you'd rather run from source than download the signed `.app` (e.g. you want to hack on it), you'll need the Swift toolchain — installed automatically with [Xcode](https://apps.apple.com/us/app/xcode/id497799835?mt=12), or via `xcode-select --install` for the command-line tools alone.
-
-```sh
-git clone https://github.com/superic/av-pain-reliever ~/av-pain-reliever
-cd ~/av-pain-reliever
-swift run AVPainRelieverApp
-```
-
-Login items via `SMAppService` only register when running from a signed `.app` bundle, so the **Launch at Login** toggle is a no-op when you launch this way. Quit by clicking the pill icon → **Quit**.
-
-### Build, run, test
-
-```sh
-swift build                                  # compile
-swift run AVPainRelieverApp                  # launch the menu-bar app (unsigned dev mode)
-swift test                                   # full test suite
-swift test --filter ConfigLoader             # narrow to one suite
-scripts/make-app.sh                          # produce dist/AVPainReliever.app (ad-hoc signed)
-```
-
-`scripts/make-app.sh` outputs an installable `dist/AVPainReliever.app` with embedded Sparkle.framework. With `MAC_CERT_NAME` and `VERSION` env vars set it produces a Developer-ID-signed bundle ready for notarization. See [`docs/RELEASING.md`](docs/RELEASING.md) for the full release pipeline.
-
-### Releasing
-
-Tag-driven via [`.github/workflows/release.yml`](.github/workflows/release.yml): pushing `vX.Y.Z` triggers a build + Developer-ID sign + notarization + Sparkle EdDSA sign + draft GitHub Release + appcast update. [`docs/RELEASING.md`](docs/RELEASING.md) is the runbook (Apple Developer Program enrollment, Sparkle key generation, the seven `gh secret set` commands, the first-tag checklist, troubleshooting).
-
-### Architecture in one paragraph
-
-`Engine` (`Sources/AVPainReliever/Engine/Engine.swift`) wires `USBWatcher → Debouncer → ProfileResolver → ProfileApplier`. The watcher is a thin IOKit wrapper; the debouncer collapses USB event bursts; the resolver picks the best-matching `Profile` against attached devices; the applier orchestrates the audio + camera side effects via the `AudioController` and `CameraController` adapter protocols (production: CoreAudio + AVFoundation, tests: recording mocks). `ConfigLoader` parses `profiles.toml` via TOMLKit; `ProfileWriter` handles append/replace/delete on the TOML, preserving comments and surrounding content. Notifications post via `UNUserNotificationCenter` inside the bundled `.app` (or `osascript` from `swift run`). The SwiftUI app target (`AVPainRelieverApp`) owns an `AppDelegate` that wires the engine to a `MenuBarExtra` plus four `Window` scenes (Add Profile wizard, Settings, About, Welcome) and a Sparkle 2 updater for tag-driven auto-updates.
-
-### Design log
-
-[`SWIFT_PORT.md`](SWIFT_PORT.md) is the running design document — locked architectural choices, open questions, lessons learned by section, effort estimates, and what's deferred. If you're contributing or just curious about why a thing is the way it is, start there.
-
-### Research archive
-
-[`prototypes/`](prototypes/) holds earlier research code that informed the current implementation — kept for reference, no longer maintained. See [`prototypes/README.md`](prototypes/README.md) for what's there and why.
-
-### License
-
-MIT. See [LICENSE](LICENSE).
+For developers: see [SWIFT_PORT.md](SWIFT_PORT.md) for the running design log and [docs/RELEASING.md](docs/RELEASING.md) for the release pipeline. Licensed MIT — see [LICENSE](LICENSE).
