@@ -10,6 +10,11 @@
 # Or, when working from your login keychain (no env var):
 #   VERSION=0.1.0 scripts/sign-appcast.sh dist/AVPainReliever.app.zip
 #
+# Optional inputs:
+#   - $RELEASE_NOTES_HTML  Pre-rendered HTML embedded as the item's
+#                          <description>. Sparkle uses this to populate
+#                          its "What's New" panel.
+#
 # Outputs to stdout:
 #   - The full <item> block (URL placeholder included; replace before
 #     committing to appcast.xml).
@@ -54,10 +59,22 @@ ZIP_NAME="$(basename "$ZIP")"
 PUBDATE="$(LC_TIME=en_US.UTF-8 TZ=UTC date '+%a, %d %b %Y %H:%M:%S +0000')"
 ASSET_URL="https://github.com/superic/av-pain-reliever/releases/download/v$VERSION/$ZIP_NAME"
 
+# Optional: $RELEASE_NOTES_HTML is rendered HTML for the <description>
+# field. When set, Sparkle expands its update window with a "What's
+# New" panel. CDATA-wrapping keeps the HTML's `<` / `>` characters
+# legal inside the appcast XML.
+DESCRIPTION_BLOCK=""
+if [[ -n "${RELEASE_NOTES_HTML:-}" ]]; then
+    DESCRIPTION_BLOCK="            <description><![CDATA[
+${RELEASE_NOTES_HTML}
+]]></description>
+"
+fi
+
 cat <<XML
         <item>
             <title>Version $VERSION</title>
-            <pubDate>$PUBDATE</pubDate>
+${DESCRIPTION_BLOCK}            <pubDate>$PUBDATE</pubDate>
             <sparkle:version>$VERSION</sparkle:version>
             <sparkle:shortVersionString>$VERSION</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>

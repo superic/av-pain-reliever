@@ -105,18 +105,34 @@ from your working directory.
 1. Bump the version. There's no version source file — the `git tag` is
    the version. Verify `Resources/Info.plist` doesn't have anything
    stale.
-2. Tag and push:
+2. **(Recommended)** Pre-create the GitHub release as a draft with
+   curated release notes — these become the "What's New" panel in
+   Sparkle's update window:
    ```sh
-   git tag v0.1.0
-   git push origin v0.1.0
+   gh release create v0.1.11 --draft --notes "$(cat <<'EOF'
+   ## What's new
+   - Confetti when you open About
+   - Personalised welcome greeting
+   - Update window comes to the front when checking
+   EOF
+   )"
    ```
-3. Watch the run: `gh run watch` (or in the browser).
-4. Once the workflow completes:
+   If you skip this step, the workflow falls back to
+   `--generate-notes` (a "What's Changed" commit list).
+3. Tag and push:
+   ```sh
+   git tag v0.1.11
+   git push origin v0.1.11
+   ```
+4. Watch the run: `gh run watch` (or in the browser).
+5. Once the workflow completes:
    - The release is in **draft** state — review and publish it
      manually via the Releases page.
    - `appcast.xml` on `main` has a new `<item>` referencing the
-     release asset. Existing v0.0.x installs see the update on their
-     next Sparkle check (or via Advanced → Check for Updates…).
+     release asset. Existing installs see the update on their next
+     Sparkle check (or via Advanced → Check for Updates…), and the
+     update window shows the release notes panel sourced from your
+     GitHub release body.
 
 ### First-tag checklist
 
