@@ -139,6 +139,14 @@ final class CameraCaptureSession: NSObject {
         let output = AVCaptureVideoDataOutput()
         output.videoSettings = [
             kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
+            // Force frames to the dimensions the extension's source
+            // stream declared, regardless of the camera's native
+            // resolution. AVFoundation does the downscale in
+            // hardware where possible. Without these keys the
+            // FaceTime HD Camera ignores .hd1280x720 and ships
+            // 1920x1080.
+            kCVPixelBufferWidthKey as String: 1280,
+            kCVPixelBufferHeightKey as String: 720,
             kCVPixelBufferIOSurfacePropertiesKey as String: [:],
         ]
         output.alwaysDiscardsLateVideoFrames = true

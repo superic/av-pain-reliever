@@ -2437,15 +2437,17 @@ the extension can't capture"):
    target that activates and shows up in Zoom but vends a black
    frame. Goal: prove the activation/signing/embedding plumbing
    works. **SHIPPED 2026-05-04.**
-2. **M2 — Host-side capture + XPC frame pipe (was M3).** Host app
-   opens an `AVCaptureSession` against a hardcoded source camera
-   (built-in webcam during dev). Each frame's `IOSurface` is sent
-   to the extension over an XPC connection. Extension wraps the
-   `IOSurface` in a `CMSampleBuffer` and forwards via
-   `stream.send(...)`. No source switching yet (that's a one-line
-   change in M3, but tested in isolation here). Goal: prove the
-   whole frame path works end-to-end at acceptable
-   resolution/framerate.
+2. **M2 — Host-side capture + CMIO sink-stream pipe.** SHIPPED
+   2026-05-04. Host app opens an `AVCaptureSession` against the
+   built-in webcam, opens AV Pain Reliever's sink stream via raw
+   CMIO C API, and enqueues each captured `CMSampleBuffer` into
+   the sink's `CMSimpleQueue`. The kernel passes the underlying
+   IOSurfaces across the process boundary. Extension consumes
+   from the sink via `stream.consumeSampleBuffer(from:)` on a
+   timer at 3× framerate and forwards each consumed frame to the
+   source stream that AVCapture clients (Zoom, Photo Booth, etc.)
+   read. Initial XPC implementation was abandoned — see "Why XPC
+   didn't work for the frame pipe" below.
 3. **M3 — Source switching + hold-last-frame.** Host app accepts
    `setSourceCamera(uniqueID:)` over the XPC service, swaps the
    `AVCaptureSession`'s source, and pauses the frame feed for
@@ -2645,6 +2647,107 @@ Concrete changes after the rollback:
   `com.apple.security.app-sandbox` and the App Group; nothing
   else.
 - M2 plan rewritten in milestones list above.
+
+### M2 — host-side capture + CMIO sink (SHIPPED 2026-05-04)
+
+End-to-end working: host captures from the built-in FaceTime HD
+camera at 1280×720 BGRA, writes frames into the extension's sink
+stream via CMIO's `CMSimpleQueueEnqueue`, the extension drains
+the sink and forwards to the source stream that Zoom and Photo
+Booth read. Live webcam feed flows through the AV Pain Reliever
+virtual camera with no perceptible latency.
+
+Architecture (matches OBS's `mac-virtualcam` pattern,
+referenced for design):
+
+- **Extension**: declares two streams on its single device — a
+  `.source` stream (AVCapture clients read this) and a `.sink`
+  stream (host writes here). Owns no AVFoundation. Runs a
+  consume timer at 90 Hz that drains the sink and calls
+  `stream.send(...)` on the source when there's an active
+  consumer (`streamingCounter > 0`). See
+  `Sources/AVPainRelieverCameraExtension/`:
+  - `CameraExtensionStream.swift` — source side, just tracks
+    streaming counter.
+  - `CameraExtensionStreamSink.swift` — sink side, captures the
+    `CMIOExtensionClient` in `authorizedToStartStream`.
+  - `CameraExtensionDevice.swift` — owns both streams + the
+    consume loop.
+
+- **Host**: opens AV Pain Reliever as a CMIO consumer, queries
+  each stream's `kCMIOStreamPropertyDirection` to find the sink
+  (NOT the index 1 trick — direction-property check is robust
+  against ID ordering changes), gets the buffer queue via
+  `CMIOStreamCopyBufferQueue`, calls `CMIODeviceStartStream`,
+  then enqueues each captured frame via `CMSimpleQueueEnqueue`.
+  See `Sources/AVPainRelieverApp/`:
+  - `CameraCaptureSession.swift` — AVFoundation capture against
+    built-in camera (no recursion since host is a normal app).
+  - `CMIOSinkWriter.swift` — raw CMIO sink-write path.
+
+### Why XPC didn't work for the frame pipe
+
+First attempt put NSXPCConnection between host and extension on
+a Mach service named `HLH4LEWS9S.group.com.ericwillis.avpainreliever.framepipe`.
+The XPC connection failed with `failed to do a bootstrap look-up:
+xpc_error=[3: No such process]`. Root cause:
+`NSXPCListener(machServiceName:)` only attaches to launchd-
+registered services — system extensions don't have launchd
+plists for their custom Mach names, so the listener never
+registered the service and clients couldn't find it.
+
+The OBS-style sink-stream approach sidesteps this entirely:
+CMIO already has cross-process IOSurface plumbing built in,
+and using the second stream as a sink reuses that plumbing for
+free. No Mach services to register, no XPC code to maintain.
+
+### M2 lessons (gotchas the architecture or first attempts hit)
+
+1. **`AVCaptureVideoDataOutput.sessionPreset` ≠ output
+   dimensions.** Setting `session.sessionPreset = .hd1280x720`
+   does not force the output to 1280×720 — the FaceTime HD camera
+   shipped 1920×1080 frames anyway. Fix: add
+   `kCVPixelBufferWidthKey`/`kCVPixelBufferHeightKey` to
+   `output.videoSettings`. AVFoundation does the downscale.
+2. **Pre-built `CMFormatDescription` is fragile.** If the format
+   description's dimensions don't match the actual pixel buffer,
+   `CMSampleBufferCreateForImageBuffer` fails with -12743
+   (`kCMSampleBufferError_InvalidMediaFormat`). Derive the
+   format description from the pixel buffer (cached when
+   dimensions stay constant). See
+   `CMIOSinkWriter.formatDescription(for:)`.
+3. **Don't trust stream array order.** OBS's plugin uses
+   `streams[1]` to find its sink, but that's not portable across
+   device implementations. Query
+   `kCMIOStreamPropertyDirection` (0 = output/sink,
+   1 = input/source) and pick by direction.
+4. **Hardened runtime needs `com.apple.security.device.camera`
+   even outside the sandbox.** TCC won't even prompt — it
+   silently denies. Without that key, `requestAccess` returns
+   `denied` with no UI. Add the entitlement to the v0.2.0 host
+   entitlements file.
+5. **Swift `NSLog` doesn't reach unified logging on
+   macOS 14+** in our LSUIElement host or the system extension.
+   Use `os.Logger(subsystem:category:)` exclusively. Tail with
+   `log stream --predicate 'subsystem CONTAINS "ericwillis.avpainreliever"' --info --style compact`.
+6. **Iterating on the extension binary requires either a reboot
+   OR a Settings toggle off/on cycle.** Each new extension
+   version queues the previous one as
+   `[terminated waiting to uninstall on reboot]`, and macOS
+   stops exposing the device through `system_profiler
+   SPCameraDataType` until that queue clears. Confirmed both
+   paths work: full reboot or System Settings → General →
+   Login Items & Extensions → Camera Extensions → toggle off,
+   wait, toggle on. The toggle path is faster but doesn't
+   always work; reboot is the supported recovery.
+7. **`open --env VAR=val`, not `VAR=val open`.** The shell-prefix
+   form is stripped by `open` before launchd handoff. Has
+   bitten us in M1 too — kept as a permanent note.
+8. **Don't overlay a new bundle in `/Applications` between a
+   build and a reboot.** macOS picks up the new bundle during
+   boot and kicks off another upgrade cycle, undoing whatever
+   the reboot was supposed to clean up. Reboot first, then
+   install.
 
 ---
 

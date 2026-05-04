@@ -25,25 +25,26 @@ private let logger = Logger(
 /// (referenced for architecture, not code).
 final class CMIOSinkWriter {
     private let deviceUID: String
-    private let formatDescription: CMFormatDescription
     private var deviceID: CMIODeviceID = 0
     private var streamID: CMIOStreamID = 0
     private var queue: CMSimpleQueue?
 
+    /// Cached format description matching the most recent pixel
+    /// buffer. We derive this per-frame rather than pre-building
+    /// because the camera's actual delivered dimensions may not
+    /// match what `sessionPreset` requested (e.g., FaceTime HD
+    /// camera ignores `.hd1280x720` and ships 1920x1080 unless
+    /// width/height keys are set on the output's videoSettings).
+    private var formatDescription: CMFormatDescription?
+    private var formatDescriptionDimensions: (Int, Int) = (0, 0)
+
     init(deviceUID: String, width: Int32, height: Int32) {
         self.deviceUID = deviceUID
-        var fmt: CMFormatDescription?
-        CMVideoFormatDescriptionCreate(
-            allocator: kCFAllocatorDefault,
-            codecType: kCVPixelFormatType_32BGRA,
-            width: width,
-            height: height,
-            extensions: nil,
-            formatDescriptionOut: &fmt
-        )
-        // Force-unwrap is fine — CMVideoFormatDescriptionCreate
-        // doesn't fail for legal pixel format / dimensions.
-        self.formatDescription = fmt!
+        // width/height retained as ignored params for backward-
+        // compat with the call site; the actual format used at
+        // runtime is derived per-pixel-buffer below.
+        _ = width
+        _ = height
     }
 
     /// Discovers the device, opens its sink stream, primes the
@@ -103,6 +104,10 @@ final class CMIOSinkWriter {
             if enqueueCount == 0 {
                 logger.error("enqueue called before queue ready — dropping")
             }
+            return
+        }
+
+        guard let formatDescription = formatDescription(for: pixelBuffer) else {
             return
         }
 
@@ -250,6 +255,37 @@ final class CMIOSinkWriter {
             }
         }
         return nil
+    }
+
+    /// Returns a format description matching the supplied pixel
+    /// buffer. Cached so steady-state captures don't allocate a
+    /// fresh description per frame.
+    private func formatDescription(for pixelBuffer: CVPixelBuffer)
+        -> CMFormatDescription?
+    {
+        let width = CVPixelBufferGetWidth(pixelBuffer)
+        let height = CVPixelBufferGetHeight(pixelBuffer)
+        if let cached = formatDescription,
+           formatDescriptionDimensions == (width, height)
+        {
+            return cached
+        }
+        var fmt: CMFormatDescription?
+        let status = CMVideoFormatDescriptionCreateForImageBuffer(
+            allocator: kCFAllocatorDefault,
+            imageBuffer: pixelBuffer,
+            formatDescriptionOut: &fmt
+        )
+        guard status == noErr, let fmt else {
+            logger.error("CMVideoFormatDescriptionCreateForImageBuffer failed: \(status)")
+            return nil
+        }
+        formatDescription = fmt
+        formatDescriptionDimensions = (width, height)
+        logger.info(
+            "Built format description for \(width, privacy: .public)x\(height, privacy: .public)"
+        )
+        return fmt
     }
 
     private func streamDirection(streamID: CMIOStreamID) -> UInt32? {
