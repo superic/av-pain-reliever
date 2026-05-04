@@ -147,18 +147,20 @@ private struct MenuLabelView: View {
         }
     }
 
-    /// Resolved SF Symbol for the menu bar. Defaults to the product's
-    /// `pills.fill` brand glyph; when the user opts in via Settings →
-    /// General and an active profile is known, swaps in that profile's
-    /// effective icon (user override → slug auto-mapper → fallback pin),
-    /// matching what the "Switch to" submenu and Profiles list render.
+    /// Resolved SF Symbol for the menu bar. Defaults to the user's
+    /// pick from Settings → General → "Menu bar icon" (initially the
+    /// product's `pills.fill` brand glyph). When the user opts in via
+    /// Settings → General and an active profile is known, swaps in
+    /// that profile's effective icon (user override → slug
+    /// auto-mapper → fallback pin), matching what the "Switch to"
+    /// submenu and Profiles list render.
     private var menuBarIcon: String {
         guard
             delegate.showProfileIconInMenuBar,
             let slug = delegate.activeProfileSlug,
             let profile = delegate.availableProfiles.first(where: { $0.name == slug })
         else {
-            return Theme.Symbol.appIcon
+            return delegate.menuBarIconSymbol
         }
         return ProfileIcon.effectiveSymbol(for: slug, override: profile.icon)
     }

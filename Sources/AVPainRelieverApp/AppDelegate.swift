@@ -493,6 +493,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
     /// Mirror of `settings.showProfileIconInMenuBar` for the same reason.
     var showProfileIconInMenuBar: Bool { settings.showProfileIconInMenuBar }
 
+    /// Mirror of `settings.menuBarIconSymbol` for the same reason.
+    var menuBarIconSymbol: String { settings.menuBarIconSymbol }
+
     /// Profile-config discovery in priority order. Mirrors what the
     /// eventual first-run wizard will codify, but for now lets a
     /// developer or migrating Phase 1 user run the app immediately:

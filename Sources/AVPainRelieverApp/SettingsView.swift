@@ -46,6 +46,7 @@ struct SettingsView: View {
 
 private struct GeneralSettingsTab: View {
     @ObservedObject var settings: SettingsStore
+    @State private var showingMenuBarIconPicker = false
 
     var body: some View {
         Form {
@@ -54,6 +55,40 @@ private struct GeneralSettingsTab: View {
                 Toggle("Send notifications when profiles change", isOn: $settings.notificationsEnabled)
                 Toggle("Show current profile in the menu bar", isOn: $settings.showProfileNameInMenuBar)
                 Toggle("Show current profile icon in the menu bar", isOn: $settings.showProfileIconInMenuBar)
+                // Picker row + a conditional caption explaining why
+                // the picker greys out when the profile-icon toggle
+                // above is on. Caption shows only in the disabled
+                // state so the cause-and-effect is unambiguous: the
+                // moment you flip the toggle, the explanation
+                // appears next to the disabled control.
+                VStack(alignment: .leading, spacing: 6) {
+                    LabeledContent("Menu bar icon") {
+                        Button {
+                            showingMenuBarIconPicker = true
+                        } label: {
+                            HStack(spacing: 6) {
+                                Image(systemName: settings.menuBarIconSymbol)
+                                    .font(.body)
+                                Image(systemName: "chevron.down")
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        .buttonStyle(.bordered)
+                        .popover(isPresented: $showingMenuBarIconPicker, arrowEdge: .bottom) {
+                            MenuBarSymbolPicker(
+                                selection: $settings.menuBarIconSymbol,
+                                onPick: { showingMenuBarIconPicker = false }
+                            )
+                        }
+                    }
+                    if settings.showProfileIconInMenuBar {
+                        Text("Active profile icon overrides this above.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .disabled(settings.showProfileIconInMenuBar)
             } header: {
                 Label("Behavior", systemImage: "wand.and.stars")
             }
