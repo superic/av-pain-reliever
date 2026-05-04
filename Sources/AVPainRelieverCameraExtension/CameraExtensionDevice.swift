@@ -2,6 +2,12 @@ import Foundation
 import CoreMediaIO
 import CoreMedia
 import IOKit.audio
+import os.log
+
+private let logger = Logger(
+    subsystem: "com.ericwillis.avpainreliever.CameraExtension",
+    category: "Device"
+)
 
 /// The single virtual camera device registered by this extension.
 /// Owns two streams:
@@ -110,6 +116,7 @@ final class CameraExtensionDeviceSource: NSObject, CMIOExtensionDeviceSource {
     /// host starts pushing frames to the sink. Begins the consume
     /// timer that drains the sink and forwards to the source.
     func sinkStartedStreaming(client: CMIOExtensionClient) {
+        logger.info("sinkStartedStreaming")
         consumeQueue.async { [weak self] in
             guard let self else { return }
             self.startConsumeTimer(client: client)
@@ -117,6 +124,7 @@ final class CameraExtensionDeviceSource: NSObject, CMIOExtensionDeviceSource {
     }
 
     func sinkStoppedStreaming() {
+        logger.info("sinkStoppedStreaming")
         consumeQueue.async { [weak self] in
             self?.consumeTimer?.cancel()
             self?.consumeTimer = nil
@@ -140,15 +148,34 @@ final class CameraExtensionDeviceSource: NSObject, CMIOExtensionDeviceSource {
         timer.resume()
     }
 
+    private var consumedCount: UInt64 = 0
+    private var forwardedCount: UInt64 = 0
+    private var emptyConsumeCount: UInt64 = 0
+
     private func consumeOne(client: CMIOExtensionClient) {
         streamSink.stream.consumeSampleBuffer(from: client) {
             [weak self] sampleBuffer, sequenceNumber, _, _, error in
             guard let self else { return }
             if let error {
-                NSLog("[AVPR-ext] consume error: \(error)")
+                logger.error("consume error: \(error.localizedDescription, privacy: .public)")
                 return
             }
-            guard let sampleBuffer else { return }
+            guard let sampleBuffer else {
+                self.emptyConsumeCount += 1
+                if self.emptyConsumeCount % 90 == 1 {
+                    logger.debug(
+                        "consume returned no buffer (\(self.emptyConsumeCount, privacy: .public) empty so far)"
+                    )
+                }
+                return
+            }
+
+            self.consumedCount += 1
+            if self.consumedCount == 1 || self.consumedCount % 60 == 0 {
+                logger.info(
+                    "Consumed frame #\(self.consumedCount, privacy: .public), source streamingCounter=\(self.streamSource.streamingCounter, privacy: .public)"
+                )
+            }
 
             // Tell the sink the frame moved through, so its
             // `streamSinkEndOfData` and underrun counters stay
@@ -175,6 +202,12 @@ final class CameraExtensionDeviceSource: NSObject, CMIOExtensionDeviceSource {
                 discontinuity: [],
                 hostTimeInNanoseconds: ptsNs
             )
+            self.forwardedCount += 1
+            if self.forwardedCount == 1 || self.forwardedCount % 60 == 0 {
+                logger.info(
+                    "Forwarded frame #\(self.forwardedCount, privacy: .public) to source"
+                )
+            }
         }
     }
 }

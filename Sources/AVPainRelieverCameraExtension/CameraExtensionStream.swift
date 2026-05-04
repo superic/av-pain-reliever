@@ -1,6 +1,12 @@
 import Foundation
 import CoreMediaIO
 import CoreMedia
+import os.log
+
+private let logger = Logger(
+    subsystem: "com.ericwillis.avpainreliever.CameraExtension",
+    category: "Source"
+)
 
 /// The .source direction stream — what AVCapture clients (Zoom,
 /// FaceTime, Slack, …) read from. Pure relay endpoint: frames are
@@ -82,9 +88,11 @@ final class CameraExtensionStreamSource: NSObject, CMIOExtensionStreamSource {
 
     func startStream() throws {
         streamingCounter += 1
+        logger.info("source startStream — streamingCounter=\(self.streamingCounter, privacy: .public)")
     }
 
     func stopStream() throws {
         if streamingCounter > 0 { streamingCounter -= 1 }
+        logger.info("source stopStream — streamingCounter=\(self.streamingCounter, privacy: .public)")
     }
 }

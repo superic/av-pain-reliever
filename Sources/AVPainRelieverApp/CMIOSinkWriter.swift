@@ -2,6 +2,12 @@ import Foundation
 import CoreMediaIO
 import CoreMedia
 import CoreVideo
+import os.log
+
+private let logger = Logger(
+    subsystem: "com.ericwillis.avpainreliever",
+    category: "CMIOSinkWriter"
+)
 
 /// Opens the AV Pain Reliever virtual camera as a CMIO consumer
 /// and writes frames into its sink stream's `CMSimpleQueue`. The
@@ -42,36 +48,37 @@ final class CMIOSinkWriter {
 
     /// Discovers the device, opens its sink stream, primes the
     /// buffer queue, and starts streaming. Returns true on success.
-    /// All failures log to stderr and return false — caller decides
-    /// whether to retry.
+    /// All failures log via os.log; caller decides whether to retry.
     func start() -> Bool {
         guard let device = findDevice(matchingUID: deviceUID) else {
-            NSLog("[AVPR-host] CMIO device with UID \(deviceUID) not found")
+            logger.error("CMIO device with UID \(self.deviceUID) not found")
             return false
         }
         deviceID = device
+        logger.info("Found device id=\(device, privacy: .public)")
 
         guard let sink = findSinkStream(deviceID: device) else {
-            NSLog("[AVPR-host] sink stream not found on device")
+            logger.error("sink stream not found on device")
             return false
         }
         streamID = sink
+        logger.info("Picked sink stream id=\(sink, privacy: .public)")
 
         var unmanaged: Unmanaged<CMSimpleQueue>?
         let copyStatus = CMIOStreamCopyBufferQueue(sink, { _, _, _ in }, nil, &unmanaged)
         guard copyStatus == noErr, let unmanaged else {
-            NSLog("[AVPR-host] CMIOStreamCopyBufferQueue failed: \(copyStatus)")
+            logger.error("CMIOStreamCopyBufferQueue failed: \(copyStatus)")
             return false
         }
         self.queue = unmanaged.takeRetainedValue()
 
         let startStatus = CMIODeviceStartStream(device, sink)
         guard startStatus == noErr else {
-            NSLog("[AVPR-host] CMIODeviceStartStream failed: \(startStatus)")
+            logger.error("CMIODeviceStartStream failed: \(startStatus)")
             return false
         }
 
-        NSLog("[AVPR-host] CMIOSinkWriter started")
+        logger.info("CMIOSinkWriter started successfully")
         return true
     }
 
@@ -84,12 +91,20 @@ final class CMIOSinkWriter {
         queue = nil
     }
 
+    private var enqueueCount: UInt64 = 0
+    private var enqueueRejectCount: UInt64 = 0
+
     /// Wraps an incoming pixel buffer in a CMSampleBuffer and
     /// enqueues it. Caller owns the pixel buffer; this method does
     /// NOT retain it long-term — `CMSampleBufferCreateForImageBuffer`
     /// retains internally.
     func enqueue(pixelBuffer: CVPixelBuffer, hostTimeNs: UInt64) {
-        guard let queue else { return }
+        guard let queue else {
+            if enqueueCount == 0 {
+                logger.error("enqueue called before queue ready — dropping")
+            }
+            return
+        }
 
         var timing = CMSampleTimingInfo(
             duration: .invalid,
@@ -110,7 +125,10 @@ final class CMIOSinkWriter {
             sampleTiming: &timing,
             sampleBufferOut: &sampleBuffer
         )
-        guard status == noErr, let sampleBuffer else { return }
+        guard status == noErr, let sampleBuffer else {
+            logger.error("CMSampleBufferCreateForImageBuffer failed: \(status)")
+            return
+        }
 
         // CMSimpleQueue takes ownership of the enqueued ref. Pass
         // a retained pointer so the queue can release after the
@@ -121,6 +139,20 @@ final class CMIOSinkWriter {
             // Queue full or otherwise rejected. Reclaim the retain
             // we just gave it so the buffer doesn't leak.
             Unmanaged<CMSampleBuffer>.fromOpaque(retained).release()
+            enqueueRejectCount += 1
+            if enqueueRejectCount % 30 == 1 {
+                logger.error(
+                    "CMSimpleQueueEnqueue rejected (rejects=\(self.enqueueRejectCount)/\(self.enqueueCount), status=\(enqueueStatus))"
+                )
+            }
+            return
+        }
+
+        enqueueCount += 1
+        if enqueueCount == 1 || enqueueCount % 60 == 0 {
+            logger.info(
+                "Enqueued frame #\(self.enqueueCount, privacy: .public) (rejects=\(self.enqueueRejectCount, privacy: .public))"
+            )
         }
     }
 
@@ -188,7 +220,7 @@ final class CMIOSinkWriter {
         guard
             CMIOObjectGetPropertyDataSize(deviceID, &address, 0, nil, &dataSize)
                 == noErr,
-            dataSize >= 2 * UInt32(MemoryLayout<CMIOStreamID>.size)
+            dataSize > 0
         else { return nil }
 
         let count = Int(dataSize) / MemoryLayout<CMIOStreamID>.size
@@ -201,9 +233,37 @@ final class CMIOSinkWriter {
             ) == noErr
         else { return nil }
 
-        // Index 0 = source (what Zoom reads), index 1 = sink. The
-        // extension adds them in this order in
-        // `CameraExtensionDeviceSource.init`.
-        return streams[1]
+        logger.info("Device exposes \(count, privacy: .public) stream(s): \(streams.map(String.init).joined(separator: ", "), privacy: .public)")
+
+        // Don't trust ordering — query each stream's direction
+        // property and return the first sink. CMIO assigns IDs in
+        // its own order which may not match the order
+        // CameraExtensionDeviceSource.init added them.
+        for stream in streams {
+            if let direction = streamDirection(streamID: stream) {
+                logger.info("Stream \(stream, privacy: .public) direction=\(direction, privacy: .public)")
+                // direction 0 = output (host → device, i.e. sink)
+                // direction 1 = input  (device → host, i.e. source)
+                if direction == 0 {
+                    return stream
+                }
+            }
+        }
+        return nil
+    }
+
+    private func streamDirection(streamID: CMIOStreamID) -> UInt32? {
+        var address = CMIOObjectPropertyAddress(
+            mSelector: CMIOObjectPropertySelector(kCMIOStreamPropertyDirection),
+            mScope: CMIOObjectPropertyScope(kCMIOObjectPropertyScopeGlobal),
+            mElement: CMIOObjectPropertyElement(kCMIOObjectPropertyElementMain)
+        )
+        var direction: UInt32 = 0
+        var size = UInt32(MemoryLayout<UInt32>.size)
+        var used: UInt32 = 0
+        let status = CMIOObjectGetPropertyData(
+            streamID, &address, 0, nil, size, &used, &direction
+        )
+        return status == noErr ? direction : nil
     }
 }

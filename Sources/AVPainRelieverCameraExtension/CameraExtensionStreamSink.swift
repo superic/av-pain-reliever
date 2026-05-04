@@ -1,6 +1,12 @@
 import Foundation
 import CoreMediaIO
 import CoreMedia
+import os.log
+
+private let logger = Logger(
+    subsystem: "com.ericwillis.avpainreliever.CameraExtension",
+    category: "Sink"
+)
 
 /// The .sink direction stream — what the host app writes to via
 /// `CMSimpleQueueEnqueue`. Despite the protocol name
@@ -80,16 +86,22 @@ final class CameraExtensionStreamSink: NSObject, CMIOExtensionStreamSource {
         throws {}
 
     func authorizedToStartStream(for client: CMIOExtensionClient) -> Bool {
+        logger.info("authorizedToStartStream")
         self.client = client
         return true
     }
 
     func startStream() throws {
-        guard let client else { return }
+        logger.info("startStream")
+        guard let client else {
+            logger.error("startStream called without client")
+            return
+        }
         device?.sinkStartedStreaming(client: client)
     }
 
     func stopStream() throws {
+        logger.info("stopStream")
         device?.sinkStoppedStreaming()
         client = nil
     }
