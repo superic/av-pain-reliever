@@ -2,6 +2,9 @@ import Foundation
 #if canImport(UserNotifications)
 import UserNotifications
 #endif
+#if canImport(AppKit)
+import AppKit
+#endif
 
 /// Surface a transient banner-style notification to the user.
 /// Production picks between `UserNotificationsNotifier` (signed .app
@@ -11,7 +14,15 @@ import UserNotifications
 /// rejects it; action buttons silently degrade). Tests inject a
 /// recording mock.
 public protocol Notifier {
-    /// Post a notification with an optional inline action button.
+    /// Post a notification with an optional thumbnail icon and inline
+    /// action button.
+    ///
+    /// `iconSymbol` is an optional SF Symbol name; when supplied,
+    /// backends that support it render the symbol as a thumbnail
+    /// attached to the notification (the macOS `.app`-bundle path
+    /// does, the `osascript` dev path does not). Backends that can't
+    /// surface a thumbnail simply post the title + body unchanged.
+    ///
     /// `actionTitle` becomes the button label; `onAction` fires when
     /// the user clicks the button (NOT when they click the body).
     /// Both are best-effort: backends that can't render an action
@@ -19,16 +30,23 @@ public protocol Notifier {
     func notify(
         title: String,
         body: String?,
+        iconSymbol: String?,
         actionTitle: String?,
         onAction: (() -> Void)?
     )
 }
 
 extension Notifier {
-    /// Convenience for action-less notifications. Forwards to the
-    /// full method so backends only have to implement one signature.
+    /// Convenience for action-less, icon-less notifications. Forwards
+    /// to the full method so backends only have to implement one
+    /// signature.
     public func notify(title: String, body: String?) {
-        notify(title: title, body: body, actionTitle: nil, onAction: nil)
+        notify(title: title, body: body, iconSymbol: nil, actionTitle: nil, onAction: nil)
+    }
+
+    /// Convenience for a notification with just an icon thumbnail.
+    public func notify(title: String, body: String?, iconSymbol: String?) {
+        notify(title: title, body: body, iconSymbol: iconSymbol, actionTitle: nil, onAction: nil)
     }
 }
 
@@ -95,6 +113,7 @@ public final class UserNotificationsNotifier: NSObject, Notifier, UNUserNotifica
     public func notify(
         title: String,
         body: String?,
+        iconSymbol: String?,
         actionTitle: String?,
         onAction: (() -> Void)?
     ) {
@@ -109,6 +128,22 @@ public final class UserNotificationsNotifier: NSObject, Notifier, UNUserNotifica
         // accepted for API symmetry but ignored at the UN layer.
         if onAction != nil {
             content.categoryIdentifier = Self.actionCategoryID
+        }
+
+        // When the caller supplied an SF Symbol name, render it to a
+        // temp PNG and attach it. macOS shows the attachment as a
+        // thumbnail next to the title — gives the toast a per-profile
+        // visual signal alongside the standard app icon. UN moves the
+        // file into its own storage on `add(...)`, so we don't have
+        // to clean up the temp path ourselves.
+        if let iconSymbol, let url = Self.renderIconAttachment(symbol: iconSymbol) {
+            if let attachment = try? UNNotificationAttachment(
+                identifier: "icon",
+                url: url,
+                options: nil
+            ) {
+                content.attachments = [attachment]
+            }
         }
 
         let identifier = UUID().uuidString
@@ -127,6 +162,79 @@ public final class UserNotificationsNotifier: NSObject, Notifier, UNUserNotifica
                 self?.handlersQueue.sync { _ = self?.actionHandlers.removeValue(forKey: identifier) }
             }
         }
+    }
+
+    /// Render an SF Symbol on a charcoal circular background to a
+    /// temp PNG file and return its URL. Sized 256×256 — macOS
+    /// downscales for the actual notification thumbnail. Returns nil
+    /// on the unhappy path (symbol not found, encode/write failure);
+    /// callers fall back to a plain notification.
+    private static func renderIconAttachment(symbol: String) -> URL? {
+        #if canImport(AppKit)
+        let size = NSSize(width: 256, height: 256)
+        let image = NSImage(size: size)
+        image.lockFocus()
+
+        // Charcoal disc — same hue family as the new app icon's
+        // background gradient stop, so the thumbnail reads as part of
+        // the same visual system.
+        NSColor(red: 0.180, green: 0.188, blue: 0.204, alpha: 1.0).set()
+        NSBezierPath(ovalIn: NSRect(origin: .zero, size: size)).fill()
+
+        // White SF Symbol centred at ~50% of canvas.
+        let config = NSImage.SymbolConfiguration(pointSize: 130, weight: .semibold)
+        if let template = NSImage(
+            systemSymbolName: symbol,
+            accessibilityDescription: nil
+        )?.withSymbolConfiguration(config) {
+            // SF Symbols come as template (alpha-mask) images. Tint by
+            // filling a fresh image with white, then `destinationIn`
+            // through the symbol mask to get a proper white symbol.
+            let tinted = NSImage(size: template.size)
+            tinted.lockFocus()
+            NSColor.white.set()
+            NSRect(origin: .zero, size: template.size).fill()
+            template.draw(
+                in: NSRect(origin: .zero, size: template.size),
+                from: .zero,
+                operation: .destinationIn,
+                fraction: 1.0
+            )
+            tinted.unlockFocus()
+
+            let origin = NSPoint(
+                x: (size.width - tinted.size.width) / 2,
+                y: (size.height - tinted.size.height) / 2
+            )
+            tinted.draw(
+                at: origin,
+                from: .zero,
+                operation: .sourceOver,
+                fraction: 1.0
+            )
+        }
+
+        image.unlockFocus()
+
+        guard
+            let tiff = image.tiffRepresentation,
+            let rep = NSBitmapImageRep(data: tiff),
+            let png = rep.representation(using: .png, properties: [:])
+        else {
+            return nil
+        }
+
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("av-notify-icon-\(UUID().uuidString).png")
+        do {
+            try png.write(to: url)
+            return url
+        } catch {
+            return nil
+        }
+        #else
+        return nil
+        #endif
     }
 
     // MARK: - UNUserNotificationCenterDelegate
@@ -181,15 +289,17 @@ public struct AppleScriptNotifier: Notifier {
     public func notify(
         title: String,
         body: String?,
+        iconSymbol: String?,
         actionTitle: String?,
         onAction: (() -> Void)?
     ) {
-        // osascript notifications can't render an action button —
-        // ignore both `actionTitle` and `onAction` and post a plain
-        // toast. Dev users see the message; the equivalent action
-        // is also reachable from the menu's "Set Up This Location…"
-        // button when in unknown-location state.
-        _ = (actionTitle, onAction)
+        // osascript notifications can't render an action button or a
+        // custom thumbnail — ignore `iconSymbol`, `actionTitle`, and
+        // `onAction` and post a plain toast. Dev users see the
+        // message; the equivalent action is also reachable from the
+        // menu's "Set Up This Location…" button when in
+        // unknown-location state.
+        _ = (iconSymbol, actionTitle, onAction)
         notifyPlain(title: title, body: body)
     }
 

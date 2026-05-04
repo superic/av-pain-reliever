@@ -290,7 +290,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
             if settings.notificationsEnabled {
                 notifier.notify(
                     title: NotificationCopy.title(forSlug: profile.name),
-                    body: "Audio + camera switched"
+                    body: "Audio + camera switched",
+                    iconSymbol: ProfileIcon.effectiveSymbol(
+                        for: profile.name,
+                        override: profile.icon
+                    )
                 )
             }
         }
@@ -326,6 +330,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         notifier.notify(
             title: "New location detected",
             body: NotificationCopy.unknownLocationBody(deviceCount: devices.count),
+            iconSymbol: "questionmark.circle",
             actionTitle: "Open Wizard",
             onAction: { [weak self] in
                 // UN delivers the action callback on the main queue
