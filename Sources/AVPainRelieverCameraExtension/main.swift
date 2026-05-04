@@ -9,11 +9,15 @@ import CoreMediaIO
 // macOS launches this on demand when the host app activates the
 // extension via OSSystemExtensionRequest, then keeps it running as
 // long as any AVCapture client (Zoom, FaceTime, Slack, ...) has the
-// "AV Pain Reliever" camera selected.
+// "AV Pain Reliever" camera selected, OR while the host app has
+// the sink stream open and is pushing frames in.
 //
-// M1 scope: vend a black 1280x720 frame at 30 fps. No source-camera
-// switching, no XPC. Just enough to prove the activation/embedding/
-// signing plumbing end-to-end.
+// Architecture: the extension owns a CMIO device with two streams.
+// The .source stream is what AVCapture clients read from. The
+// .sink stream is what the host app writes frames into via
+// CMSimpleQueueEnqueue. The device source pumps frames sink →
+// source via `consumeSampleBuffer`. macOS's CMIO subsystem passes
+// IOSurfaces between processes for free, no XPC involved.
 
 let providerSource = CameraExtensionProviderSource(clientQueue: nil)
 CMIOExtensionProvider.startService(provider: providerSource.provider)

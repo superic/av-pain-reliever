@@ -21,6 +21,13 @@ final class VirtualCameraActivator: NSObject, OSSystemExtensionRequestDelegate {
     static let envVar = "AVPR_ACTIVATE_VIRTUAL_CAMERA"
 
     private static var retained: VirtualCameraActivator?
+    private static var sinkWriter: CMIOSinkWriter?
+    private static var captureSession: CameraCaptureSession?
+
+    /// Stable UUID matching the extension's
+    /// `CameraExtensionDeviceSource.deviceUUID`. The host uses this
+    /// to find the virtual camera in the CMIO device list.
+    private static let virtualCameraUID = "B45B7E4D-3F4E-4F4D-9C2A-1B2C3D4E5F60"
 
     static func activateIfRequested() {
         guard ProcessInfo.processInfo.environment[envVar] == "1" else { return }
@@ -35,6 +42,25 @@ final class VirtualCameraActivator: NSObject, OSSystemExtensionRequestDelegate {
         // is fine — there's at most one of these per launch.
         retained = activator
         NSLog("[AVPR] Submitted Camera Extension activation request")
+
+        // Start the host-side capture pipeline. The CMIOSinkWriter
+        // lazily finds the device + sink stream on first enqueue,
+        // so even on a fresh activation it starts producing frames
+        // as soon as the extension is enabled.
+        startCapturePipeline()
+    }
+
+    private static func startCapturePipeline() {
+        let writer = CMIOSinkWriter(
+            deviceUID: virtualCameraUID,
+            width: 1280,
+            height: 720
+        )
+        let session = CameraCaptureSession(sink: writer)
+        session.start()
+        sinkWriter = writer
+        captureSession = session
+        NSLog("[AVPR] Started host-side capture + CMIO sink writer")
     }
 
     func request(

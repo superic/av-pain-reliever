@@ -2,11 +2,12 @@ import Foundation
 import CoreMediaIO
 
 /// Top-level CMIO Camera Extension provider. Owns exactly one
-/// device ("AV Pain Reliever"), which in turn owns one video
-/// stream. macOS instantiates this once per extension process.
+/// device ("AV Pain Reliever"), which in turn owns one source and
+/// one sink stream. macOS instantiates this once per extension
+/// process.
 final class CameraExtensionProviderSource: NSObject, CMIOExtensionProviderSource {
     private(set) var provider: CMIOExtensionProvider!
-    private let deviceSource: CameraExtensionDeviceSource
+    let deviceSource: CameraExtensionDeviceSource
 
     init(clientQueue: DispatchQueue?) {
         self.deviceSource = CameraExtensionDeviceSource(

@@ -1,23 +1,51 @@
 import Foundation
 import CoreMediaIO
+import CoreMedia
 import IOKit.audio
 
 /// The single virtual camera device registered by this extension.
+/// Owns two streams:
+///
+/// - `streamSource` (.source direction) — what AVCapture clients
+///   like Zoom read from.
+/// - `streamSink` (.sink direction) — what the host app writes to
+///   over CMIO's cross-process queue.
+///
+/// When the host starts streaming into the sink, this class kicks
+/// off a `consumeSampleBuffer` loop that pulls frames out and
+/// pushes them through the source stream. macOS's CMIO subsystem
+/// passes IOSurfaces between host and extension processes
+/// transparently — no explicit XPC.
+///
 /// Identifier and name are stable so reinstalls don't churn the
 /// device registry — apps that remember "AV Pain Reliever" by
 /// uniqueID continue to find it after a v0.2.x → v0.2.y upgrade.
 final class CameraExtensionDeviceSource: NSObject, CMIOExtensionDeviceSource {
     private(set) var device: CMIOExtensionDevice!
     private(set) var streamSource: CameraExtensionStreamSource!
+    private(set) var streamSink: CameraExtensionStreamSink!
 
-    // Stable UUIDs. Generated once for the lifetime of the project;
-    // never regenerate without a clear migration story.
     private static let deviceUUID = UUID(
         uuidString: "B45B7E4D-3F4E-4F4D-9C2A-1B2C3D4E5F60"
     )!
-    private static let streamUUID = UUID(
+    private static let sourceStreamUUID = UUID(
         uuidString: "C7E8F901-2A3B-4C5D-6E7F-8091A2B3C4D5"
     )!
+    private static let sinkStreamUUID = UUID(
+        uuidString: "D8F9A012-3B4C-5D6E-7F80-91A2B3C4D5E6"
+    )!
+
+    /// The host app finds this device via `CMIODevicePropertyDeviceUID`.
+    /// The string form must match what we set as `deviceID` on the
+    /// `CMIOExtensionDevice` — exposed here so the host doesn't
+    /// have to reach inside.
+    static let deviceUID = deviceUUID.uuidString
+
+    private let consumeQueue = DispatchQueue(
+        label: "com.ericwillis.avpainreliever.cameraext.consume",
+        qos: .userInteractive
+    )
+    private var consumeTimer: DispatchSourceTimer?
 
     init(localizedName: String) {
         super.init()
@@ -27,13 +55,28 @@ final class CameraExtensionDeviceSource: NSObject, CMIOExtensionDeviceSource {
             legacyDeviceID: nil,
             source: self
         )
+
+        let format = CameraExtensionStreamSource.standardFormat()
+
         self.streamSource = CameraExtensionStreamSource(
             localizedName: "\(localizedName).video",
-            streamID: Self.streamUUID,
-            streamFormat: CameraExtensionStreamSource.standardFormat()
+            streamID: Self.sourceStreamUUID,
+            streamFormat: format
         )
+        streamSource.device = self
+
+        self.streamSink = CameraExtensionStreamSink(
+            localizedName: "\(localizedName).sink",
+            streamID: Self.sinkStreamUUID,
+            streamFormat: format
+        )
+        streamSink.device = self
+
         do {
+            // Order matters: source first, sink second. The host
+            // picks the sink by index (streams[1]) when finding it.
             try device.addStream(streamSource.stream)
+            try device.addStream(streamSink.stream)
         } catch {
             fatalError("addStream failed: \(error)")
         }
@@ -48,9 +91,8 @@ final class CameraExtensionDeviceSource: NSObject, CMIOExtensionDeviceSource {
     {
         let p = CMIOExtensionDeviceProperties(dictionary: [:])
         if properties.contains(.deviceTransportType) {
-            // 'virt' FourCC. The constant is named for audio but is
-            // the conventional value for any virtual CMIO device —
-            // CMIO doesn't ship a video-specific equivalent.
+            // 'virt' FourCC. Constant is named for audio but is the
+            // conventional value for any virtual CMIO device.
             p.transportType = kIOAudioDeviceTransportTypeVirtual
         }
         if properties.contains(.deviceModel) {
@@ -61,4 +103,78 @@ final class CameraExtensionDeviceSource: NSObject, CMIOExtensionDeviceSource {
 
     func setDeviceProperties(_ deviceProperties: CMIOExtensionDeviceProperties)
         throws {}
+
+    // MARK: - Sink → source pipeline
+
+    /// Called by `CameraExtensionStreamSink.startStream` when the
+    /// host starts pushing frames to the sink. Begins the consume
+    /// timer that drains the sink and forwards to the source.
+    func sinkStartedStreaming(client: CMIOExtensionClient) {
+        consumeQueue.async { [weak self] in
+            guard let self else { return }
+            self.startConsumeTimer(client: client)
+        }
+    }
+
+    func sinkStoppedStreaming() {
+        consumeQueue.async { [weak self] in
+            self?.consumeTimer?.cancel()
+            self?.consumeTimer = nil
+        }
+    }
+
+    private func startConsumeTimer(client: CMIOExtensionClient) {
+        consumeTimer?.cancel()
+        let timer = DispatchSource.makeTimerSource(flags: .strict, queue: consumeQueue)
+        // 3× the frame rate so we never lag behind a producer that
+        // happens to deliver slightly bursty frames. Empty queue
+        // ticks are cheap.
+        let interval = DispatchTimeInterval.nanoseconds(
+            Int(1_000_000_000.0 / (30.0 * 3.0))
+        )
+        timer.schedule(deadline: .now(), repeating: interval, leeway: .milliseconds(1))
+        timer.setEventHandler { [weak self] in
+            self?.consumeOne(client: client)
+        }
+        consumeTimer = timer
+        timer.resume()
+    }
+
+    private func consumeOne(client: CMIOExtensionClient) {
+        streamSink.stream.consumeSampleBuffer(from: client) {
+            [weak self] sampleBuffer, sequenceNumber, _, _, error in
+            guard let self else { return }
+            if let error {
+                NSLog("[AVPR-ext] consume error: \(error)")
+                return
+            }
+            guard let sampleBuffer else { return }
+
+            // Tell the sink the frame moved through, so its
+            // `streamSinkEndOfData` and underrun counters stay
+            // sane.
+            let nowNs = UInt64(
+                CMClockGetTime(CMClockGetHostTimeClock()).seconds
+                    * Double(NSEC_PER_SEC)
+            )
+            let scheduled = CMIOExtensionScheduledOutput(
+                sequenceNumber: sequenceNumber,
+                hostTimeInNanoseconds: nowNs
+            )
+            self.streamSink.stream.notifyScheduledOutputChanged(scheduled)
+
+            // Drop the frame on the floor if no AVCapture client is
+            // currently watching the source. Saves the cost of
+            // a `stream.send` that nobody would consume anyway.
+            guard self.streamSource.streamingCounter > 0 else { return }
+
+            let pts = sampleBuffer.presentationTimeStamp
+            let ptsNs = UInt64(pts.seconds * Double(NSEC_PER_SEC))
+            self.streamSource.stream.send(
+                sampleBuffer,
+                discontinuity: [],
+                hostTimeInNanoseconds: ptsNs
+            )
+        }
+    }
 }
