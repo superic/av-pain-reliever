@@ -6,10 +6,20 @@ import CoreVideo
 /// Vends video frames downstream to whichever AVCapture client has
 /// the virtual camera open (Zoom, FaceTime, Slack, etc.).
 ///
-/// M1 implementation: emits a black 1280×720 BGRA frame at 30 fps.
-/// The pixel buffer pool is allocated once per stream-start and
-/// reused for every frame. M2 will replace the black-frame fill
-/// with frames captured from a real source camera.
+/// Current implementation: emits a black 1280×720 BGRA frame at
+/// 30 fps. The pixel buffer pool is allocated once per
+/// stream-start and reused for every frame.
+///
+/// Why no AVCaptureSession in this file: a CMIO Camera Extension
+/// CANNOT use AVFoundation to capture from physical cameras
+/// without triggering an IOKit-level deadlock — AVFoundation's
+/// device enumeration walks the CMIO device list, which includes
+/// the very extension making the call, and concurrent client apps
+/// (e.g. Photo Booth) wedge waiting on the loop. The supported
+/// pattern (used by OBS, mmhmm, Hand Mirror, Camo, etc.) is to
+/// capture in the host app and forward frames to the extension
+/// over XPC. That work lives in M3 of the V2 plan; until M3
+/// lands, this stream stays a black-frame placeholder.
 final class CameraExtensionStreamSource: NSObject, CMIOExtensionStreamSource {
     private(set) var stream: CMIOExtensionStream!
     private let streamFormat: CMIOExtensionStreamFormat
@@ -82,12 +92,7 @@ final class CameraExtensionStreamSource: NSObject, CMIOExtensionStreamSource {
     func setStreamProperties(_ streamProperties: CMIOExtensionStreamProperties)
         throws {}
 
-    func authorizedToStartStream(for client: CMIOExtensionClient) -> Bool {
-        // M1 has no client gating. M3 may revisit if we want to
-        // restrict who can open the virtual camera (probably not —
-        // any AVCapture client should be allowed).
-        true
-    }
+    func authorizedToStartStream(for client: CMIOExtensionClient) -> Bool { true }
 
     func startStream() throws {
         try ensurePixelBufferPool()
@@ -144,7 +149,6 @@ final class CameraExtensionStreamSource: NSObject, CMIOExtensionStreamSource {
             let pixelBuffer
         else { return }
 
-        // Zero the buffer — black frame.
         CVPixelBufferLockBaseAddress(pixelBuffer, [])
         if let base = CVPixelBufferGetBaseAddress(pixelBuffer) {
             let bytesPerRow = CVPixelBufferGetBytesPerRow(pixelBuffer)

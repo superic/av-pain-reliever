@@ -2365,21 +2365,32 @@ Three pieces, separated by process boundary:
    - `NoopVirtualCameraController` — does nothing. Used in the
      default v0.1.x build. Lets the existing release pipeline
      continue untouched.
-   - `CMIOVirtualCameraController` — talks to the extension via
-     XPC. Sends "switch source camera," "pause," "resume," and
-     receives extension-side status (active client count, errors).
+   - `CMIOVirtualCameraController` — captures from the active
+     profile's source camera using AVFoundation, encodes each
+     frame as an IOSurface, and pushes it to the extension over
+     XPC. Receives extension-side status (active client count,
+     errors).
 2. **Camera Extension (`AVPainRelieverCameraExtension.systemextension`).**
    A `CMIOExtensionProvider` host with one `CMIOExtensionDevice`
-   ("AV Pain Reliever") and one `CMIOExtensionStream`. Owns the
-   real `AVCaptureSession` against the source camera; receives
-   source-camera-change commands from the main app over XPC; vends
-   frames downstream to whichever app currently has the virtual
-   camera open. Handles the hold-last-frame transition internally.
-3. **XPC service.** The pipe between (1) and (2). Trivial protocol:
-   `setSourceCamera(uniqueID:)`, `pause()`, `resume()`,
-   `currentStatus()`. Frames do not flow over XPC — only commands.
-   The extension reads frames directly from AVFoundation; that's
-   the whole point of doing it in-process.
+   ("AV Pain Reliever") and one `CMIOExtensionStream`. **Pure
+   relay** — receives `IOSurface` frames from the host app over
+   XPC, wraps each in a `CMSampleBuffer`, sends downstream via
+   `stream.send(...)`. Handles hold-last-frame on source-camera
+   switch (i.e., when the host app pauses the XPC frame feed).
+3. **XPC pipe.** Both frames and commands flow over the same XPC
+   connection. Frames piggyback on `IOSurface` references (zero-
+   copy across the process boundary). Commands are simple
+   messages: `setSourceCamera(uniqueID:)`, `pause()`, `resume()`,
+   `currentStatus()`.
+
+**The extension never touches AVFoundation or the physical camera
+hardware.** This is forced by an M2 lesson learned the hard way
+(see "Why the extension can't capture" below): a CMIO Camera
+Extension that calls `AVCaptureSession` enumerates devices through
+the very CMIO subsystem it's plugged into, sees itself in the
+list, and creates an IOKit-level deadlock that wedges every camera
+app on the machine. OBS, mmhmm, Hand Mirror, Camo all use the
+host-app-captures + XPC-to-extension pattern for the same reason.
 
 `ProfileApplier` gains one new step: after setting
 `userPreferredCamera`, also tell the `VirtualCameraController` to
@@ -2418,32 +2429,42 @@ device, which Zoom/Slack pick up via "Same as System" as today.
 ### Milestones
 
 Rough ordering, not a timeline (this is a side project; whenever
-each lands, it lands):
+each lands, it lands). Re-numbered after the M2 retreat (see "Why
+the extension can't capture"):
 
-1. **M1 — Project scaffold.** Add `AVPainReliever.xcodeproj`. Empty
-   Camera Extension target that activates and shows up in Zoom but
-   vends a black frame. `systemextensionsctl developer on` workflow
-   documented. No main-app integration yet. Goal: prove the
-   activation/signing/embedding plumbing works.
-2. **M2 — Frame pipeline.** Extension opens a hardcoded source
-   camera, vends real frames. Verify against Zoom + Slack +
-   FaceTime. No XPC yet, no profile integration. Goal: prove the
-   frame path works at acceptable resolution/framerate.
-3. **M3 — XPC + source switching.** Wire the XPC service. Main app
-   can tell the extension which source camera to use. Hold-last-
-   frame behavior implemented. Goal: prove dynamic switching works
-   without dropping the Zoom call.
-4. **M4 — Profile integration.** `VirtualCameraController` protocol
-   + both implementations. `ProfileApplier` wired up. Settings
-   toggle to install/enable. Goal: end-to-end feature works on
-   user's machine.
-5. **M5 — Apple entitlement request.** Submit with concrete app
-   demo, screenshots, use-case writeup. Wait.
-6. **M6 — Release readiness.** Notarized build with the entitled
-   provisioning profile. Sparkle integration verified for the
+1. **M1 — Project scaffold.** ~~`AVPainReliever.xcodeproj`~~ kept
+   the SPM + shell-script build pattern. Empty Camera Extension
+   target that activates and shows up in Zoom but vends a black
+   frame. Goal: prove the activation/signing/embedding plumbing
+   works. **SHIPPED 2026-05-04.**
+2. **M2 — Host-side capture + XPC frame pipe (was M3).** Host app
+   opens an `AVCaptureSession` against a hardcoded source camera
+   (built-in webcam during dev). Each frame's `IOSurface` is sent
+   to the extension over an XPC connection. Extension wraps the
+   `IOSurface` in a `CMSampleBuffer` and forwards via
+   `stream.send(...)`. No source switching yet (that's a one-line
+   change in M3, but tested in isolation here). Goal: prove the
+   whole frame path works end-to-end at acceptable
+   resolution/framerate.
+3. **M3 — Source switching + hold-last-frame.** Host app accepts
+   `setSourceCamera(uniqueID:)` over the XPC service, swaps the
+   `AVCaptureSession`'s source, and pauses the frame feed for
+   ~500 ms while the new source warms up. Extension holds the
+   last frame internally during the pause. Goal: prove dynamic
+   switching works without dropping the Zoom call.
+4. **M4 — Profile integration.** `VirtualCameraController`
+   protocol + both implementations (no-op + CMIO).
+   `ProfileApplier` wired up. Settings toggle to install/enable.
+   Goal: end-to-end feature works on user's machine.
+5. **M5 — Release readiness review.** No separate Apple entitlement
+   request needed (system-extension.install is auto-granted with
+   Developer Program); App Group registration was the surprise gate
+   and that's already done. Sparkle integration verified for the
    extension upgrade path (v0.2.0 → v0.2.1 must replace the
    extension cleanly). README + Settings copy explaining the
-   feature. Tag v0.2.0.
+   feature.
+6. **M6 — Tag v0.2.0.** Notarized release build, appcast update,
+   GitHub release.
 
 ### Deferred / open items
 
@@ -2581,6 +2602,49 @@ milestones don't relearn the same things:
 The dev workflow (`docs/VIRTUAL_CAMERA_DEV.md`) was rewritten in a
 follow-up commit to reflect the actual recipe instead of the
 ad-hoc + developer-mode + SIP-off path I originally documented.
+
+### Why the extension can't capture (M2 attempt #1, 2026-05-04)
+
+First M2 attempt put an `AVCaptureSession` inside the Camera
+Extension, opened against the built-in webcam, and forwarded the
+captured `CMSampleBuffer`s to `stream.send(...)`. The extension
+compiled, signed, notarized, and activated cleanly. But as soon as
+any client (Photo Booth, Zoom) selected the AV Pain Reliever
+camera, the entire camera pipeline on the machine wedged — Photo
+Booth froze hard, requiring force-quit and (sometimes) `sudo
+killall VDCAssistant` to unwedge.
+
+Diagnosis from the extension's logs: `AVCaptureSession` triggered
+`AVCaptureDALDevice _refreshPreferredCameraProperties` and full
+device-list enumeration *inside* the extension process. CMIO holds
+the system-wide camera-device list while waiting for the
+extension's reply on `startStream`; concurrently the extension was
+asking AVFoundation to enumerate cameras, which routes back through
+CMIO, which sees our extension as one of the devices, which calls
+back into the same path. IOKit deadlock — every camera app gets
+queued behind it.
+
+Architectural rule that fell out: **a CMIO Camera Extension cannot
+use AVFoundation.** Frames have to enter the extension from the
+outside, via XPC from the host app or a sibling helper. OBS,
+mmhmm, Hand Mirror, Camo, Ecamm Live all use the host-app-captures
++ XPC-to-extension pattern.
+
+This invalidates the original M2/M3 split (where M2 = "frames in
+the extension" and M3 = "XPC for commands"). Re-architected:
+M2 now means host-side capture + XPC frame pipe; source switching
+becomes a one-line change in M3.
+
+Concrete changes after the rollback:
+- `CameraExtensionStream.swift` reverted to the M1 black-frame
+  timer (no AVFoundation in the extension, ever).
+- Camera entitlement (`com.apple.security.device.camera`) and
+  `NSCameraUsageDescription` removed from the extension —
+  permanently. The extension doesn't need either.
+- `Resources/AVPainRelieverCameraExtension.entitlements` keeps
+  `com.apple.security.app-sandbox` and the App Group; nothing
+  else.
+- M2 plan rewritten in milestones list above.
 
 ---
 
