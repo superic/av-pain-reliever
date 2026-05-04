@@ -32,3 +32,10 @@ dist/
 # developer.apple.com, and contain the team ID + cert hashes —
 # never commit. Each developer drops their own at this path.
 Resources/*.provisionprofile
+
+# Signing certs — installed in the Keychain, not the repo.
+# .cer is the public cert (not sensitive) but still doesn't belong
+# in source control; .p12 carries the private key and *must* never
+# be committed.
+*.cer
+*.p12

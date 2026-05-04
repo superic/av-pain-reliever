@@ -2515,11 +2515,70 @@ What's deliberately not done: no main-app integration with
 Those are M2 / M3 / M4. M1's only job is to prove the
 activation/embedding/signing plumbing works.
 
-Verification steps (next): user runs
-`scripts/make-app-with-virtual-camera.sh`, dittos to
-`/Applications`, runs the activation, confirms "AV Pain Reliever"
-appears in Zoom and shows a black frame. Findings fold back into
-this section once we know what works and what didn't.
+Verification (2026-05-04, second attempt): activated successfully
+end-to-end. `systemextensionsctl list` reports `[activated enabled]`,
+the extension process is alive under `_cmiodalassistants`, and the
+host app's activation request returns success.
+
+### M1 lessons (gotchas the original scaffold missed)
+
+The first build attempt failed activation because the original
+plumbing was missing several non-obvious requirements. Each of
+these surfaced as a distinct error from `sysextd`, requiring
+re-signing and re-installing to fix. Documenting them so future
+milestones don't relearn the same things:
+
+1. **`open` strips environment variables.** The `AVPR_ACTIVATE_VIRTUAL_CAMERA=1`
+   env var has to be passed via `open --env AVPR_ACTIVATE_VIRTUAL_CAMERA=1`,
+   not the shell-prefix form, because `open` hands off to `launchd`
+   which doesn't inherit the calling shell's environment. The
+   shell-prefix form sets the var only for the `open` command
+   itself, not for the launched app.
+2. **Notarization is required for system extension activation,
+   even with valid Developer ID signing.** `sysextd` queries the
+   notary daemon during validation; an unnotarized bundle gets
+   `bundle code signature is not valid - does not satisfy
+   requirement: -67050`. The `make-app-with-virtual-camera.sh`
+   script grew a notarization step gated by
+   `NOTARIZE_KEYCHAIN_PROFILE=avpain-notary` (using the existing
+   v0.1.x notarytool keychain profile). One round trip is ~30s; a
+   `SKIP_NOTARIZE` style escape hatch is a future-niceness if
+   non-system-extension iteration speed becomes a concern.
+3. **The Info.plist `CMIOExtension` dict is the type marker.**
+   Without it, `sysextd` reports "system extension does not appear
+   to belong to any extension categories" — the daemon cycles
+   through DriverKit / NetworkExtension / EndpointSecurity checks,
+   finds no marker for any of them, and rejects the bundle. The
+   correct shape is `<dict><key>CMIOExtensionMachServiceName</key>
+   <string>{TEAMID}.{appgroup-id}.{suffix}</string></dict>`. We
+   substitute `__TEAM_ID__` at build time, parsed out of
+   `MAC_CERT_NAME`.
+4. **Mach service name must be prefixed by an App Group declared
+   in the extension's entitlements.** The error from `sysextd` is
+   "invalid mach service name or is not signed, the value must be
+   prefixed with one of the App Groups in the entitlement." This
+   meant registering an App Group at developer.apple.com
+   (`group.com.ericwillis.avpainreliever`), enabling the App
+   Groups capability on both App IDs (host + extension),
+   regenerating the Developer ID provisioning profile, and adding
+   `com.apple.security.application-groups` to both entitlements
+   files with the team-prefixed form
+   (`HLH4LEWS9S.group.com.ericwillis.avpainreliever`).
+5. **AMFI's entitlement parser doesn't tolerate XML comments.**
+   The entitlement plists need to be plain key/value dicts; even
+   well-formed `<!-- ... -->` comments fail signing with "Failed
+   to parse entitlements: AMFIUnserializeXML: syntax error."
+   Documentation has to live in adjacent files, not inline.
+6. **Final activation needs explicit user approval in System
+   Settings.** `[activated waiting for user]` is the
+   intermediate state; the user opens **System Settings → General
+   → Login Items & Extensions → Camera Extensions** and toggles
+   the extension on. State then transitions to
+   `[activated enabled]`.
+
+The dev workflow (`docs/VIRTUAL_CAMERA_DEV.md`) was rewritten in a
+follow-up commit to reflect the actual recipe instead of the
+ad-hoc + developer-mode + SIP-off path I originally documented.
 
 ---
 

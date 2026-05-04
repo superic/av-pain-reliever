@@ -17,35 +17,47 @@ workflow if you need it for some reason.
 ### 1. App IDs at developer.apple.com
 
 Sign in to [developer.apple.com](https://developer.apple.com) with
-the Apple ID for your developer account (the personal account
-e@ericwillis.com — *not* the BACtrack one).
+the personal Apple ID account (e@ericwillis.com).
 
-Go to **Certificates, Identifiers & Profiles → Identifiers**:
+Go to **Certificates, Identifiers & Profiles → Identifiers**.
+Register two App IDs:
 
-- **`com.ericwillis.avpainreliever`** (the host app):
-    - Should already exist from v0.1.x. If not, create it as type
-      "App IDs / App."
-    - Edit it. Under **Capabilities**, check **System Extension**.
-      Save.
-- **`com.ericwillis.avpainreliever.CameraExtension`** (the
-  extension):
-    - Create it as type "App IDs / App."
-    - No special capabilities needed beyond the defaults.
+- **`com.ericwillis.avpainreliever`** (host app):
+    - Description: "AV Pain Reliever"
+    - Capabilities: tick **System Extension** and **App Groups**.
+- **`com.ericwillis.avpainreliever.CameraExtension`** (extension):
+    - Description: "AV Pain Reliever Camera Extension"
+    - Capabilities: tick **App Groups**.
 
-The bundle IDs must be a parent/child pair — if the host app's ID
-changes, the extension's ID has to change to match.
+Bundle IDs must be a parent/child pair — if the host changes, the
+extension's ID has to change to match.
 
-### 2. Provisioning profile
+### 2. App Group
 
-Still at developer.apple.com, go to **Profiles → New**:
+Still in **Identifiers**, click **+** → **App Groups** →
+Continue:
+
+- Description: "AV Pain Reliever Group"
+- Identifier: `group.com.ericwillis.avpainreliever`
+
+Apple requires the `group.` prefix on new App Groups. The
+team-prefixed form (`HLH4LEWS9S.group.com.ericwillis.avpainreliever`)
+is what ends up in entitlements and the extension's
+`CMIOExtensionMachServiceName`.
+
+Then go back to each App ID, click **Configure** next to App
+Groups, and select the newly registered group. Save.
+
+### 3. Provisioning profile
+
+**Profiles → New**:
 
 - Type: **Developer ID** (under Distribution).
 - App ID: `com.ericwillis.avpainreliever`.
 - Certificate: your Developer ID Application cert (the same one
   v0.1.x uses).
-- Name: something descriptive like
-  "AV Pain Reliever Developer ID."
-- Download the `.provisionprofile` file.
+- Name: "AV Pain Reliever Developer ID" or similar.
+- Download.
 
 Drop it into the repo at:
 
@@ -56,7 +68,10 @@ Resources/AVPainReliever.provisionprofile
 This path is gitignored — it's team-specific and regenerable, no
 need to commit. Each developer / CI runner provisions their own.
 
-### 3. Confirm your signing identity is in keychain
+If you later add or change a capability on the host App ID, the
+profile invalidates — re-download and overwrite.
+
+### 4. Confirm your signing identity is in keychain
 
 The build script reads `$MAC_CERT_NAME` to pick the cert. Same one
 you use for v0.1.x. Verify it's in keychain:
@@ -68,6 +83,22 @@ security find-identity -v -p codesigning | grep "Developer ID Application"
 You should see the cert with your team ID in parens. Note the
 exact display name — that's what `MAC_CERT_NAME` should be set to.
 
+### 5. Notarization keychain profile
+
+System extensions can't be activated by macOS without a notarized
+bundle, even with valid Developer ID signing. The build script
+runs notarization via `xcrun notarytool` against a keychain
+profile you've already set up for v0.1.x — see
+`docs/RELEASING.md` for the one-time
+`xcrun notarytool store-credentials avpain-notary` step.
+
+If you've ever notarized a v0.1.x release locally, you have it.
+Confirm:
+
+```sh
+xcrun notarytool history --keychain-profile avpain-notary
+```
+
 ## Build + install loop
 
 ### Build the bundle
@@ -76,6 +107,7 @@ From the repo root:
 
 ```sh
 MAC_CERT_NAME="Developer ID Application: Eric Willis (TEAMID)" \
+    NOTARIZE_KEYCHAIN_PROFILE=avpain-notary \
     scripts/make-app-with-virtual-camera.sh
 ```
 
@@ -83,13 +115,19 @@ Replace the cert name with whatever `security find-identity`
 showed you. The script:
 1. Builds both Swift products (universal arm64+x86_64).
 2. Assembles `AVPainReliever.app` and the embedded
-   `.systemextension` bundle.
+   `.systemextension` bundle, substituting the team ID into the
+   extension's `CMIOExtensionMachServiceName`.
 3. Embeds Sparkle.framework + the provisioning profile.
 4. Signs inside-out: Sparkle nested → Sparkle.framework →
    Camera Extension → host app.
+5. Notarizes via `xcrun notarytool` and staples the ticket.
 
-Output: `dist/AVPainReliever.app`. The script will fail loudly if
-the provisioning profile is missing.
+Output: `dist/AVPainReliever.app`. Notarization adds ~30s–2 min
+per build. If you're iterating on something that doesn't need
+fresh activation, omit `NOTARIZE_KEYCHAIN_PROFILE` to skip — the
+script will warn that the build can't activate as a system
+extension. The script will fail loudly if the provisioning
+profile is missing.
 
 ### Move into /Applications
 
@@ -105,17 +143,25 @@ ditto dist/AVPainReliever.app /Applications/AVPainReliever.app
 ### Activate
 
 The activation is gated by an env var so it doesn't fire on every
-launch:
+launch. **Important**: pass it via `--env`, not the shell-prefix
+form — `open` strips the calling shell's environment when handing
+off to launchd.
 
 ```sh
-AVPR_ACTIVATE_VIRTUAL_CAMERA=1 open /Applications/AVPainReliever.app
+open --env AVPR_ACTIVATE_VIRTUAL_CAMERA=1 /Applications/AVPainReliever.app
 ```
 
-macOS will prompt for approval in System Settings → Privacy &
-Security → "Allow extension from AV Pain Reliever." Click Allow.
+macOS prompts you to approve in **System Settings → General →
+Login Items & Extensions → Camera Extensions**. Find "AV Pain
+Reliever Camera Extension" and toggle it on.
 
-Watch Console.app filtered by "AVPR" for activation lifecycle
-messages.
+Watch sysextd state transitions:
+
+```sh
+log stream --predicate 'process == "sysextd"' --style compact
+```
+
+Healthy sequence: `validating → validating_by_category → activated_waiting_for_user → activated_enabled` after you click Allow.
 
 Verify it's registered:
 
@@ -140,15 +186,18 @@ other AVCapture-modern client also work.
 After code changes:
 
 ```sh
-MAC_CERT_NAME="…" scripts/make-app-with-virtual-camera.sh
+pkill -f AVPainRelieverApp
+MAC_CERT_NAME="…" NOTARIZE_KEYCHAIN_PROFILE=avpain-notary \
+    scripts/make-app-with-virtual-camera.sh
+rm -rf /Applications/AVPainReliever.app
 ditto dist/AVPainReliever.app /Applications/AVPainReliever.app
-# Optional: re-activate if the extension was uninstalled
-AVPR_ACTIVATE_VIRTUAL_CAMERA=1 open /Applications/AVPainReliever.app
+# Re-activate if the extension was uninstalled or the bundle ID changed:
+open --env AVPR_ACTIVATE_VIRTUAL_CAMERA=1 /Applications/AVPainReliever.app
 ```
 
 macOS handles in-place upgrades transparently when the bundle ID
-matches and the new build is properly signed — no need to
-uninstall first for routine code changes.
+matches and the new build is properly signed and notarized — no
+need to uninstall first for routine code changes.
 
 ## Uninstall / clean slate
 
@@ -173,31 +222,43 @@ in the sidebar.
 
 ## Common failure modes
 
-- **"Code signature missing entitlements"** on activation: host app
-  is missing `com.apple.developer.system-extension.install`. Either
-  the v0.2.0 entitlements file
-  (`Resources/AVPainReliever-WithVirtualCamera.entitlements`) wasn't
-  used by the build script, or the provisioning profile doesn't
-  declare the entitlement. Confirm both.
+Each error below is the message you'll see in the `sysextd` log
+stream, followed by what to fix.
+
+- **"system extension does not appear to belong to any extension
+  categories"**: the extension's Info.plist is missing the
+  `CMIOExtension` dict. The build script substitutes
+  `__TEAM_ID__` into the Mach service name; if you see literal
+  `__TEAM_ID__` in the bundle, `MAC_CERT_NAME` parsing failed.
+- **"bundle code signature is not valid - does not satisfy
+  requirement: -67050"** with **"Error checking with
+  notarization daemon"**: the build wasn't notarized. Set
+  `NOTARIZE_KEYCHAIN_PROFILE=avpain-notary` and rebuild.
+- **"invalid mach service name or is not signed, the value must
+  be prefixed with one of the App Groups in the entitlement"**:
+  the App Group in the extension's entitlements doesn't match the
+  prefix of the `CMIOExtensionMachServiceName`. Both should be
+  `HLH4LEWS9S.group.com.ericwillis.avpainreliever`.
+- **"Failed to parse entitlements: AMFIUnserializeXML: syntax
+  error"** during codesign: the entitlements plist contains XML
+  comments. AMFI's parser rejects them — strip all `<!-- -->`
+  blocks.
+- **State stuck at `activated_waiting_for_user`**: open System
+  Settings → General → Login Items & Extensions → Camera
+  Extensions and toggle the extension on. The state advances to
+  `activated_enabled` after you approve.
 - **"No matching profile found"** at codesign: the App ID in the
-  profile doesn't match the bundle's CFBundleIdentifier. Check the
-  profile is bound to `com.ericwillis.avpainreliever`, not some
-  other ID.
-- **"Extension does not appear in Zoom"**: check
-  `systemextensionsctl list`. If it's listed but Zoom can't see it,
-  quit and relaunch Zoom — Zoom caches its device list. If it's
-  not listed, re-run the activation step and check Console for
-  `[AVPR]` log lines.
-- **"Activation request never returns"**: usually means the user
-  approval prompt is waiting in System Settings → Privacy &
-  Security. Check that pane and click Allow.
-- **"App can't be activated because it's not in /Applications"**:
-  see the "Move into /Applications" step above.
-- **"Extension found but not in /Library/SystemExtensions"** in
-  Console: macOS tried to copy the extension out of the app bundle
-  and failed — usually because the app was launched from a
-  non-`/Applications` path or the user rejected the approval
-  prompt. Uninstall, fix the path, re-activate.
+  provisioning profile doesn't match the bundle's
+  CFBundleIdentifier. Check the profile is bound to
+  `com.ericwillis.avpainreliever` and includes the App Groups
+  capability.
+- **Extension is `[activated enabled]` but doesn't appear in
+  Zoom**: quit and relaunch Zoom — its camera-device cache is
+  populated at process start. FaceTime and browsers re-enumerate
+  per call.
+- **App didn't get the env var**: the shell-prefix form
+  (`AVPR_ACTIVATE_VIRTUAL_CAMERA=1 open ...`) sets the var only
+  for `open` itself. Use `open --env AVPR_ACTIVATE_VIRTUAL_CAMERA=1`.
 
 ## Fallback: ad-hoc + developer mode (only if you really must)
 

@@ -4,5 +4,9 @@
 <dict>
 	<key>com.apple.security.app-sandbox</key>
 	<true/>
+	<key>com.apple.security.application-groups</key>
+	<array>
+		<string>HLH4LEWS9S.group.com.ericwillis.avpainreliever</string>
+	</array>
 </dict>
 </plist>

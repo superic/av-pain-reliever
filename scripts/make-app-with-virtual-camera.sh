@@ -46,6 +46,24 @@ fi
 
 BUILD_VERSION="${BUILD_VERSION:-$VERSION}"
 
+# Team ID is parsed out of MAC_CERT_NAME for the extension's
+# CMIOExtensionMachServiceName, which must be "<TEAMID>.<bundleID>".
+# Apple's CodeSigningHelper validates the registered service name
+# against the bundle's signing identity at activation time.
+if [[ -n "${MAC_CERT_NAME:-}" ]]; then
+    TEAM_ID="$(printf '%s' "$MAC_CERT_NAME" | sed -nE 's/.*\(([A-Z0-9]+)\)$/\1/p')"
+    if [[ -z "$TEAM_ID" ]]; then
+        echo "error: could not parse team ID from MAC_CERT_NAME='$MAC_CERT_NAME'" >&2
+        echo "       expected format: 'Developer ID Application: Name (TEAMID)'" >&2
+        exit 1
+    fi
+else
+    # Ad-hoc builds won't activate properly anyway; placeholder keeps
+    # the substitution from leaving the literal __TEAM_ID__ in the
+    # plist and confusing diagnostics later.
+    TEAM_ID="ADHOC"
+fi
+
 DIST_DIR="dist"
 
 WORK_DIR="$(mktemp -d -t avpainreliever)"
@@ -111,6 +129,7 @@ chmod +x "$EXT_BUNDLE/Contents/MacOS/$EXT_PRODUCT"
 sed \
     -e "s|__MARKETING_VERSION__|$VERSION|g" \
     -e "s|__BUILD_VERSION__|$BUILD_VERSION|g" \
+    -e "s|__TEAM_ID__|$TEAM_ID|g" \
     Resources/AVPainRelieverCameraExtension-Info.plist \
     > "$EXT_BUNDLE/Contents/Info.plist"
 
@@ -208,7 +227,36 @@ echo "==> verify codesign"
 codesign --verify --strict --verbose=2 "$APP_BUNDLE"
 codesign --verify --strict --verbose=2 "$EXT_BUNDLE"
 
-# ---------- 8. move into dist/ + zip ----------
+# ---------- 8. notarize (required for system extension activation) ----------
+# Even with valid Developer ID signing, macOS refuses to activate a
+# system extension whose bundle isn't notarized. The validation
+# error in sysextd surfaces as "bundle code signature is not valid
+# - does not satisfy requirement: -67050" with "Error checking with
+# notarization daemon."
+#
+# Gated by NOTARIZE_KEYCHAIN_PROFILE so quick iteration builds
+# (e.g., compile-only sanity checks) can skip the round trip. The
+# CI pipeline uses APPLE_ID + APPLE_ID_PASSWORD + APPLE_TEAM_ID
+# instead — set NOTARIZE_KEYCHAIN_PROFILE locally to use the
+# `avpain-notary` keychain profile instead of typing the password.
+if [[ -n "${NOTARIZE_KEYCHAIN_PROFILE:-}" ]]; then
+    echo "==> notarizing (keychain profile: $NOTARIZE_KEYCHAIN_PROFILE)"
+    NOTARIZE_ZIP="$WORK_DIR/notarize.zip"
+    ditto -c -k --sequesterRsrc --keepParent "$APP_BUNDLE" "$NOTARIZE_ZIP"
+    xcrun notarytool submit "$NOTARIZE_ZIP" \
+        --keychain-profile "$NOTARIZE_KEYCHAIN_PROFILE" \
+        --wait
+    echo "==> stapling notarization ticket"
+    # Staple the app first; the embedded extension inherits the
+    # ticket through the bundle structure.
+    xcrun stapler staple "$APP_BUNDLE"
+elif [[ -n "${MAC_CERT_NAME:-}" ]]; then
+    echo "warning: signed build without notarization. System-extension"
+    echo "         activation will fail with sysextd code -67050."
+    echo "         Set NOTARIZE_KEYCHAIN_PROFILE=avpain-notary to fix." >&2
+fi
+
+# ---------- 9. move into dist/ + zip ----------
 echo "==> moving signed bundle to $FINAL_BUNDLE"
 ditto "$APP_BUNDLE" "$FINAL_BUNDLE"
 
