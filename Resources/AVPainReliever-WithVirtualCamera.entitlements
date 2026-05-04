@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+	v0.2.0+ host-app entitlements. Adds the system-extension install
+	capability so AVPainRelieverApp can submit OSSystemExtensionRequest
+	to activate the bundled Camera Extension. Requires the
+	`com.apple.developer.system-extension.install` capability on the
+	provisioning profile (granted automatically with the Apple
+	Developer Program; no separate request needed).
+
+	The default v0.1.x release pipeline still uses
+	AVPainReliever.entitlements, which omits this entitlement —
+	those builds don't embed the Camera Extension and have no need
+	to request system-extension installs.
+-->
+<plist version="1.0">
+<dict>
+	<key>com.apple.security.app-sandbox</key>
+	<false/>
+	<key>com.apple.developer.system-extension.install</key>
+	<true/>
+</dict>
+</plist>

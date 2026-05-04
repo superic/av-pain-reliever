@@ -159,6 +159,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         NSApp.applicationIconImage = AppIcon.image
         bootEngine()
         applyLaunchAtLoginPreference()
+        // V2 / M1: env-var-gated Camera Extension activation. No-op
+        // unless AVPR_ACTIVATE_VIRTUAL_CAMERA=1 is set in the
+        // environment AND the host app has the
+        // `com.apple.developer.system-extension.install` entitlement
+        // (v0.2.0+ builds only). v0.1.x users see no behavior change.
+        VirtualCameraActivator.activateIfRequested()
         // Spin up Sparkle only inside a real .app bundle that has a
         // real EdDSA public key embedded. The full predicate (and
         // the reasoning behind each branch) lives on Updater itself
