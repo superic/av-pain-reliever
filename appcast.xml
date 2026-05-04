@@ -139,5 +139,22 @@
                        type="application/octet-stream"
                        sparkle:edSignature="2eRStE9qQocBsQ98v4iuguN0HDNNyoI9v5ZTQmXCgwcLZBGUoVDP7VBlGue2C/ct6zrGO63ULRh1fm6/IdK0BA==" length="2831158" />
         </item>
+        <item>
+            <title>Version 0.1.12</title>
+            <description><![CDATA[
+<h2>What's new</h2>
+<p>Listen, the old icon was two pills, playing it cute. The new icon is one refined capsule on a charcoal squircle — same brand wink, way more "I'm a serious utility." Big improvement, just look at it.</p>
+<p>Also — and this is the real one — there's a Menu bar icon picker now. Settings → General. Eighteen SF symbols to choose from. Mic, camera, sliders, waveforms, switching arrows, the works. We even snuck a party popper in there, because why not — the About window already throws confetti, we're keeping the bit going.</p>
+<p>Quick technical thing: the picker turns off when the per-profile icon setting is on. The active profile's icon is already doing the work; don't want two settings tripping over each other — that's amateur hour. The caption tells you exactly what's happening.</p>
+<p>That's the update. New icon, new picker, eighteen options. Money.</p>
+]]></description>
+            <pubDate>Mon, 04 May 2026 06:47:13 +0000</pubDate>
+            <sparkle:version>0.1.12</sparkle:version>
+            <sparkle:shortVersionString>0.1.12</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/superic/av-pain-reliever/releases/download/v0.1.12/AVPainReliever.app.zip"
+                       type="application/octet-stream"
+                       sparkle:edSignature="UwRyqAb0128cImxlOvgdGtDuMd4mxVM3fJM+Cc4QlAzwWrmgQJgxzBTbj2IEVmVLYJFww4kK8u5iYp/6VtwpDg==" length="2639687" />
+        </item>
     </channel>
 </rss>
