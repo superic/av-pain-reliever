@@ -15,6 +15,7 @@ final class SettingsStore: ObservableObject {
         static let debounceInterval = "debounceInterval"
         static let showProfileNameInMenuBar = "showProfileNameInMenuBar"
         static let showProfileIconInMenuBar = "showProfileIconInMenuBar"
+        static let menuBarIconSymbol = "menuBarIconSymbol"
         static let profileSwitchCount = "profileSwitchCount"
         static let suppressedWelcome = "suppressedWelcome"
         static let launchAtLogin = "launchAtLogin"
@@ -49,6 +50,14 @@ final class SettingsStore: ObservableObject {
     /// bar to track location instead.
     @Published var showProfileIconInMenuBar: Bool {
         didSet { defaults.set(showProfileIconInMenuBar, forKey: Key.showProfileIconInMenuBar) }
+    }
+
+    /// SF Symbol used in the menu bar when no per-profile icon is
+    /// active (i.e. when `showProfileIconInMenuBar` is off, or it's
+    /// on but no profile has been resolved yet). Default is
+    /// `MenuBarIcon.defaultSymbol` so existing installs see no change.
+    @Published var menuBarIconSymbol: String {
+        didSet { defaults.set(menuBarIconSymbol, forKey: Key.menuBarIconSymbol) }
     }
 
     /// Lifetime count of profile applications. Drives the easter-egg
@@ -87,6 +96,7 @@ final class SettingsStore: ObservableObject {
         self.debounceInterval = (defaults.object(forKey: Key.debounceInterval) as? Double) ?? 1.5
         self.showProfileNameInMenuBar = (defaults.object(forKey: Key.showProfileNameInMenuBar) as? Bool) ?? true
         self.showProfileIconInMenuBar = (defaults.object(forKey: Key.showProfileIconInMenuBar) as? Bool) ?? false
+        self.menuBarIconSymbol = (defaults.object(forKey: Key.menuBarIconSymbol) as? String) ?? MenuBarIcon.defaultSymbol
         self.profileSwitchCount = (defaults.object(forKey: Key.profileSwitchCount) as? Int) ?? 0
         self.suppressedWelcome = (defaults.object(forKey: Key.suppressedWelcome) as? Bool) ?? false
         self.launchAtLogin = (defaults.object(forKey: Key.launchAtLogin) as? Bool) ?? false

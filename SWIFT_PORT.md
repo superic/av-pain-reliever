@@ -2239,6 +2239,61 @@ defined; it just isn't used by the About dialog anymore.
 
 ---
 
+## Refined-pills icon + menu bar symbol picker (2026-05-04)
+
+Two related polish moves on the visual identity:
+
+**Icon redesign.** Replaced the SF-Symbol-driven `pills.fill`
+artwork with a hand-drawn pharmaceutical capsule on a cool-charcoal
+gradient squircle. The dual-pill SF symbol read as cartoony /
+medicine-cabinet — the new mark is a single capsule with a near-
+white cap, soft warm-gray body, thin seam at the meeting point, and
+a glassy top-edge highlight, tilted ~25° down-to-the-right. Same
+"system utility" register as Activity Monitor / Console — preserves
+the pills metaphor without the kitsch.
+
+The drawing lives in `Sources/AVPainRelieverApp/AppIcon.swift` (no
+SF symbol reference any more — fully decoupled from
+`Theme.Symbol.appIcon`). `Resources/AppIcon.icns` is regenerated
+from the same drawing via a new `scripts/regen-icon.sh` pipeline:
+
+1. `scripts/render-app-icon.swift` — standalone Swift script that
+   duplicates the drawing routine and writes a 1024×1024 PNG.
+   Duplication is deliberate; ~80 lines of Core Graphics and the
+   regen script is the only consumer, so a second SPM target would
+   be overkill. Comment in both files notes the keep-in-sync
+   requirement.
+2. `sips` downscales to every size `iconutil` expects.
+3. `iconutil -c icns` packs the iconset.
+
+`docs/RELEASING.md` documents the regen step.
+
+**Menu bar symbol picker.** New Settings → General → Behavior row
+"Menu bar icon" with a popover-bound 6-column grid of ~12 curated
+SF symbols (`MenuBarIcon.catalog`). Wired through:
+
+- `SettingsStore.menuBarIconSymbol: String` (default
+  `MenuBarIcon.defaultSymbol` = `"pills.fill"` so existing installs
+  see no change).
+- `AppDelegate.menuBarIconSymbol` passthrough mirror.
+- `MenuLabelView.menuBarIcon` reads from
+  `delegate.menuBarIconSymbol` instead of the literal
+  `Theme.Symbol.appIcon`.
+- `MenuBarSymbolPicker` view — visual sibling of
+  `IconPickerView` (same tile size, same selection-highlight). Kept
+  separate rather than generalising IconPickerView because the
+  wizard picker has an "Auto" affordance keyed to a profile slug
+  that doesn't translate.
+
+Per-profile icon override (existing
+`showProfileIconInMenuBar` toggle) still wins when a profile is
+active. The picker controls the *fallback* symbol.
+
+`Theme.Symbol.appIcon` left as the documented brand-glyph constant
+for any future caller that wants "the original."
+
+---
+
 ## How to use this document
 
 - **When we ship a Phase 1 fix or feature**, ask: does this teach us

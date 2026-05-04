@@ -1,24 +1,30 @@
 import AppKit
 import SwiftUI
 
-/// Generates the app icon used at runtime — a neutral gray-gradient
-/// squircle with a white pill SF Symbol on top. Rendered in memory
-/// rather than shipped as a `.icns` so a palette tweak doesn't
-/// require regenerating an Xcode asset catalog. The signed `.app`
-/// bundle will use a proper Asset Catalog AppIcon when distribution
-/// lands; until then this is what shows up in About windows,
-/// notifications, and any window's title-bar icon.
+/// Generates the app icon used at runtime — a cool-charcoal gradient
+/// squircle with a single hand-drawn pharmaceutical capsule on top.
 ///
-/// History: an earlier iteration used a magenta→cyan brand gradient
-/// matching the Hammerspoon TUI palette. The user reverted that
-/// direction (2026-05-02) — the app should look like a plain native
-/// macOS utility, no custom accent colors. The icon now uses the
-/// same neutral gray you'd see on Apple's own utility apps so it
-/// blends with the system rather than shouting brand identity.
+/// The capsule is two-tone (near-white "cap", soft warm-gray "body"
+/// with a thin seam where they meet) and tilted ~25° downward to the
+/// right. This is the "system utility" register: monochrome,
+/// composed, the same family as Activity Monitor / Console / Disk
+/// Utility — keeping the pills metaphor that matches the product
+/// name without the kitchen-medicine-cabinet feel of the SF-Symbol
+/// dual-pill glyph this replaces.
+///
+/// Rendered in memory rather than shipped as a `.icns` so a tweak to
+/// the drawing doesn't require regenerating an asset. The signed
+/// `.app` bundle still ships `Resources/AppIcon.icns` for Finder /
+/// Spotlight / Dock-on-activate; that file is regenerated from this
+/// drawing via `scripts/regen-icon.sh` whenever the design changes.
 ///
 /// The size is chosen high enough (1024×1024) that macOS's automatic
 /// downscaling for menu items, Dock previews, and notifications all
 /// stay crisp.
+///
+/// Keep the drawing routine here in sync with
+/// `scripts/render-app-icon.swift` (used by the regen script to
+/// produce the `.icns`).
 enum AppIcon {
     /// Cached so we only render once per launch — every NSApp icon
     /// read after the first hits the cache.
@@ -42,23 +48,21 @@ enum AppIcon {
             return image
         }
 
-        // 1. Rounded rectangle clip — macOS app icons live inside the
-        //    "squircle" mask (~22.5% corner radius for 1024 sq).
+        // 1. Squircle clip + cool charcoal gradient. The hue shifts
+        //    very slightly toward blue (cooler) so the icon reads as
+        //    a "pro tool" rather than a generic gray rectangle, but
+        //    stays well within the system-utility palette.
+        ctx.saveGState()
         let cornerRadius: CGFloat = size.width * 0.225
-        let path = NSBezierPath(
+        let squircle = NSBezierPath(
             roundedRect: NSRect(origin: .zero, size: size),
             xRadius: cornerRadius,
             yRadius: cornerRadius
         )
-        path.addClip()
+        squircle.addClip()
 
-        // 2. Linear gradient — neutral grays, light at the top to
-        //    mimic the soft top-down lighting Apple uses on its own
-        //    utility-style icons. Brighter top → darker bottom gives
-        //    just enough depth to feel three-dimensional without
-        //    looking branded.
-        let topGray = NSColor(red: 0.62, green: 0.62, blue: 0.64, alpha: 1.0)
-        let bottomGray = NSColor(red: 0.34, green: 0.34, blue: 0.36, alpha: 1.0)
+        let topGray = NSColor(red: 0.478, green: 0.486, blue: 0.510, alpha: 1.0)
+        let bottomGray = NSColor(red: 0.180, green: 0.188, blue: 0.204, alpha: 1.0)
         if let gradient = NSGradient(colors: [topGray, bottomGray]) {
             gradient.draw(
                 in: NSRect(origin: .zero, size: size),
@@ -66,51 +70,127 @@ enum AppIcon {
             )
         }
 
-        // 3. SF Symbol pill, rendered white, centred. SF Symbols load
-        //    as template images (alpha-mask) — drawing one with
-        //    `setFill` ignored. The trick is to lock focus on a
-        //    fresh NSImage, fill it white, then `destinationIn`-clip
-        //    by the symbol's mask. The result is a proper white
-        //    symbol image we can composite onto the gradient.
-        let symbolPointSize: CGFloat = 540
-        let symbolConfig = NSImage.SymbolConfiguration(pointSize: symbolPointSize, weight: .semibold)
-        if let template = NSImage(
-            systemSymbolName: Theme.Symbol.appIcon,
-            accessibilityDescription: nil
-        )?.withSymbolConfiguration(symbolConfig) {
-            let tinted = NSImage(size: template.size)
-            tinted.lockFocus()
-            NSColor.white.set()
-            NSRect(origin: .zero, size: template.size).fill()
-            template.draw(
-                in: NSRect(origin: .zero, size: template.size),
-                from: .zero,
-                operation: .destinationIn,
-                fraction: 1.0
-            )
-            tinted.unlockFocus()
+        // 2. Capsule artwork. Drawn into a separate NSImage so the
+        //    soft shadow lands once on the silhouette, not separately
+        //    on each fill (which would compound and look muddy).
+        let capsule = capsuleArtwork(canvasSize: size)
+        ctx.saveGState()
+        let shadow = NSShadow()
+        shadow.shadowColor = NSColor.black.withAlphaComponent(0.22)
+        shadow.shadowOffset = NSSize(width: 0, height: -size.height * 0.010)
+        shadow.shadowBlurRadius = size.width * 0.030
+        shadow.set()
+        capsule.draw(
+            in: NSRect(origin: .zero, size: size),
+            from: .zero,
+            operation: .sourceOver,
+            fraction: 1.0
+        )
+        ctx.restoreGState()
 
-            let origin = NSPoint(
-                x: (size.width - tinted.size.width) / 2,
-                y: (size.height - tinted.size.height) / 2 - size.height * 0.02
-            )
+        // 3. Subtle inner-edge highlight at ~4% white. Adds a hairline
+        //    rim that helps the icon separate from a dark Dock or
+        //    menu-bar background. Drawn last so it sits on top of
+        //    both the gradient and the capsule shadow's spread.
+        let edgePath = NSBezierPath(
+            roundedRect: NSRect(origin: .zero, size: size).insetBy(dx: 2, dy: 2),
+            xRadius: cornerRadius - 2,
+            yRadius: cornerRadius - 2
+        )
+        edgePath.lineWidth = 2
+        NSColor.white.withAlphaComponent(0.04).setStroke()
+        edgePath.stroke()
 
-            // Soft shadow under the pill so it lifts off the gradient.
-            ctx.saveGState()
-            let shadow = NSShadow()
-            shadow.shadowColor = NSColor.black.withAlphaComponent(0.30)
-            shadow.shadowOffset = NSSize(width: 0, height: -size.height * 0.018)
-            shadow.shadowBlurRadius = size.width * 0.06
-            shadow.set()
-            tinted.draw(
-                in: NSRect(origin: origin, size: tinted.size),
-                from: .zero,
-                operation: .sourceOver,
-                fraction: 1.0
-            )
-            ctx.restoreGState()
+        ctx.restoreGState()
+        return image
+    }
+
+    /// Two-tone pharmaceutical capsule, tilted ~25° down-to-the-right,
+    /// rendered in its own image so the parent draw can apply a
+    /// single shadow pass to the whole silhouette.
+    private static func capsuleArtwork(canvasSize: NSSize) -> NSImage {
+        let image = NSImage(size: canvasSize)
+        image.lockFocus()
+        defer { image.unlockFocus() }
+
+        guard let ctx = NSGraphicsContext.current?.cgContext else {
+            return image
         }
 
+        // Capsule dimensions in local (unrotated) coords.
+        let capsuleLength = canvasSize.width * 0.62
+        let capsuleWidth = canvasSize.width * 0.20
+
+        // Origin → centre, then rotate. -25° (radians) tilts the right
+        // end down, so the cap (left half, near-white) sits up-and-to-
+        // the-left — the canonical pharmaceutical-capsule pose.
+        ctx.translateBy(x: canvasSize.width / 2, y: canvasSize.height / 2)
+        ctx.rotate(by: -25 * .pi / 180)
+
+        let capsuleRect = NSRect(
+            x: -capsuleLength / 2,
+            y: -capsuleWidth / 2,
+            width: capsuleLength,
+            height: capsuleWidth
+        )
+        let capsulePath = NSBezierPath(
+            roundedRect: capsuleRect,
+            xRadius: capsuleWidth / 2,
+            yRadius: capsuleWidth / 2
+        )
+
+        // Clip subsequent fills to the capsule silhouette so the
+        // half-fills land cleanly inside the rounded ends.
+        NSGraphicsContext.current?.saveGraphicsState()
+        capsulePath.addClip()
+
+        // Cap — left half, near-white.
+        NSColor(red: 0.957, green: 0.961, blue: 0.969, alpha: 1.0).set()
+        NSRect(
+            x: -capsuleLength / 2,
+            y: -capsuleWidth / 2,
+            width: capsuleLength / 2,
+            height: capsuleWidth
+        ).fill()
+
+        // Body — right half, soft warm gray.
+        NSColor(red: 0.765, green: 0.773, blue: 0.792, alpha: 1.0).set()
+        NSRect(
+            x: 0,
+            y: -capsuleWidth / 2,
+            width: capsuleLength / 2,
+            height: capsuleWidth
+        ).fill()
+
+        // Seam — the thin band where cap and body meet on a real
+        // pharma capsule. Slightly darker than either half so it
+        // reads as a recess rather than a gap.
+        let seamWidth = canvasSize.width * 0.012
+        NSColor(red: 0.659, green: 0.667, blue: 0.686, alpha: 1.0).set()
+        NSRect(
+            x: -seamWidth / 2,
+            y: -capsuleWidth / 2,
+            width: seamWidth,
+            height: capsuleWidth
+        ).fill()
+
+        // Highlight along the top edge of the upper half — a soft
+        // white-to-clear gradient gives the capsule a glassy quality
+        // without going skeuomorphic.
+        if let highlight = NSGradient(colorsAndLocations:
+            (NSColor.white.withAlphaComponent(0.16), 0.0),
+            (NSColor.white.withAlphaComponent(0.0), 1.0)
+        ) {
+            let highlightRect = NSRect(
+                x: -capsuleLength / 2,
+                y: 0,
+                width: capsuleLength,
+                height: capsuleWidth / 2
+            )
+            highlight.draw(in: highlightRect, angle: 90)
+        }
+
+        NSGraphicsContext.current?.restoreGraphicsState()
         return image
     }
 }

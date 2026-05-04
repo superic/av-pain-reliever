@@ -168,6 +168,32 @@ gh release delete v0.0.0-dryrun --yes --cleanup-tag
 
 ---
 
+## Regenerating the app icon
+
+The runtime `AppIcon.image` is drawn in code
+([Sources/AVPainRelieverApp/AppIcon.swift](../Sources/AVPainRelieverApp/AppIcon.swift)) and
+covers in-app surfaces (About, Welcome, alerts). The bundled
+`Resources/AppIcon.icns` is what Finder, Spotlight, and the
+Dock-on-activate use. They have to match — when the Swift drawing
+changes, regenerate the `.icns`:
+
+```sh
+scripts/regen-icon.sh
+```
+
+The script:
+1. Calls [scripts/render-app-icon.swift](../scripts/render-app-icon.swift)
+   to render the 1024×1024 master PNG (it duplicates the drawing
+   routine from `AppIcon.swift`; keep the two in sync).
+2. `sips`-downscales to every size `iconutil` expects.
+3. `iconutil -c icns` packs the iconset into `Resources/AppIcon.icns`.
+
+Commit the updated `Resources/AppIcon.icns` alongside the
+`AppIcon.swift` change so a fresh `git pull` + `make-app.sh` ships
+matching artwork on both surfaces.
+
+---
+
 ## Local release (no GitHub Actions)
 
 `scripts/make-app.sh` builds a signed `.app` bundle with a Developer
