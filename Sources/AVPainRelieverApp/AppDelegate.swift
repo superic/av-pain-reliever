@@ -101,6 +101,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
     /// open (empty Name field on Edit, or vice versa).
     @Published var wizardOpenToken: UUID = UUID()
 
+    /// Bumped every time the About window is about to open. The About
+    /// scene applies this as a SwiftUI `.id`, forcing the view tree to
+    /// rebuild — which resets the confetti `@State` so the burst plays
+    /// fresh on every open instead of just the first.
+    @Published var aboutOpenToken: UUID = UUID()
+
+    /// Same trick for the Welcome window. Bumped wherever
+    /// `shouldShowWelcome` is flipped to true (first-launch + the
+    /// "Show welcome again" link from About) so the welcome view tree
+    /// rebuilds and the confetti burst replays on every open.
+    @Published var welcomeOpenToken: UUID = UUID()
+
     private var cancellables: Set<AnyCancellable> = []
 
     override init() {
@@ -206,6 +218,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         // Defer to the next runloop turn so SwiftUI's window graph is
         // ready to receive the openWindow request.
         DispatchQueue.main.async { [weak self] in
+            self?.welcomeOpenToken = UUID()
             self?.shouldShowWelcome = true
             NSApp.activate(ignoringOtherApps: true)
         }
@@ -226,6 +239,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         // Toggling false→true is what `WelcomeOpener` watches for.
         shouldShowWelcome = false
         DispatchQueue.main.async { [weak self] in
+            self?.welcomeOpenToken = UUID()
             self?.shouldShowWelcome = true
             NSApp.activate(ignoringOtherApps: true)
         }
@@ -402,6 +416,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
     func beginAddingProfile() {
         profileBeingEdited = nil
         wizardOpenToken = UUID()
+    }
+
+    /// Bump the About-scene token so SwiftUI rebuilds the view tree
+    /// next time the window is shown. Call immediately before
+    /// `openWindow(id: aboutWindowID)`.
+    func willOpenAbout() {
+        aboutOpenToken = UUID()
     }
 
     /// Confirm + delete a profile. Shown as a modal alert so the user
