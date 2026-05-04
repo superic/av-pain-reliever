@@ -122,5 +122,22 @@
                        type="application/octet-stream"
                        sparkle:edSignature="XTuMOIG1v5NzbYmTsx4+Ox93PPPE/YCzDzLWZ2+QRfV/LHfnIQ8KsFbrEwr2tS3qhdUp9MUIma2kzNab/fBGBA==" length="2828898" />
         </item>
+        <item>
+            <title>Version 0.1.11</title>
+            <description><![CDATA[
+<h2>What's new</h2>
+<ul>
+<li>The update window now comes to the front when you click Check for Updates instead of hiding behind your other apps.</li>
+<li>The update window has a proper "Software Update" title and a What's New panel sourced from each release.</li>
+</ul>
+]]></description>
+            <pubDate>Mon, 04 May 2026 05:27:20 +0000</pubDate>
+            <sparkle:version>0.1.11</sparkle:version>
+            <sparkle:shortVersionString>0.1.11</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/superic/av-pain-reliever/releases/download/v0.1.11/AVPainReliever.app.zip"
+                       type="application/octet-stream"
+                       sparkle:edSignature="2eRStE9qQocBsQ98v4iuguN0HDNNyoI9v5ZTQmXCgwcLZBGUoVDP7VBlGue2C/ct6zrGO63ULRh1fm6/IdK0BA==" length="2831158" />
+        </item>
     </channel>
 </rss>
