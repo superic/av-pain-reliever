@@ -138,10 +138,56 @@ jobs:
           ditto -c -k --sequesterRsrc --keepParent \
               dist/AVPainReliever.app dist/AVPainReliever.app.zip
 
+      - name: Create or update draft GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          # Two flows are supported:
+          #   1. Curated notes: maintainer pre-creates the release as a
+          #      draft with --notes "..." BEFORE pushing the tag. We
+          #      detect the existing release and just attach the asset.
+          #   2. Auto notes: no prior release exists. We create a draft
+          #      with --generate-notes (commit-list fallback). The
+          #      maintainer can edit the body in the draft before
+          #      publishing; the post-publish workflow will refresh the
+          #      appcast description.
+          if gh release view "$VERSION_TAG" >/dev/null 2>&1; then
+              gh release upload "$VERSION_TAG" dist/AVPainReliever.app.zip --clobber
+          else
+              gh release create "$VERSION_TAG" \
+                  dist/AVPainReliever.app.zip \
+                  --draft \
+                  --generate-notes \
+                  --title "$VERSION_TAG"
+          fi
+
+      - name: Render release notes to HTML
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          BODY="$(gh release view "$VERSION_TAG" --json body --jq .body 2>/dev/null || true)"
+          if [[ -z "$BODY" ]]; then
+              echo "::notice::Release body is empty; appcast item will not include a description"
+              echo "RELEASE_NOTES_HTML=" >> "$GITHUB_ENV"
+              exit 0
+          fi
+          # GitHub's /markdown API renders GFM exactly like the release
+          # page does, so the appcast HTML matches what the user sees on
+          # the release page.
+          HTML="$(gh api -X POST /markdown -f text="$BODY" -f mode=gfm)"
+          {
+              echo "RELEASE_NOTES_HTML<<APPCAST_EOF"
+              echo "$HTML"
+              echo "APPCAST_EOF"
+          } >> "$GITHUB_ENV"
+
       - name: Sign appcast item
         env:
           SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
           VERSION: ${{ env.VERSION_NUM }}
+          RELEASE_NOTES_HTML: ${{ env.RELEASE_NOTES_HTML }}
         run: |
           set -euo pipefail
           if [[ -z "${SPARKLE_PRIVATE_KEY:-}" ]]; then
@@ -152,17 +198,6 @@ jobs:
           ITEM_FILE="$RUNNER_TEMP/appcast-item.xml"
           scripts/sign-appcast.sh dist/AVPainReliever.app.zip > "$ITEM_FILE"
           echo "APPCAST_ITEM_FILE=$ITEM_FILE" >> "$GITHUB_ENV"
-
-      - name: Create draft GitHub release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -euo pipefail
-          gh release create "$VERSION_TAG" \
-              dist/AVPainReliever.app.zip \
-              --draft \
-              --generate-notes \
-              --title "$VERSION_TAG"
 
       - name: Append item to appcast.xml on main
         env:

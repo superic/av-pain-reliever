@@ -1,4 +1,5 @@
 import Foundation
+import AppKit
 import Sparkle
 import OSLog
 
@@ -73,12 +74,43 @@ final class Updater {
         self.controller = controller
         let feedDescription = controller.updater.feedURL?.absoluteString ?? "nil"
         Self.logger.info("Sparkle updater started; feed=\(feedDescription, privacy: .public)")
+        installWindowTitleObserver()
     }
 
-    /// User-initiated update check (menu item action). Sparkle shows
-    /// its own progress + "you're up to date" UI — nothing for us
-    /// to render.
+    /// Sparkle's update alert XIB doesn't set a window title, so its
+    /// windows render with a blank title bar. We can't override the
+    /// XIB without forking Sparkle, but we can name the window at
+    /// runtime: when any window keys, check whether its window
+    /// controller (or the window itself) is one of Sparkle's
+    /// `SU…` / `SPU…` classes and, if so, give it a title.
+    /// Heuristic but cheap; a Sparkle internal class rename would
+    /// silently drop the title back to blank — acceptable downside.
+    private func installWindowTitleObserver() {
+        NotificationCenter.default.addObserver(
+            forName: NSWindow.didBecomeKeyNotification,
+            object: nil,
+            queue: .main
+        ) { notification in
+            guard let window = notification.object as? NSWindow else { return }
+            guard window.title.isEmpty else { return }
+            let controllerClass = window.windowController.map { NSStringFromClass(type(of: $0)) } ?? ""
+            let windowClass = NSStringFromClass(type(of: window))
+            let looksLikeSparkle =
+                controllerClass.hasPrefix("SU") || controllerClass.hasPrefix("SPU") ||
+                windowClass.hasPrefix("SU") || windowClass.hasPrefix("SPU")
+            if looksLikeSparkle {
+                window.title = "Software Update"
+            }
+        }
+    }
+
+    /// User-initiated update check (menu item action). Activate first
+    /// so AV Pain Reliever is the frontmost app when Sparkle's window
+    /// appears after the feed fetch — without this, an LSUIElement
+    /// build's update window can land behind whatever app you've
+    /// switched to while the network call was in flight.
     func checkForUpdates() {
+        NSApp.activate(ignoringOtherApps: true)
         controller.checkForUpdates(nil)
     }
 }
