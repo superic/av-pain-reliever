@@ -57,6 +57,7 @@ FINAL_ZIP="$DIST_DIR/$APP_NAME.app.zip"
 
 APP_ENTITLEMENTS="Resources/AVPainReliever-WithVirtualCamera.entitlements"
 EXT_ENTITLEMENTS="Resources/AVPainRelieverCameraExtension.entitlements"
+APP_PROVISIONING_PROFILE="Resources/AVPainReliever.provisionprofile"
 
 # ---------- 1. clean ----------
 echo "==> cleaning $DIST_DIR/"
@@ -122,7 +123,49 @@ fi
 echo "==> embedding Sparkle.framework"
 cp -R "$SPARKLE_FRAMEWORK_SRC" "$APP_BUNDLE/Contents/Frameworks/Sparkle.framework"
 
-# ---------- 6. sign (inside-out) ----------
+# ---------- 6. embed provisioning profile ----------
+# System extensions activated outside `systemextensionsctl developer
+# on` mode must be backed by a provisioning profile that grants the
+# `com.apple.developer.system-extension.install` entitlement to the
+# host app. The profile is generated once at developer.apple.com
+# (Profiles → New → Developer ID, bound to the host App ID with the
+# System Extension capability enabled) and dropped into Resources/.
+# It is gitignored — each developer / CI environment ships its own.
+#
+# We require it for Developer-ID-signed builds and warn (but allow)
+# ad-hoc builds without it, since the ad-hoc path is for the
+# fallback developer-mode workflow that doesn't honour profiles
+# anyway. See docs/VIRTUAL_CAMERA_DEV.md.
+if [[ -n "${MAC_CERT_NAME:-}" ]]; then
+    if [[ ! -f "$APP_PROVISIONING_PROFILE" ]]; then
+        cat <<EOF >&2
+error: MAC_CERT_NAME is set but no provisioning profile is present at:
+         $APP_PROVISIONING_PROFILE
+
+Developer-ID-signed builds that bundle a system extension MUST
+embed a provisioning profile carrying the
+'com.apple.developer.system-extension.install' entitlement, or the
+extension activation request will fail at runtime.
+
+Generate one at developer.apple.com:
+  - Identifiers: ensure App ID 'com.ericwillis.avpainreliever' has
+    the 'System Extension' capability enabled.
+  - Profiles: New → Developer ID → select the App ID → download.
+
+Save the .provisionprofile at the path above (it's gitignored).
+See docs/VIRTUAL_CAMERA_DEV.md for the full walkthrough.
+EOF
+        exit 1
+    fi
+    echo "==> embedding provisioning profile"
+    cp "$APP_PROVISIONING_PROFILE" "$APP_BUNDLE/Contents/embedded.provisionprofile"
+elif [[ -f "$APP_PROVISIONING_PROFILE" ]]; then
+    # Ad-hoc + profile present is a misconfiguration — codesign will
+    # accept it but macOS won't honour an unsigned profile at runtime.
+    echo "warning: ad-hoc sign with provisioning profile present — profile will be ignored. Set MAC_CERT_NAME for a properly-signed build." >&2
+fi
+
+# ---------- 7. sign (inside-out) ----------
 if [[ -n "${MAC_CERT_NAME:-}" ]]; then
     SIGN_IDENTITY="$MAC_CERT_NAME"
     SIGN_OPTS=(--options runtime --timestamp)
@@ -130,7 +173,7 @@ if [[ -n "${MAC_CERT_NAME:-}" ]]; then
 else
     SIGN_IDENTITY="-"
     SIGN_OPTS=()
-    echo "==> ad-hoc sign (MAC_CERT_NAME unset; dev-only — needs systemextensionsctl developer on)"
+    echo "==> ad-hoc sign (MAC_CERT_NAME unset; needs systemextensionsctl developer on + SIP off — see docs/VIRTUAL_CAMERA_DEV.md fallback)"
 fi
 
 sign_path() {
@@ -165,7 +208,7 @@ echo "==> verify codesign"
 codesign --verify --strict --verbose=2 "$APP_BUNDLE"
 codesign --verify --strict --verbose=2 "$EXT_BUNDLE"
 
-# ---------- 7. move into dist/ + zip ----------
+# ---------- 8. move into dist/ + zip ----------
 echo "==> moving signed bundle to $FINAL_BUNDLE"
 ditto "$APP_BUNDLE" "$FINAL_BUNDLE"
 

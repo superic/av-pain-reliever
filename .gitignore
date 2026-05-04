@@ -27,3 +27,8 @@ prototypes/hammerspoon/logs/
 
 # Distribution output — produced by scripts/make-app.sh; never commit.
 dist/
+
+# Provisioning profiles. Team-specific, regenerable from
+# developer.apple.com, and contain the team ID + cert hashes —
+# never commit. Each developer drops their own at this path.
+Resources/*.provisionprofile
