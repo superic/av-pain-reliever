@@ -2204,6 +2204,41 @@ files.
 
 ---
 
+## About dialog refresh (2026-05-03)
+
+Stripped the "fiddling" framing out of the About dialog and rebuilt
+it around the four things that actually matter at the About moment:
+app icon, app name, version, an update affordance, and the existing
+"Show welcome again" link.
+
+What got cut:
+
+- `Theme.Copy.tagline` ("Stop fiddling with mic, speakers, and webcam.")
+- The italic "Made to stop the fiddling." line.
+- The two-line description block ("Lives quietly in your menu bar / Watches your USB ports / Picks the right defaults.").
+- The intervening Divider.
+
+What got added:
+
+- A bordered `Check for Updates` button wired to the existing
+  `delegate.checkForUpdates()` Sparkle pass-through, so the same
+  update path Advanced → Check for Updates… uses is now reachable
+  from About too.
+- A one-shot SwiftUI confetti burst overlaid on the dialog. Hand-
+  rolled, no SPM dep — 36 particles (Circle / Capsule / `pills.fill`
+  brand-glyph wink) with random color, size, drift, spin, and fall
+  duration, each animated by a single per-particle `@State` flipped
+  on appear. The whole overlay unmounts after 2.6 s via `.task` +
+  `showConfetti = false` so nothing keeps ticking once the burst
+  finishes. Palette uses system colors (`.accentColor`, `.yellow`,
+  `.pink`, `.green`, `.blue`, `.orange`) so it inherits the user's
+  macOS accent and stays plain-native.
+
+Frame shrunk 360 × 460 → 360 × 340. `Theme.Copy.tagline` is still
+defined; it just isn't used by the About dialog anymore.
+
+---
+
 ## How to use this document
 
 - **When we ship a Phase 1 fix or feature**, ask: does this teach us

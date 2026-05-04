@@ -10,75 +10,78 @@ let welcomeWindowID = "welcome-window"
 struct WelcomeView: View {
     let onAddProfile: () -> Void
     let onSkip: () -> Void
+    @State private var showConfetti = true
 
     var body: some View {
-        VStack(spacing: 24) {
-            Image(nsImage: AppIcon.image)
-                .resizable()
-                .interpolation(.high)
-                .frame(width: 104, height: 104)
-                .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
-                .shadow(color: .black.opacity(0.18), radius: 14, y: 6)
+        ZStack {
+            VStack(spacing: 24) {
+                Image(nsImage: AppIcon.image)
+                    .resizable()
+                    .interpolation(.high)
+                    .frame(width: 104, height: 104)
+                    .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+                    .shadow(color: .black.opacity(0.18), radius: 14, y: 6)
 
-            VStack(spacing: 8) {
-                Text("Welcome to \(Theme.Copy.appName)")
-                    .font(.system(size: 24, weight: .bold, design: .rounded))
-                    .multilineTextAlignment(.center)
-                Text(Theme.Copy.tagline)
-                    .font(.title3)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-            }
-
-            VStack(alignment: .leading, spacing: 12) {
-                bullet(symbol: "cable.connector",
-                       text: "Plug in your dock, microphone, or webcam.")
-                bullet(symbol: "wand.and.stars",
-                       text: "AV Pain Reliever notices and switches your audio + camera defaults — automatically.")
-                bullet(symbol: "sparkles",
-                       text: "No tinkering with System Settings before every meeting.")
-            }
-            .padding(.horizontal, 18)
-
-            Spacer(minLength: 0)
-
-            VStack(spacing: 10) {
-                Button(action: onAddProfile) {
-                    Text("Add Your First Location")
-                        .frame(minWidth: 220)
-                        .padding(.vertical, 4)
+                VStack(spacing: 8) {
+                    Text(Self.greetingTitle)
+                        .font(.system(size: 24, weight: .bold, design: .rounded))
+                        .multilineTextAlignment(.center)
+                    Text(Theme.Copy.tagline)
+                        .font(.title3)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
                 }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.large)
-                .keyboardShortcut(.defaultAction)
 
-                Button("Skip — I'll set up later", action: onSkip)
-                    .buttonStyle(.borderless)
-                    .keyboardShortcut(.cancelAction)
+                Spacer(minLength: 0)
+
+                VStack(spacing: 10) {
+                    Button(action: onAddProfile) {
+                        Text("Add Your First Location")
+                            .frame(minWidth: 220)
+                            .padding(.vertical, 4)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.large)
+                    .keyboardShortcut(.defaultAction)
+
+                    Button("Skip — I'll set up later", action: onSkip)
+                        .buttonStyle(.borderless)
+                        .keyboardShortcut(.cancelAction)
+                }
+            }
+            .padding(.vertical, 32)
+            .padding(.horizontal, 28)
+            .frame(width: 480, height: 540)
+
+            if showConfetti {
+                ConfettiBurst()
+                    .allowsHitTesting(false)
+                    .task {
+                        // Outlast the longest particle trajectory so
+                        // every piece arcs back down before the layer
+                        // unmounts. After this, the ZStack collapses
+                        // and no animations keep ticking.
+                        try? await Task.sleep(for: .seconds(3.2))
+                        showConfetti = false
+                    }
             }
         }
-        .padding(.vertical, 32)
-        .padding(.horizontal, 28)
-        .frame(width: 480, height: 540)
         .background(.background)
         .dialogWindowChrome()
         .centeredOnScreen()
     }
 
-    /// Three bullet rows below the tagline. Each pairs an SF Symbol
-    /// with one short sentence — easier to scan than a single dense
-    /// paragraph and gives the user a sense of the product shape on
-    /// first read.
-    private func bullet(symbol: String, text: String) -> some View {
-        HStack(alignment: .top, spacing: 12) {
-            Image(systemName: symbol)
-                .font(.body.weight(.semibold))
-                .foregroundStyle(.secondary)
-                .frame(width: 24, alignment: .center)
-            Text(text)
-                .font(.callout)
-                .foregroundStyle(.primary)
-                .fixedSize(horizontal: false, vertical: true)
+    /// Personalised welcome title. Uses the macOS account holder's
+    /// first name when available so first launch reads as a hello to
+    /// the human at the keyboard, not the product. `NSFullUserName()`
+    /// is set by macOS at account creation and almost always non-empty,
+    /// but the fallback covers headless / unusual setups.
+    private static var greetingTitle: String {
+        let full = NSFullUserName().trimmingCharacters(in: .whitespacesAndNewlines)
+        let firstName = full.split(whereSeparator: { $0.isWhitespace }).first.map(String.init) ?? ""
+        if firstName.isEmpty {
+            return "Welcome to \(Theme.Copy.appName)"
         }
+        return "Welcome, \(firstName)."
     }
 }

@@ -45,7 +45,7 @@ struct AVPainRelieverApp: SwiftUI.App {
         }
 
         Window("About AV Pain Reliever", id: aboutWindowID) {
-            AboutView(delegate: appDelegate)
+            AboutWindowContent(delegate: appDelegate)
         }
         .windowResizability(.contentSize)
 
@@ -117,6 +117,11 @@ private struct WelcomeWindowContent: View {
                 dismissWindow(id: welcomeWindowID)
             }
         )
+        // Mirrors the AboutWindowContent pattern: the open-token forces
+        // SwiftUI to tear down + rebuild WelcomeView every time the
+        // window is re-shown, resetting the confetti `@State` so the
+        // burst plays fresh on each open.
+        .id(delegate.welcomeOpenToken)
     }
 }
 
@@ -249,6 +254,9 @@ private struct MenuContentView: View {
         Divider()
 
         Button {
+            // Bump the About scene's open-token before showing it so
+            // the view tree rebuilds and the confetti burst replays.
+            delegate.willOpenAbout()
             openWindow(id: aboutWindowID)
             NSApp.activate(ignoringOtherApps: true)
         } label: {
@@ -376,6 +384,22 @@ private struct MenuContentView: View {
         return label
     }
 
+}
+
+/// Wrapper view inside the About Window scene. Mirrors the wizard
+/// pattern below: takes the AppDelegate as `@ObservedObject` so the
+/// Scene-level `.id(token)` actually picks up new tokens. Reading
+/// `appDelegate.aboutOpenToken` directly inside the Scene body does
+/// NOT work — `@NSApplicationDelegateAdaptor` at the App level
+/// doesn't make the Scene re-evaluate on `@Published` changes; only
+/// a View with `@ObservedObject` does.
+private struct AboutWindowContent: View {
+    @ObservedObject var delegate: AppDelegate
+
+    var body: some View {
+        AboutView(delegate: delegate)
+            .id(delegate.aboutOpenToken)
+    }
 }
 
 /// Wrapper view inside the Add-Profile Window scene. Watches the

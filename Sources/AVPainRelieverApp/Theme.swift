@@ -42,9 +42,9 @@ enum Theme {
     }
 
     enum Copy {
-        /// Tagline shown in About + first-run welcome. Keep voice warm,
+        /// Tagline shown under the welcome greeting. Keep voice warm,
         /// not corporate; the user-facing personality lives here.
-        static let tagline = "Stop fiddling with mic, speakers, and webcam."
+        static let tagline = "Your audio and camera, dialed in automatically."
         static let appName = "AV Pain Reliever"
     }
 }
