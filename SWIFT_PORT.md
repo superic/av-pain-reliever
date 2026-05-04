@@ -2463,7 +2463,7 @@ each lands, it lands):
 - **Entitlement request body.** Draft once M4 lands so we can
   describe a working feature, not a hypothetical.
 
-### M1 — project scaffold (landed 2026-05-04, awaiting hands-on verification)
+### M1 — project scaffold (SHIPPED 2026-05-04)
 
 Branch: `feature/virtual-camera`. Approach: extend the existing
 SPM + shell-script build pattern rather than introduce an Xcode
@@ -2517,8 +2517,10 @@ activation/embedding/signing plumbing works.
 
 Verification (2026-05-04, second attempt): activated successfully
 end-to-end. `systemextensionsctl list` reports `[activated enabled]`,
-the extension process is alive under `_cmiodalassistants`, and the
-host app's activation request returns success.
+the extension process is alive under `_cmiodalassistants`, the host
+app's activation request returns success, and "AV Pain Reliever"
+appears in Zoom's camera picker showing the black 1280×720 frame at
+30 fps. M1 success criteria met.
 
 ### M1 lessons (gotchas the original scaffold missed)
 
