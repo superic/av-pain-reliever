@@ -1,0 +1,15 @@
+# Dependabot keeps the GitHub Actions versions in our workflows
+# fresh. Swift packages are intentionally NOT included — Sparkle is
+# pinned `upToNextMinor` in Package.swift for notarization-stability
+# reasons (see the comment there); auto-PRs would directly contradict
+# that rule. TOMLKit is pre-1.0; every bump is potentially breaking.
+# Both are bumped manually as deliberate decisions.
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "ci"
