@@ -2484,10 +2484,14 @@ the extension can't capture"):
    run with the v0.2.0 → v0.2.0.1 cycle in M6 — can't be
    shippable-verified until at least one v0.2.x release exists
    on the appcast.
-6. **M6 — Tag v0.2.0.** Notarized release build, appcast update,
-   GitHub release. First real-world Sparkle upgrade-replace test
-   happens here (cut v0.2.0, install fresh; cut v0.2.0.1 with a
-   trivial change; verify Sparkle replaces cleanly).
+6. **M6 — Tag v0.2.0.** SHIPPED 2026-05-04. CI workflow ran
+   clean (1m48s) using `make-app-with-virtual-camera.sh`,
+   notarized + stapled both bundles, signed appcast item
+   appended to main, draft published. v0.2.0 live at
+   https://github.com/superic/av-pain-reliever/releases/tag/v0.2.0.
+   The Sparkle upgrade-replace verification (v0.2.0 → v0.2.0.1)
+   is its own follow-up — separate small patch release whenever
+   we have the next reason to cut one.
 
 ### Deferred / open items
 
