@@ -85,11 +85,7 @@ struct AddProfileView: View {
                     // strip even with `.frame(maxWidth: .infinity)`.
                     // As a row inside the section body it spans the
                     // section's full content width naturally.
-                    Text("Uncheck peripherals that aren't unique to this location (keyboards, mice, phones). The profile matches when every checked device is attached.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .fixedSize(horizontal: false, vertical: true)
+                    fingerprintHint
                 } header: {
                     HStack {
                         sectionHeader("USB fingerprint", symbol: Theme.Symbol.usbSection)
@@ -248,6 +244,41 @@ struct AddProfileView: View {
             Text(title)
         } icon: {
             Image(systemName: symbol)
+        }
+    }
+
+    /// Section-body row that explains the fingerprint state. Two
+    /// modes:
+    ///
+    /// - When at least one device is ticked: standard "uncheck the
+    ///   peripherals that aren't unique" caption.
+    /// - When zero devices are ticked: "implicit fallback" hint with
+    ///   an info glyph, signaling that this profile will match any
+    ///   USB state at specificity 0. That's the right setup for a
+    ///   "laptop, undocked" fallback, but it's a misconfiguration if
+    ///   the user meant to capture a docked location and accidentally
+    ///   unticked everything. The hint makes the semantic
+    ///   discoverable so a user doesn't ship a fingerprint they
+    ///   didn't intend.
+    @ViewBuilder
+    private var fingerprintHint: some View {
+        if viewModel.willMatchAnywhere {
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Image(systemName: "info.circle.fill")
+                    .foregroundStyle(.tint)
+                (Text("Fallback profile. ").bold()
+                    + Text("With no devices ticked, this profile matches whenever no other profile does — useful for a laptop-undocked default. Tick devices above to make it specific to a location."))
+                    .font(.caption)
+                    .foregroundStyle(.primary)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .fixedSize(horizontal: false, vertical: true)
+        } else {
+            Text("Uncheck peripherals that aren't unique to this location (keyboards, mice, phones). The profile matches when every checked device is attached.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 
