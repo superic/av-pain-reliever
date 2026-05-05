@@ -77,4 +77,44 @@ enum DevicePortability {
         // Wearables
         "airpods", "watch", "headphones", "headset", "earbuds", "buds",
     ]
+
+    /// Short label for high-priority "this defines a location"
+    /// devices — microphones, speakers, cameras, capture cards,
+    /// audio interfaces, displays. Mirror of `portabilityCategory`
+    /// but for the OTHER end of the importance scale: the wizard's
+    /// device-list sort floats these to the top so a user adding a
+    /// profile sees the hardware that distinguishes their dock
+    /// before they see anything generic.
+    ///
+    /// Conservative same as the portability matcher — only words
+    /// that are reliably tied to location-defining hardware
+    /// regardless of brand. "Microphone" is safer than "blue"
+    /// (could be a vendor name); "audio" is safer than "stream"
+    /// (Stream Deck is a control deck, not audio).
+    static func priorityCategory(deviceName: String?) -> String? {
+        guard let name = deviceName?.lowercased(), !name.isEmpty else {
+            return nil
+        }
+        if name.contains("microphone") || name.contains("podcast") {
+            return "microphone"
+        }
+        if name.contains("camera") || name.contains("capture") || name.contains("webcam") {
+            return "camera"
+        }
+        if name.contains("speaker") {
+            return "speaker"
+        }
+        // "audio" is broad — covers "Audio Interface", "Display Audio",
+        // "Thunderbolt 3 Audio". Useful but means we group docks-with-
+        // audio in with mics/speakers. Acceptable for sort priority;
+        // the alternative (more specific keywords) misses too many
+        // real-world products.
+        if name.contains("audio") || name.contains("dac") {
+            return "audio"
+        }
+        if name.contains("display") || name.contains("monitor") {
+            return "display"
+        }
+        return nil
+    }
 }

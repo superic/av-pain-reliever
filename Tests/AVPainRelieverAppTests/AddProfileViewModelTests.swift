@@ -329,12 +329,11 @@ struct AddProfileViewModelTests {
         #expect(Set(loaded.map(\.name)) == ["home-studio"])
     }
 
-    @Test("device list sorts non-portable items above portable ones")
-    func deviceListPriorityTier() {
+    @Test("device list sorts priority above neutral above portable")
+    func deviceListThreeTierSort() {
         let watcher = FakeWatcher()
-        // Mix of portable and non-portable devices, deliberately
-        // out of order so the sort has work to do regardless of
-        // the watcher's own ordering.
+        // One device per tier, plus an extra priority device, all
+        // deliberately out of order so the sort has work to do.
         watcher.named = [
             NamedUSBDevice(
                 device: USBDevice(vendorID: 0x05ac, productID: 0x0265),
@@ -343,15 +342,19 @@ struct AddProfileViewModelTests {
             NamedUSBDevice(
                 device: USBDevice(vendorID: 0x2188, productID: 0x6533),
                 name: "CalDigit Thunderbolt 3 Audio"
-            ), // non-portable
+            ), // priority (matches "audio")
             NamedUSBDevice(
-                device: USBDevice(vendorID: 0x05ac, productID: 0x024f),
-                name: "Keychron K3"
-            ), // portable
+                device: USBDevice(vendorID: 0x0fd9, productID: 0x0080),
+                name: "Stream Deck MK.2"
+            ), // neutral
             NamedUSBDevice(
                 device: USBDevice(vendorID: 0x1e4e, productID: 0x701f),
                 name: "HDMI to U3 capture"
-            ), // non-portable
+            ), // priority (matches "capture")
+            NamedUSBDevice(
+                device: USBDevice(vendorID: 0x046d, productID: 0x0ab7),
+                name: "Blue Microphones"
+            ), // priority (matches "microphone")
         ]
         let vm = AddProfileViewModel(
             watcher: watcher,
@@ -363,11 +366,57 @@ struct AddProfileViewModelTests {
         )
         let names = vm.attachedDevices.map(\.name)
         #expect(names == [
-            "CalDigit Thunderbolt 3 Audio",  // non-portable, alphabetical
-            "HDMI to U3 capture",             // non-portable, alphabetical
-            "Keychron K3",                    // portable, alphabetical
-            "Magic Trackpad",                 // portable, alphabetical
+            "Blue Microphones",              // priority, alphabetical
+            "CalDigit Thunderbolt 3 Audio",  // priority, alphabetical
+            "HDMI to U3 capture",            // priority, alphabetical
+            "Stream Deck MK.2",              // neutral
+            "Magic Trackpad",                // portable
         ])
+    }
+
+    @Test("nameWasAutoSuggested is true after first refresh on a recognized dock")
+    func nameAutoSuggestSetsFlag() {
+        let watcher = FakeWatcher()
+        watcher.named = [
+            NamedUSBDevice(
+                device: USBDevice(vendorID: 0x2188, productID: 0x6533),
+                name: "CalDigit Thunderbolt 3 Audio"
+            )
+        ]
+        let vm = AddProfileViewModel(
+            watcher: watcher,
+            audioController: FakeAudio(devices: []),
+            cameraController: FakeCamera(cameras: []),
+            configURL: URL(fileURLWithPath: "/tmp/sug.toml"),
+            editing: nil,
+            onSaved: {}
+        )
+        // CalDigit triggers the "home-office" suggestion in
+        // ProfileIcon.suggestedName.
+        #expect(vm.name == "Home Office")
+        #expect(vm.nameWasAutoSuggested == true)
+    }
+
+    @Test("editing the name clears the auto-suggested flag")
+    func editingNameClearsAutoSuggestedFlag() {
+        let watcher = FakeWatcher()
+        watcher.named = [
+            NamedUSBDevice(
+                device: USBDevice(vendorID: 0x2188, productID: 0x6533),
+                name: "CalDigit Thunderbolt 3 Audio"
+            )
+        ]
+        let vm = AddProfileViewModel(
+            watcher: watcher,
+            audioController: FakeAudio(devices: []),
+            cameraController: FakeCamera(cameras: []),
+            configURL: URL(fileURLWithPath: "/tmp/edit.toml"),
+            editing: nil,
+            onSaved: {}
+        )
+        #expect(vm.nameWasAutoSuggested == true)
+        vm.name = "Custom Name"
+        #expect(vm.nameWasAutoSuggested == false)
     }
 
     @Test("willMatchAnywhere is true when no devices are ticked")

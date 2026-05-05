@@ -59,11 +59,14 @@ struct AddProfileView: View {
                         // Hint defaults to brief instructions; switches
                         // to a quiet preview the moment a name is being
                         // typed so the user sees how it'll appear in
-                        // the menu bar.
+                        // the menu bar. When the name was auto-filled
+                        // from a recognised dock signature (e.g.
+                        // CalDigit → "Home Office"), prefix the hint
+                        // with "Suggested." so the auto-fill behavior
+                        // is discoverable rather than feeling like the
+                        // wizard read the user's mind.
                         if !viewModel.prettyPreview.isEmpty {
-                            Text("Will appear as “\(viewModel.prettyPreview)”")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
+                            namePreviewCaption
                         } else {
                             Text("Pick anything human — letters, spaces, punctuation are fine.")
                                 .font(.caption)
@@ -244,6 +247,27 @@ struct AddProfileView: View {
             Text(title)
         } icon: {
             Image(systemName: symbol)
+        }
+    }
+
+    /// Caption under the Name field that previews the slug-cased
+    /// version. When the name was auto-filled from a recognised
+    /// dock signature (e.g. CalDigit → "Home Office"), prefix with
+    /// a bolded "Suggested." so the user knows the wizard guessed
+    /// rather than thinking the field magically populated itself.
+    /// The flag clears the moment the user edits the field, so any
+    /// human edit drops the prefix.
+    @ViewBuilder
+    private var namePreviewCaption: some View {
+        let preview = Text("Will appear as “\(viewModel.prettyPreview)”")
+        if viewModel.nameWasAutoSuggested {
+            (Text("Suggested. ").fontWeight(.medium) + preview)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        } else {
+            preview
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
     }
 

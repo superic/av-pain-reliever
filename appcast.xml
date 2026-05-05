@@ -288,5 +288,38 @@
                        type="application/octet-stream"
                        sparkle:edSignature="Z45qmGIrxE4+0a689I4ZbM6B7BrLpSNEb1jjPj1U7mVNu1dxReNi+pGwxlDlz2TUSbJIZ61c2GTKHyhM5xe1Dg==" length="2667562" />
         </item>
+        <item>
+            <title>Version 0.2.0.4</title>
+            <description><![CDATA[
+<h2>What's new</h2>
+<p>Brings the wizard refinements from v0.1.16 over to the experimental track. Two improvements you'll feel the next time you click Add Profile:</p>
+<p>The device list is sorted properly now. Mics, speakers, cameras, capture cards, your dock, displays — anything that defines a location — float to the top. Travel peripherals (keyboards, mice, phones, AirPods) sink to the bottom with their existing <strong>Suggested: untick</strong> pill. The hardware that defines your dock is right where you'd look first.</p>
+<p>And if you untick everything in the list, the wizard now tells you what that means: zero devices = fallback profile, matches whenever no other profile does (typically your laptop, undocked). The caption flips to a labeled hint the second you clear the selection — so if you didn't mean to ship a fallback, you'll catch it before saving. <strong>Money.</strong></p>
+]]></description>
+            <pubDate>Tue, 05 May 2026 02:32:41 +0000</pubDate>
+            <sparkle:channel>experimental</sparkle:channel>
+            <sparkle:version>0.2.0.4</sparkle:version>
+            <sparkle:shortVersionString>0.2.0.4</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/superic/av-pain-reliever/releases/download/v0.2.0.4/AVPainReliever.app.zip"
+                       type="application/octet-stream"
+                       sparkle:edSignature="h79z8tpDEQYSUM+mc0mCvgiRHC5dZbiGje7V8r1A0UH+7PK0YYrWJXw9fRY0MX5fT1jfFzK8116TjoN4gvNYAA==" length="2862355" />
+        </item>
+        <item>
+            <title>Version 0.1.17</title>
+            <description><![CDATA[
+<h2>What's new</h2>
+<p>Two more wizard polish items, both shaken loose by real-world testing on the docked-mac.</p>
+<p>The device list sort actually does what the v0.1.16 release notes said it does now. Turns out the previous tiering was only catching the <em>bottom</em> — keyboards, mice, phones — leaving everything else jumbled in alphabetical order. Mics and audio interfaces would just sit wherever the alphabet put them. Fixed: there's now a positive <strong>priority tier</strong> at the top for anything with "microphone", "audio", "speaker", "camera", "capture", or "display" in its name. Three real tiers — priority, neutral, portable — with alphabetical within each. So Blue Microphones and CalDigit Thunderbolt 3 Audio finally land where they belong: top of the list, where you can see them.</p>
+<p>Also: the wizard has been quietly auto-filling profile names from your dock signature for a while now (CalDigit detected → "Home Office", Yeti detected → "Studio", and so on). Behaviorally helpful, visually mysterious — looks like the wizard read your mind. Now the slug-preview caption prefixes with a bolded <strong>"Suggested."</strong> when the name came from auto-fill. Edit the name to anything and the prefix drops. So you know what the wizard did, and you know it's a guess you can override. <strong>Money.</strong></p>
+]]></description>
+            <pubDate>Tue, 05 May 2026 02:47:59 +0000</pubDate>
+            <sparkle:version>0.1.17</sparkle:version>
+            <sparkle:shortVersionString>0.1.17</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/superic/av-pain-reliever/releases/download/v0.1.17/AVPainReliever.app.zip"
+                       type="application/octet-stream"
+                       sparkle:edSignature="5tA5w+f8zmhbEkwuQWkoEYsKJnpfL6XZ3trTEgbvJCSWz71wsb8i7A8BSWwQwgSprxToAUAJGyuZPfIdsG0BDg==" length="2673832" />
+        </item>
     </channel>
 </rss>
