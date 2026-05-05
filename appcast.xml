@@ -321,5 +321,22 @@
                        type="application/octet-stream"
                        sparkle:edSignature="5tA5w+f8zmhbEkwuQWkoEYsKJnpfL6XZ3trTEgbvJCSWz71wsb8i7A8BSWwQwgSprxToAUAJGyuZPfIdsG0BDg==" length="2673832" />
         </item>
+        <item>
+            <title>Version 0.2.0.5</title>
+            <description><![CDATA[
+<h2>What's new</h2>
+<p>Brings the v0.1.17 wizard polish over to the experimental track. Two improvements you'll see the next time you click Add Profile:</p>
+<p>The device list sort actually does what the v0.2.0.4 release notes said it does. Previously the tier logic was only catching keyboards and mice at the bottom — leaving mics and audio interfaces in alphabetical position with everything else. Now there's a real <strong>priority tier</strong> at the top: anything with "microphone", "audio", "speaker", "camera", "capture", or "display" in the name floats up. Three tiers (priority → neutral → portable), alphabetical within each. Blue Microphones and CalDigit Thunderbolt 3 Audio land where they belong.</p>
+<p>Also: the wizard's quiet auto-fill of profile names from your dock signature is now visible. CalDigit attached → "Home Office" used to just appear in the field. Now the slug-preview caption prefixes with a bolded <strong>"Suggested."</strong> when the value came from auto-fill, and the prefix drops the moment you edit the name. Less mysterious, same labor savings. <strong>Money.</strong></p>
+]]></description>
+            <pubDate>Tue, 05 May 2026 02:50:53 +0000</pubDate>
+            <sparkle:channel>experimental</sparkle:channel>
+            <sparkle:version>0.2.0.5</sparkle:version>
+            <sparkle:shortVersionString>0.2.0.5</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/superic/av-pain-reliever/releases/download/v0.2.0.5/AVPainReliever.app.zip"
+                       type="application/octet-stream"
+                       sparkle:edSignature="WTYqUI0rCbvpfzDqQXmJeGyl87cXUVvul5wSZScGlDycw6Sp88YR1gCUHIXY5lt4NepctUiFyTzHdKJamRUkCQ==" length="2867549" />
+        </item>
     </channel>
 </rss>
