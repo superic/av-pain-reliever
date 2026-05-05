@@ -329,11 +329,9 @@ struct AddProfileViewModelTests {
         #expect(Set(loaded.map(\.name)) == ["home-studio"])
     }
 
-    @Test("device list sorts priority above neutral above portable")
-    func deviceListThreeTierSort() {
+    @Test("device list sorts non-portable items above portable ones")
+    func deviceListTwoTierSort() {
         let watcher = FakeWatcher()
-        // One device per tier, plus an extra priority device, all
-        // deliberately out of order so the sort has work to do.
         watcher.named = [
             NamedUSBDevice(
                 device: USBDevice(vendorID: 0x05ac, productID: 0x0265),
@@ -342,19 +340,15 @@ struct AddProfileViewModelTests {
             NamedUSBDevice(
                 device: USBDevice(vendorID: 0x2188, productID: 0x6533),
                 name: "CalDigit Thunderbolt 3 Audio"
-            ), // priority (matches "audio")
+            ), // non-portable
             NamedUSBDevice(
-                device: USBDevice(vendorID: 0x0fd9, productID: 0x0080),
-                name: "Stream Deck MK.2"
-            ), // neutral
+                device: USBDevice(vendorID: 0x05ac, productID: 0x024f),
+                name: "Magic Keyboard"
+            ), // portable
             NamedUSBDevice(
                 device: USBDevice(vendorID: 0x1e4e, productID: 0x701f),
                 name: "HDMI to U3 capture"
-            ), // priority (matches "capture")
-            NamedUSBDevice(
-                device: USBDevice(vendorID: 0x046d, productID: 0x0ab7),
-                name: "Blue Microphones"
-            ), // priority (matches "microphone")
+            ), // non-portable
         ]
         let vm = AddProfileViewModel(
             watcher: watcher,
@@ -365,13 +359,42 @@ struct AddProfileViewModelTests {
             onSaved: {}
         )
         let names = vm.attachedDevices.map(\.name)
+        // Non-portable items above portable, alphabetical within
+        // each tier. Important devices are signaled via the green
+        // "Important" pill in the row UI (see DevicePortability
+        // tests), not by floating to a separate tier.
         #expect(names == [
-            "Blue Microphones",              // priority, alphabetical
-            "CalDigit Thunderbolt 3 Audio",  // priority, alphabetical
-            "HDMI to U3 capture",            // priority, alphabetical
-            "Stream Deck MK.2",              // neutral
-            "Magic Trackpad",                // portable
+            "CalDigit Thunderbolt 3 Audio",  // non-portable, alphabetical
+            "HDMI to U3 capture",            // non-portable, alphabetical
+            "Magic Keyboard",                // portable, alphabetical
+            "Magic Trackpad",                // portable, alphabetical
         ])
+    }
+
+    @Test("auto-suggest is suppressed when the proposed name already exists")
+    func autoSuggestSuppressedOnSlugCollision() {
+        let watcher = FakeWatcher()
+        watcher.named = [
+            NamedUSBDevice(
+                device: USBDevice(vendorID: 0x2188, productID: 0x6533),
+                name: "CalDigit Thunderbolt 3 Audio"
+            )
+        ]
+        // CalDigit would suggest "home-office" — but the user
+        // already has one. The wizard must NOT auto-fill in that
+        // case; it should leave the name field empty so the user
+        // explicitly names their new profile.
+        let vm = AddProfileViewModel(
+            watcher: watcher,
+            audioController: FakeAudio(devices: []),
+            cameraController: FakeCamera(cameras: []),
+            configURL: URL(fileURLWithPath: "/tmp/coll.toml"),
+            editing: nil,
+            existingProfileSlugs: ["home-office"],
+            onSaved: {}
+        )
+        #expect(vm.name == "")
+        #expect(vm.nameWasAutoSuggested == false)
     }
 
     @Test("nameWasAutoSuggested is true after first refresh on a recognized dock")
@@ -423,13 +446,13 @@ struct AddProfileViewModelTests {
     func willMatchAnywhereOnEmptySelection() {
         let url = URL(fileURLWithPath: "/tmp/wma.toml")
         let watcher = FakeWatcher()
-        // Watcher returns one attached device so the selection is
-        // non-default — the auto-tick logic in refresh() picks it up,
-        // exercising both states of the property.
+        // Watcher returns one Important device so it gets auto-
+        // ticked by refresh(). Lets the test exercise both states
+        // (something ticked → false; everything cleared → true).
         watcher.named = [
             NamedUSBDevice(
                 device: USBDevice(vendorID: 0x2188, productID: 0x6533),
-                name: "CalDigit"
+                name: "CalDigit Thunderbolt 3 Audio"
             )
         ]
         let vm = AddProfileViewModel(
@@ -440,13 +463,78 @@ struct AddProfileViewModelTests {
             editing: nil,
             onSaved: {}
         )
-        // With one auto-ticked device, willMatchAnywhere is false.
+        // With one auto-ticked Important device, willMatchAnywhere
+        // is false.
         #expect(vm.selectedDeviceIDs.isEmpty == false)
         #expect(vm.willMatchAnywhere == false)
 
         // Untick everything. Now this profile is the implicit
         // fallback at save time — the wizard hint covers this state.
         vm.selectedDeviceIDs.removeAll()
+        #expect(vm.willMatchAnywhere == true)
+    }
+
+    @Test("default tick selects only Important devices, not all live ones")
+    func defaultTickFiltersToImportantOnly() {
+        let watcher = FakeWatcher()
+        let importantDevice = USBDevice(vendorID: 0x2188, productID: 0x6533)
+        let portableDevice = USBDevice(vendorID: 0x05ac, productID: 0x024f)
+        let neutralDevice = USBDevice(vendorID: 0x0fd9, productID: 0x0080)
+        watcher.named = [
+            NamedUSBDevice(
+                device: importantDevice,
+                name: "CalDigit Thunderbolt 3 Audio"
+            ), // Important (matches "audio")
+            NamedUSBDevice(
+                device: portableDevice,
+                name: "Magic Keyboard"
+            ), // Portable
+            NamedUSBDevice(
+                device: neutralDevice,
+                name: "Stream Deck MK.2"
+            ), // Neutral
+        ]
+        let vm = AddProfileViewModel(
+            watcher: watcher,
+            audioController: FakeAudio(devices: []),
+            cameraController: FakeCamera(cameras: []),
+            configURL: URL(fileURLWithPath: "/tmp/auto.toml"),
+            editing: nil,
+            onSaved: {}
+        )
+        // Only the Important device is auto-ticked. The portable
+        // and neutral devices appear in the list (visible to the
+        // user, with their respective pills) but unticked by
+        // default. The user actively ticks anything else they want
+        // in the fingerprint.
+        #expect(vm.selectedDeviceIDs == [importantDevice])
+    }
+
+    @Test("default tick yields empty selection when nothing Important is attached")
+    func defaultTickEmptyWhenNoImportantDevices() {
+        let watcher = FakeWatcher()
+        watcher.named = [
+            NamedUSBDevice(
+                device: USBDevice(vendorID: 0x05ac, productID: 0x024f),
+                name: "Magic Keyboard"
+            ), // Portable
+            NamedUSBDevice(
+                device: USBDevice(vendorID: 0x0fd9, productID: 0x0080),
+                name: "Stream Deck MK.2"
+            ), // Neutral
+        ]
+        let vm = AddProfileViewModel(
+            watcher: watcher,
+            audioController: FakeAudio(devices: []),
+            cameraController: FakeCamera(cameras: []),
+            configURL: URL(fileURLWithPath: "/tmp/empty.toml"),
+            editing: nil,
+            onSaved: {}
+        )
+        // No Important hardware → nothing auto-ticks → the
+        // wizard's "Fallback profile" hint kicks in via
+        // willMatchAnywhere = true.
+        #expect(vm.selectedDeviceIDs.isEmpty)
         #expect(vm.willMatchAnywhere == true)
     }
 }

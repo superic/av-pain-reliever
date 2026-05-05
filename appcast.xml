@@ -321,5 +321,39 @@
                        type="application/octet-stream"
                        sparkle:edSignature="5tA5w+f8zmhbEkwuQWkoEYsKJnpfL6XZ3trTEgbvJCSWz71wsb8i7A8BSWwQwgSprxToAUAJGyuZPfIdsG0BDg==" length="2673832" />
         </item>
+        <item>
+            <title>Version 0.2.0.5</title>
+            <description><![CDATA[
+<h2>What's new</h2>
+<p>Brings the v0.1.17 wizard polish over to the experimental track. Two improvements you'll see the next time you click Add Profile:</p>
+<p>The device list sort actually does what the v0.2.0.4 release notes said it does. Previously the tier logic was only catching keyboards and mice at the bottom — leaving mics and audio interfaces in alphabetical position with everything else. Now there's a real <strong>priority tier</strong> at the top: anything with "microphone", "audio", "speaker", "camera", "capture", or "display" in the name floats up. Three tiers (priority → neutral → portable), alphabetical within each. Blue Microphones and CalDigit Thunderbolt 3 Audio land where they belong.</p>
+<p>Also: the wizard's quiet auto-fill of profile names from your dock signature is now visible. CalDigit attached → "Home Office" used to just appear in the field. Now the slug-preview caption prefixes with a bolded <strong>"Suggested."</strong> when the value came from auto-fill, and the prefix drops the moment you edit the name. Less mysterious, same labor savings. <strong>Money.</strong></p>
+]]></description>
+            <pubDate>Tue, 05 May 2026 02:50:53 +0000</pubDate>
+            <sparkle:channel>experimental</sparkle:channel>
+            <sparkle:version>0.2.0.5</sparkle:version>
+            <sparkle:shortVersionString>0.2.0.5</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/superic/av-pain-reliever/releases/download/v0.2.0.5/AVPainReliever.app.zip"
+                       type="application/octet-stream"
+                       sparkle:edSignature="WTYqUI0rCbvpfzDqQXmJeGyl87cXUVvul5wSZScGlDycw6Sp88YR1gCUHIXY5lt4NepctUiFyTzHdKJamRUkCQ==" length="2867549" />
+        </item>
+        <item>
+            <title>Version 0.1.18</title>
+            <description><![CDATA[
+<h2>What's new</h2>
+<p>The Add Profile wizard got smart enough to do most of the work for you. Three coordinated upgrades, all in one release.</p>
+<p>The wizard used to start with every USB device on your dock pre-ticked — your microphone, your dock, your monitor, your keyboard, your trackpad, your phone, all checked. Your job was to scan the list and untick the stuff that travels with you. Easy to forget, easy to wind up with a Magic Keyboard quietly hardcoded into your home-office fingerprint. Now it flips: AV Pain Reliever pre-ticks <strong>only the headline hardware</strong> (microphones, cameras, capture cards, dedicated audio interfaces — the stuff that genuinely defines a location) and leaves everything else unticked. You actively tick what else matters. Cleaner fingerprints, less squinting.</p>
+<p>To make the new defaults legible at a glance, every row in the device list now wears one of three states. <strong>Green "Important: " pill</strong> on the auto-ticked headline gear (Important: microphone, Important: capture card, Important: audio interface). <strong>Muted gray "Travels with you" pill</strong> on portable peripherals — keyboards, mice, phones, AirPods, watches — auto-unticked, the pill explains why your iPhone is in the list but not selected. <strong>No pill</strong> on neutral things like hub legs, displays, card readers, Stream Decks — quietly available, tick if you want them in your fingerprint. The old yellow "Suggested: untick" nudge is gone — once the suggestion is the default, the nudge is redundant.</p>
+<p>Also: the wizard's profile-name auto-suggest finally checks if you already have a profile by that name. CalDigit dock attached used to silently fill in "Home Office" even if you already had a Home Office profile, queueing up a save-time collision dialog you had to fight through. Now it suppresses the suggestion and leaves the field empty — because if you're hitting Add Profile, you want a <em>new</em> profile, and pre-loading a name you already use is just signing you up for an argument with the wizard. <strong>Money.</strong></p>
+]]></description>
+            <pubDate>Tue, 05 May 2026 03:45:46 +0000</pubDate>
+            <sparkle:version>0.1.18</sparkle:version>
+            <sparkle:shortVersionString>0.1.18</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/superic/av-pain-reliever/releases/download/v0.1.18/AVPainReliever.app.zip"
+                       type="application/octet-stream"
+                       sparkle:edSignature="S3V97i1R1knPkVhzylBOJnTt9xRi3lBbkpNs5w3jO5zOGNfk5Xq1J+yZc2tr2LmhddgTaTv+ODpzSL9UYelzBQ==" length="2682760" />
+        </item>
     </channel>
 </rss>
