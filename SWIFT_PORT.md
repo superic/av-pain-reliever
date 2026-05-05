@@ -3191,9 +3191,145 @@ graph does not guarantee the host that activated it can see
 it. Always test the picker from inside the host, not just
 Photo Booth.
 
----
+### Lazy capture, signaled from the extension (2026-05-04)
 
-## How to use this document
+User report: "macOS shows the green camera light on whenever
+AV Pain Reliever is running, even when I'm not in a call.
+OBS doesn't do this."
+
+Root cause: `VirtualCameraActivator.enable()` was opening an
+`AVCaptureSession` on the user's webcam the moment the
+toggle flipped, regardless of whether anything was reading
+the virtual camera. Always-on capture = always-on green
+light. The original M3 design picked this for hold-last-frame
+guarantees during mid-call source swaps, but those guarantees
+only matter while a call is in progress; the rest of the
+time the running session was pure waste.
+
+OBS comparison: OBS gates capture on (a) a scene that uses
+the camera being active AND (b) a downstream consumer
+reading the OBS Virtual Camera output. We had neither gate.
+
+Constraint that shaped the fix (M2 attempt #1, above): the
+Camera Extension itself can't run AVFoundation, so we can't
+move capture into the extension. Capture stays host-side; the
+only knob is *when* the host starts/stops it.
+
+Design:
+
+- Extension exposes a "consumer is active" signal via Darwin
+  notifications (Team-ID-prefixed names so the sandbox lets
+  the extension post). Edge-triggered on `streamingCounter`
+  0↔1 transitions in `CameraExtensionStreamSource.startStream`
+  / `stopStream`.
+- Host (`VirtualCameraActivator`) registers
+  `CFNotificationCenter` Darwin observers as soon as state
+  reaches `.on`, posts a "what's the current state?" ping so
+  the extension re-broadcasts (covers the "host launches with
+  extension already streaming a Zoom call from a previous
+  host instance" case), and routes notifications to
+  `handleConsumerActive` / `handleConsumerInactive`.
+- Active: cancel any pending stop, start the pipeline if not
+  running.
+- Inactive: schedule a 30-s `DispatchSourceTimer` grace.
+  Cancelled if a new consumer joins inside the window.
+  Stops the pipeline on expiry.
+
+Why Darwin notifications and not custom CMIO properties: the
+CMIOExtension framework's bridging from `CMIOExtensionProperty`
+(string-based) to host-visible `CMIOObjectAddPropertyListener`
+(OSType selectors) isn't documented for custom properties.
+Darwin notifications are 1980s-tech, but they work cleanly
+across the sandbox boundary with a Team-ID prefix and are
+edge-triggered for free. The "host launches mid-stream" case
+is solved by a single ping at observer-registration time.
+
+Result:
+
+- Idle (toggle on, no Zoom call): green light off, no
+  capture.
+- Zoom opens our virtual camera: ~300-500 ms warmup, then
+  frames flow.
+- Zoom call ends: capture stays warm 30 s; green light goes
+  off after.
+- Profile-driven mid-call source swap: unchanged — the
+  extension still re-emits the cached frame to cover the
+  source-swap gap.
+
+What we explicitly didn't add: a logo splash for the warmup
+window. AV Pain Reliever's "passive utility" identity says
+the camera should show the user's actual face, not our
+brand, even for half a second.
+
+### Profile camera = source, virtual camera = output (2026-05-04)
+
+User caught a conceptual mismatch the day after the wizard
+fix shipped: the per-profile Camera picker was listing
+"AV Pain Reliever" alongside real cameras. That treated the
+virtual camera as a possible *input source* — which is
+nonsense, since the virtual camera's whole purpose is to be
+the *output* that Zoom/Slack/etc. point at. A profile names
+the *real* camera the virtual camera should route per
+location.
+
+Decision (option #2 of the three we walked through): when the
+virtual camera is the active routing layer, the system-wide
+preferred camera (`AVCaptureDevice.userPreferredCamera`)
+points at the virtual camera, not the real one. Reasoning:
+
+- Users set Zoom/Slack/Teams to "AV Pain Reliever" once,
+  manually. That's the contract.
+- AVFoundation-modern apps (FaceTime, Safari getUserMedia,
+  Photo Booth) honour `userPreferredCamera` automatically.
+  Setting it to the virtual camera makes those apps follow
+  the same routing as Zoom — one coherent system state.
+- System Settings → Cameras → Preferred Camera shows
+  "AV Pain Reliever," which reinforces the model when the
+  user goes looking.
+
+Implementation:
+
+- New `VirtualCameraSourceController.preferredCameraOverride: String?`
+  protocol property (default `nil` so existing impls / tests
+  compile unchanged).
+- `VirtualCameraActivator` returns `"AV Pain Reliever"` when
+  state is `.on`, nil otherwise. During `.activating` /
+  `.needsApproval` / `.requiresRelaunch` / `.failed` we don't
+  redirect — the device might not deliver frames.
+- `ProfileApplier`: when `preferredCameraOverride` is non-nil,
+  `setPreferred` gets the override; `setSource` still gets
+  the profile's literal real-camera name. When nil, both
+  calls get the literal name (legacy V1 behaviour).
+- Wizard filters the virtual camera out of the picker
+  (`AddProfileViewModel.refresh`) and quietly clears any
+  saved profile value that points at it (legacy migration
+  for profiles created during the buggy window). Helper text
+  under the picker now adapts to the toggle state — explains
+  the routing model when the virtual camera is on.
+- `Engine.reapply()` + `ProfileApplier.invalidateLastApplied()`:
+  the same profile name now produces different system-state
+  writes depending on the toggle, so the dedupe key has to be
+  invalidated when the toggle flips. Toggle off ⇒ AppDelegate
+  calls `engine.reapply()` synchronously; toggle on ⇒ the
+  activator's `.on` transition fires a `$state` Combine
+  observer that does the same.
+- `VirtualCameraActivator.disable()`: defensively clears
+  `userPreferredCamera` if it's currently the virtual camera,
+  so AVFoundation-modern apps don't get stuck on a now-dead
+  device while the engine catches up.
+
+Pieces left untouched:
+
+- Menu bar's `currentCameraDisplay` still shows the
+  *profile's* real camera name. Correct under the new
+  model — the profile's intent is "use BRIO at this
+  location," and the menu surfaces that intent.
+- We don't programmatically set `userPreferredCamera` on
+  toggle-on outside of the next profile apply. If the
+  active profile has `camera == nil`, the system pref
+  isn't touched. The user's "set Zoom to AV Pain
+  Reliever once" instruction stays the contract; we don't
+  over-ride to be helpful.
 
 - **When we ship a Phase 1 fix or feature**, ask: does this teach us
   something about the Swift port? If yes, add to "Lessons learned."

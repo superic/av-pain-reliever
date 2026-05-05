@@ -54,11 +54,30 @@ public final class ProfileApplier {
             applyAudio(output, role: .output)
         }
         if let cameraName = profile.camera {
-            applyCamera(cameraName)
+            // When the virtual camera is the active routing layer,
+            // the *system-wide* preferred camera should point at the
+            // virtual camera itself — that's what FaceTime / Safari
+            // / any AVFoundation-modern client picks up, mirroring
+            // what Zoom/Slack/Teams see once the user has manually
+            // selected "AV Pain Reliever". The profile's literal
+            // camera name still drives the virtual camera's *source*
+            // (the real webcam frames feed in there).
+            let preferredName = virtualCameraSource?.preferredCameraOverride
+                ?? cameraName
+            applyCamera(preferredName)
             applyVirtualCameraSource(cameraName)
         }
 
         lastAppliedName = profile.name
+    }
+
+    /// Forget the dedupe key so the next `apply(profile)` re-fires
+    /// every side effect even when the profile name hasn't changed.
+    /// Used by the host when a config change (e.g. flipping the
+    /// virtual-camera toggle) means the same profile name should
+    /// resolve to a different set of system-state writes.
+    public func invalidateLastApplied() {
+        lastAppliedName = nil
     }
 
     private func applyAudio(_ name: String, role: AudioDeviceRole) {

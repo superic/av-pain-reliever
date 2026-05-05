@@ -58,6 +58,7 @@ struct ProfileApplierTests {
         private(set) var calls: [Call] = []
         var resultsByName: [String: CameraApplyResult] = [:]
         var defaultResult: CameraApplyResult = .ok
+        var preferredCameraOverride: String? = nil
 
         func setSource(named: String) -> CameraApplyResult {
             calls.append(Call(name: named))
@@ -342,6 +343,76 @@ struct ProfileApplierTests {
         applier.apply(Self.laptop)     // change
 
         // 2 input/output calls per non-no-op apply × 2 actual applies = 4
+        #expect(audio.calls.count == 4)
+    }
+
+    // MARK: - Preferred-camera override
+
+    @Test("when virtual camera reports an override, system preferred camera uses it; source still gets profile.camera")
+    func virtualCameraOverrideRoutesPreferred() {
+        let camera = MockCamera()
+        let source = MockVirtualCameraSource()
+        source.preferredCameraOverride = "AV Pain Reliever"
+        let log = MockLogger()
+        let applier = ProfileApplier(
+            audio: MockAudio(),
+            camera: camera,
+            virtualCameraSource: source,
+            logger: log
+        )
+        let p = Profile(
+            name: "home",
+            fingerprint: [],
+            camera: "Logitech BRIO"
+        )
+
+        applier.apply(p)
+
+        // System-wide preferred goes to the virtual camera so
+        // FaceTime/Safari route through it the same way Zoom does.
+        #expect(camera.calls == [.init(name: "AV Pain Reliever")])
+        // Virtual camera's *source* still gets the real camera —
+        // that's the actual webcam frames feed.
+        #expect(source.calls == [.init(name: "Logitech BRIO")])
+    }
+
+    @Test("nil override falls back to profile.camera for both calls")
+    func nilOverridePreservesLegacyBehavior() {
+        let camera = MockCamera()
+        let source = MockVirtualCameraSource()
+        // Override left at default nil — represents virtual camera
+        // off / activating / failed.
+        let applier = ProfileApplier(
+            audio: MockAudio(),
+            camera: camera,
+            virtualCameraSource: source,
+            logger: MockLogger()
+        )
+        let p = Profile(
+            name: "home",
+            fingerprint: [],
+            camera: "Logitech BRIO"
+        )
+
+        applier.apply(p)
+
+        #expect(camera.calls == [.init(name: "Logitech BRIO")])
+        #expect(source.calls == [.init(name: "Logitech BRIO")])
+    }
+
+    // MARK: - Forced re-apply
+
+    @Test("invalidateLastApplied lets the next apply re-fire side effects on the same profile")
+    func invalidateLastAppliedReFiresOnSameProfile() {
+        let audio = MockAudio()
+        let applier = ProfileApplier(audio: audio, logger: MockLogger())
+
+        applier.apply(Self.homeOffice)
+        applier.apply(Self.homeOffice) // dedupe → no-op
+        applier.invalidateLastApplied()
+        applier.apply(Self.homeOffice) // re-fires
+
+        // 2 calls per real apply × 2 real applies = 4
         #expect(audio.calls.count == 4)
     }
 }

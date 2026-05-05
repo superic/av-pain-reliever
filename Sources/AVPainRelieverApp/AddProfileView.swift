@@ -118,11 +118,7 @@ struct AddProfileView: View {
                     // See USB fingerprint section above for why this
                     // helper text lives in the section body rather
                     // than the `footer:` slot.
-                    Text("Sets macOS's preferred camera. Apps with their own camera picker (Zoom, Slack, Teams) won't follow this — configure those once per location and they'll remember.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .fixedSize(horizontal: false, vertical: true)
+                    cameraSectionHelperText
                 } header: {
                     sectionHeader("Camera", symbol: Theme.Symbol.cameraSection)
                 }
@@ -365,6 +361,33 @@ struct AddProfileView: View {
                     }
                 }
             }
+        }
+    }
+
+    /// Helper caption under the Camera picker. Two modes:
+    ///
+    /// - Virtual camera off: legacy V1 messaging — picking a camera
+    ///   here sets macOS's preferred camera, but Zoom/Slack/Teams
+    ///   maintain their own selection.
+    /// - Virtual camera on: the picker's value names the *source*
+    ///   the virtual camera will route. Zoom/Slack/Teams should
+    ///   point at "AV Pain Reliever" once and inherit profile
+    ///   switches automatically — that's the whole point of the
+    ///   virtual camera being on.
+    @ViewBuilder
+    private var cameraSectionHelperText: some View {
+        if viewModel.virtualCameraEnabled {
+            Text("AV Pain Reliever's virtual camera will use this as its source. Set Zoom, Slack, and Teams to “AV Pain Reliever” once — they'll follow your profile automatically.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .fixedSize(horizontal: false, vertical: true)
+        } else {
+            Text("Sets macOS's preferred camera. Apps with their own camera picker (Zoom, Slack, Teams) won't follow this — configure those once per location and they'll remember.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 

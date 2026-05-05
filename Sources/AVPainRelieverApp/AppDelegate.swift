@@ -23,6 +23,11 @@ struct AddProfileDependencies {
     /// already taken — preventing the wizard from pre-loading a
     /// duplicate name that would collide at save time.
     let existingProfileSlugs: Set<String>
+    /// Whether the virtual camera is the active routing layer at
+    /// wizard-open time. Drives the camera picker's filter (the
+    /// virtual camera is hidden from the list) and the helper text
+    /// that explains the per-profile camera setting under each mode.
+    let virtualCameraEnabled: Bool
     let onSaved: () -> Void
 }
 
@@ -159,6 +164,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
             .receive(on: DispatchQueue.main)
             .sink { [weak self] enabled in
                 self?.applyVirtualCameraToggle(enabled: enabled)
+            }
+            .store(in: &cancellables)
+        // The activator's `preferredCameraOverride` flips with state.
+        // When state crosses into / out of `.on`, the active profile's
+        // camera should be re-applied with the new override semantics
+        // (system-wide preferred = virtual camera vs. = real camera).
+        // `removeDuplicates` collapses the no-op transitions so we
+        // don't reapply on every internal `.activating` →
+        // `.needsApproval` shimmer.
+        virtualCameraActivator.$state
+            .map { state -> Bool in
+                if case .on = state { return true }
+                return false
+            }
+            .removeDuplicates()
+            .dropFirst()
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                self?.engine?.reapply()
             }
             .store(in: &cancellables)
     }
@@ -465,6 +489,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
             configURL: Self.profilesTOMLURL,
             editing: editing,
             existingProfileSlugs: existing,
+            virtualCameraEnabled: virtualCameraActivator.state == .on,
             onSaved: { [weak self] in
                 // Saving any profile is taken as the user being
                 // committed — no need to keep showing the welcome
@@ -574,8 +599,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
     private func applyVirtualCameraToggle(enabled: Bool) {
         if enabled {
             virtualCameraActivator.enable(envOverride: false)
+            // The `.on` transition (when activation completes)
+            // triggers `engine.reapply()` via the state observer
+            // wired up in `init`. Nothing to do here.
         } else {
             virtualCameraActivator.disable()
+            // Disable is synchronous — state goes to `.off`
+            // immediately. Re-apply the active profile so its
+            // camera setting flows back to the real device, not
+            // the virtual one we just torn down. (`disable` itself
+            // already cleared a stale `userPreferredCamera`; this
+            // gives the profile applier a chance to set it
+            // explicitly to the profile's real camera.)
+            engine?.reapply()
         }
     }
 

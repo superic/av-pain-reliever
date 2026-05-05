@@ -132,6 +132,21 @@ final class AddProfileViewModel: ObservableObject {
     /// pre-collision-check codepath).
     private let existingProfileSlugs: Set<String>
 
+    /// Whether the host's virtual camera is currently the active
+    /// routing layer. Used to (a) hide the virtual camera from the
+    /// camera picker — it's an *output*, not a source the user
+    /// should select per profile, and (b) tailor the helper text
+    /// under the picker so the wizard explains the model the user
+    /// has actually opted into.
+    let virtualCameraEnabled: Bool
+
+    /// Localized name AVFoundation reports for the embedded virtual
+    /// camera. Mirrors `VirtualCameraActivator.virtualCameraDisplayName`.
+    /// Hardcoded here rather than imported because the engine
+    /// module (which owns this view model's `CameraSummary` type)
+    /// has no view of the host activator's constants.
+    private static let virtualCameraDisplayName = "AV Pain Reliever"
+
     /// Saved fingerprint from the profile being edited — preserved
     /// verbatim across `refresh()` so saved-but-disconnected devices
     /// keep showing up even after the live watcher snapshot updates.
@@ -150,6 +165,7 @@ final class AddProfileViewModel: ObservableObject {
         configURL: URL,
         editing: Profile? = nil,
         existingProfileSlugs: Set<String> = [],
+        virtualCameraEnabled: Bool = false,
         onSaved: @escaping () -> Void
     ) {
         self.watcher = watcher
@@ -159,6 +175,7 @@ final class AddProfileViewModel: ObservableObject {
         self.onSaved = onSaved
         self.editingSlug = editing?.name
         self.existingProfileSlugs = existingProfileSlugs
+        self.virtualCameraEnabled = virtualCameraEnabled
 
         if let profile = editing {
             // Pre-populate from the existing profile so the user can
@@ -250,7 +267,17 @@ final class AddProfileViewModel: ObservableObject {
             )
         }
         audioDevices = audioController.availableDevices()
+        // Filter the embedded virtual camera out of the picker —
+        // it's an output, not a source. A profile names the *real*
+        // camera that the virtual camera should route. Filtering
+        // here also quietly cleans up profiles created during the
+        // brief window where the virtual camera was selectable: the
+        // saved-but-now-invalid value is sanitized below.
         cameras = cameraController.availableCameras()
+            .filter { $0.name != Self.virtualCameraDisplayName }
+        if camera == Self.virtualCameraDisplayName {
+            camera = nil
+        }
 
         // Pre-select whatever the system currently uses so the user
         // doesn't have to repeat audio/camera choices they already
@@ -259,7 +286,14 @@ final class AddProfileViewModel: ObservableObject {
         let defaults = audioController.currentDefaults()
         if audioInput == nil { audioInput = defaults.inputName }
         if audioOutput == nil { audioOutput = defaults.outputName }
-        if camera == nil { camera = cameraController.currentPreferredName() }
+        if camera == nil {
+            // `currentPreferredName()` will read back "AV Pain
+            // Reliever" once the virtual camera is the system-wide
+            // preferred — that's by design (#2). Skip it here so
+            // the pre-fill always lands on a *real* camera.
+            let preferred = cameraController.currentPreferredName()
+            camera = preferred == Self.virtualCameraDisplayName ? nil : preferred
+        }
 
         // First-launch convenience: if the user hasn't typed a name and
         // we recognize a docked-setup signature in the attached

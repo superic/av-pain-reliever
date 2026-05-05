@@ -80,6 +80,33 @@ public protocol VirtualCameraSourceController {
     /// to the currently-active source returns `.ok` without churning
     /// the running capture session.
     func setSource(named: String) -> CameraApplyResult
+
+    /// Localized name to use for the system-wide preferred camera
+    /// (`AVCaptureDevice.userPreferredCamera`) when this controller
+    /// is the active routing layer, or nil to fall through to the
+    /// profile's literal camera name.
+    ///
+    /// When the host's virtual camera is enabled, the preferred
+    /// camera should be the virtual camera itself — that's what
+    /// AVFoundation-modern apps (FaceTime, Safari getUserMedia)
+    /// pick up, so they route through the virtual camera the same
+    /// way Zoom/Slack/Teams do once the user manually selects "AV
+    /// Pain Reliever" in their picker. The profile still names the
+    /// real source camera; `setSource(named:)` swaps the virtual
+    /// camera's source to match.
+    ///
+    /// Returns nil when the controller is in any non-live state
+    /// (off, activating, requires-relaunch) — `ProfileApplier`
+    /// then sets the system preference to the profile's literal
+    /// camera as it did pre-virtual-camera.
+    var preferredCameraOverride: String? { get }
+}
+
+public extension VirtualCameraSourceController {
+    /// Default for callers/mocks that don't model the override —
+    /// preserves the historical "set system preferred to the
+    /// profile's literal camera" behavior.
+    var preferredCameraOverride: String? { nil }
 }
 
 /// Production `CameraController` backed by AVFoundation. Stateless —

@@ -537,6 +537,74 @@ struct AddProfileViewModelTests {
         #expect(vm.selectedDeviceIDs.isEmpty)
         #expect(vm.willMatchAnywhere == true)
     }
+
+    // MARK: - Virtual camera filtering
+
+    @Test("hides AV Pain Reliever from the camera picker")
+    func filtersVirtualCameraFromList() {
+        let camera = FakeCamera(cameras: [
+            "Logitech BRIO",
+            "AV Pain Reliever",
+            "MacBook Pro Camera",
+        ])
+        let vm = AddProfileViewModel(
+            watcher: FakeWatcher(),
+            audioController: FakeAudio(devices: []),
+            cameraController: camera,
+            configURL: URL(fileURLWithPath: "/tmp/x.toml"),
+            virtualCameraEnabled: true,
+            onSaved: {}
+        )
+        let names = vm.cameras.map(\.name)
+        // The virtual camera is an *output*; the per-profile picker
+        // is for choosing the real source camera.
+        #expect(!names.contains("AV Pain Reliever"))
+        #expect(names.contains("Logitech BRIO"))
+        #expect(names.contains("MacBook Pro Camera"))
+    }
+
+    @Test("clears a saved camera value that points at the virtual camera (legacy profiles)")
+    func sanitizesLegacyVirtualCameraSelection() {
+        let editing = Profile(
+            name: "home-office",
+            fingerprint: [],
+            camera: "AV Pain Reliever"
+        )
+        let vm = AddProfileViewModel(
+            watcher: FakeWatcher(),
+            audioController: FakeAudio(devices: []),
+            cameraController: FakeCamera(cameras: ["Logitech BRIO"]),
+            configURL: URL(fileURLWithPath: "/tmp/x.toml"),
+            editing: editing,
+            virtualCameraEnabled: true,
+            onSaved: {}
+        )
+        // Legacy profile shouldn't pre-fill a now-hidden value.
+        #expect(vm.camera == nil)
+    }
+
+    @Test("currentPreferredName fallback skips the virtual camera")
+    func preFillSkipsVirtualCamera() {
+        // Mirrors a real machine where userPreferredCamera was set
+        // to the virtual camera by ProfileApplier under the new
+        // override semantics.
+        let camera = FakeCamera(
+            cameras: ["Logitech BRIO"],
+            currentPreferred: "AV Pain Reliever"
+        )
+        let vm = AddProfileViewModel(
+            watcher: FakeWatcher(),
+            audioController: FakeAudio(devices: []),
+            cameraController: camera,
+            configURL: URL(fileURLWithPath: "/tmp/x.toml"),
+            virtualCameraEnabled: true,
+            onSaved: {}
+        )
+        // Pre-fill should land on nil (the picker's "Don't change"
+        // entry) rather than auto-selecting a value the user can't
+        // see in the list.
+        #expect(vm.camera == nil)
+    }
 }
 
 // MARK: - Test fakes
@@ -564,7 +632,14 @@ private struct FakeAudio: AudioController {
 
 private struct FakeCamera: CameraController {
     let cameras: [String]
+    let currentPreferred: String?
+
+    init(cameras: [String], currentPreferred: String? = nil) {
+        self.cameras = cameras
+        self.currentPreferred = currentPreferred
+    }
+
     func setPreferred(named: String) -> CameraApplyResult { .ok }
     func availableCameras() -> [CameraSummary] { cameras.map { CameraSummary(name: $0) } }
-    func currentPreferredName() -> String? { nil }
+    func currentPreferredName() -> String? { currentPreferred }
 }

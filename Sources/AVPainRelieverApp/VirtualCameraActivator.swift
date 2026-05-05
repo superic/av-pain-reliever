@@ -67,6 +67,33 @@ final class VirtualCameraActivator: NSObject, ObservableObject,
     /// to find the virtual camera in the CMIO device list.
     static let virtualCameraUID = "B45B7E4D-3F4E-4F4D-9C2A-1B2C3D4E5F60"
 
+    /// Localized name the extension registers — also what
+    /// AVFoundation reports for the virtual camera's
+    /// `localizedName`. Used as the value of
+    /// `preferredCameraOverride` so `ProfileApplier` can set the
+    /// system-wide preferred camera to "AV Pain Reliever" when the
+    /// virtual camera is live, mirroring what users set in Zoom.
+    static let virtualCameraDisplayName = "AV Pain Reliever"
+
+    /// Mirror of the extension's notification names. Kept in sync by
+    /// hand — both targets are sandboxed-vs-not separate executables
+    /// without a shared Swift module, and three constants is cheaper
+    /// than building one. Any change here MUST mirror in
+    /// `CameraExtensionStream.swift`.
+    private static let consumerActiveNotification =
+        "HLH4LEWS9S.com.ericwillis.avpainreliever.consumer-active"
+    private static let consumerInactiveNotification =
+        "HLH4LEWS9S.com.ericwillis.avpainreliever.consumer-inactive"
+    private static let queryConsumerStateNotification =
+        "HLH4LEWS9S.com.ericwillis.avpainreliever.query-consumer-state"
+
+    /// Time we keep the host capture pipeline warm after the last
+    /// AVCapture client disconnects. Bridges back-to-back Zoom calls
+    /// without re-paying the ~300-500 ms AVCaptureSession warmup, and
+    /// avoids the green light flickering off-then-on between every
+    /// hangup and the next ring.
+    private static let stopGraceSeconds: TimeInterval = 30
+
     @Published private(set) var state: State = .off
 
     /// True when the env var override forced enable on launch.
@@ -86,6 +113,21 @@ final class VirtualCameraActivator: NSObject, ObservableObject,
     /// `.requiresRelaunch` state instead of silently producing a
     /// black feed.
     private var deactivatedThisSession = false
+
+    /// True iff at least one AVCapture client (Zoom, FaceTime, …) is
+    /// currently reading the virtual camera's source stream.
+    /// Maintained from Darwin notifications posted by the extension.
+    private var consumerActive: Bool = false
+
+    /// Set when `endConsumerWatch` would otherwise be called twice
+    /// (Sparkle replace re-fires `.completed` while state is already
+    /// `.on`). Idempotency flag.
+    private var consumerWatchActive: Bool = false
+
+    /// Pending pipeline teardown from the last `consumerInactive`
+    /// notification. Cancelled when a new consumer connects within
+    /// the grace window so we don't tear down then immediately rebuild.
+    private var stopGraceTimer: DispatchSourceTimer?
 
     /// Returns true if launch should auto-enable: env-var debug
     /// override OR the user's persisted toggle is on. The env var
@@ -125,7 +167,12 @@ final class VirtualCameraActivator: NSObject, ObservableObject,
         request.delegate = self
         OSSystemExtensionManager.shared.submitRequest(request)
 
-        startCapturePipeline()
+        // Capture pipeline is no longer started eagerly here. It
+        // spins up only when `beginConsumerWatch` (called after the
+        // extension reaches `.on`) sees a `consumerActive`
+        // notification — i.e. when an AVCapture client actually
+        // selects the virtual camera. Keeps the macOS green camera
+        // light off while the app is idle.
     }
 
     /// Tear down the capture pipeline and submit a deactivation
@@ -139,7 +186,12 @@ final class VirtualCameraActivator: NSObject, ObservableObject,
             break
         }
         logger.info("Disabling: stopping capture pipeline + deactivating extension")
+        endConsumerWatch()
+        stopGraceTimer?.cancel()
+        stopGraceTimer = nil
+        consumerActive = false
         stopCapturePipeline()
+        Self.restoreUserPreferredCameraIfVirtual()
 
         let request = OSSystemExtensionRequest.deactivationRequest(
             forExtensionWithIdentifier: Self.extensionBundleID,
@@ -198,6 +250,18 @@ final class VirtualCameraActivator: NSObject, ObservableObject,
 
     // MARK: - VirtualCameraSourceController
 
+    var preferredCameraOverride: String? {
+        // Only direct AVFoundation-modern apps at the virtual camera
+        // when it's actually live and we've confirmed the host can
+        // see it. During `.activating` / `.needsApproval` we don't
+        // know whether the device is reachable yet; during
+        // `.requiresRelaunch` it's known broken; `.failed` /
+        // `.off` — same. In every non-`.on` case, fall back to the
+        // profile's literal camera so AVFoundation-modern apps
+        // don't hop to a virtual camera that can't deliver frames.
+        state == .on ? Self.virtualCameraDisplayName : nil
+    }
+
     func setSource(named: String) -> CameraApplyResult {
         guard let captureSession else {
             // Toggle off OR mid-activation with capture not yet
@@ -233,9 +297,32 @@ final class VirtualCameraActivator: NSObject, ObservableObject,
                 return
             }
             logger.error("Visibility check: host process can't see its own Camera Extension — escalating to .requiresRelaunch")
+            self.endConsumerWatch()
+            self.stopGraceTimer?.cancel()
+            self.stopGraceTimer = nil
+            self.consumerActive = false
             self.stopCapturePipeline()
             self.state = .requiresRelaunch
         }
+    }
+
+    /// On disable, if the system-wide preferred camera still points
+    /// at our virtual camera (because a recent profile-apply set it
+    /// while the toggle was on), redirect AVFoundation-modern apps
+    /// to whatever macOS would naturally pick instead. Otherwise
+    /// FaceTime / Safari getUserMedia stay stuck on a virtual
+    /// camera that's no longer producing frames. AppDelegate
+    /// follows up with `engine.reapply()` so the active profile's
+    /// real camera is the new explicit preference where applicable.
+    private static func restoreUserPreferredCameraIfVirtual() {
+        guard
+            let user = AVCaptureDevice.userPreferredCamera,
+            user.uniqueID == Self.virtualCameraUID
+        else { return }
+        AVCaptureDevice.userPreferredCamera = AVCaptureDevice.systemPreferredCamera
+        logger.info(
+            "Cleared userPreferredCamera that was pointing at the virtual camera; system fallback now \(AVCaptureDevice.systemPreferredCamera?.localizedName ?? "(none)", privacy: .public)"
+        )
     }
 
     private static func hostCanSeeVirtualCamera() -> Bool {
@@ -250,6 +337,104 @@ final class VirtualCameraActivator: NSObject, ObservableObject,
             position: .unspecified
         )
         return session.devices.contains { $0.uniqueID == Self.virtualCameraUID }
+    }
+
+    // MARK: - Consumer-driven capture lifecycle
+
+    /// Subscribe to the extension's "consumer connected/disconnected"
+    /// Darwin notifications and seed the initial state. The capture
+    /// pipeline is started/stopped purely from these signals — the
+    /// activator no longer eagerly opens an `AVCaptureSession` on
+    /// `enable()`. Idempotent.
+    private func beginConsumerWatch() {
+        guard !consumerWatchActive else {
+            logger.info("beginConsumerWatch: already active — no-op")
+            return
+        }
+        let observer = Unmanaged.passUnretained(self).toOpaque()
+        let center = CFNotificationCenterGetDarwinNotifyCenter()
+        let callback: CFNotificationCallback = { _, observer, name, _, _ in
+            guard let observer, let name else { return }
+            let me = Unmanaged<VirtualCameraActivator>
+                .fromOpaque(observer)
+                .takeUnretainedValue()
+            // CFNotificationName.rawValue is a CFString; bridge to
+            // String for ergonomic switching.
+            let nameStr = name.rawValue as String
+            DispatchQueue.main.async {
+                switch nameStr {
+                case VirtualCameraActivator.consumerActiveNotification:
+                    me.handleConsumerActive()
+                case VirtualCameraActivator.consumerInactiveNotification:
+                    me.handleConsumerInactive()
+                default:
+                    break
+                }
+            }
+        }
+        CFNotificationCenterAddObserver(
+            center, observer, callback,
+            Self.consumerActiveNotification as CFString,
+            nil, .deliverImmediately
+        )
+        CFNotificationCenterAddObserver(
+            center, observer, callback,
+            Self.consumerInactiveNotification as CFString,
+            nil, .deliverImmediately
+        )
+        consumerWatchActive = true
+
+        // Seed initial state. Edge case worth covering: extension was
+        // activated by a prior host instance and a Zoom call is
+        // already in progress when this host launches. Without the
+        // ping, we'd miss the 0→1 transition and the call would see
+        // no frames until it disconnects.
+        CFNotificationCenterPostNotification(
+            center,
+            CFNotificationName(Self.queryConsumerStateNotification as CFString),
+            nil, nil, true
+        )
+    }
+
+    private func endConsumerWatch() {
+        guard consumerWatchActive else { return }
+        let observer = Unmanaged.passUnretained(self).toOpaque()
+        CFNotificationCenterRemoveEveryObserver(
+            CFNotificationCenterGetDarwinNotifyCenter(),
+            observer
+        )
+        consumerWatchActive = false
+    }
+
+    private func handleConsumerActive() {
+        consumerActive = true
+        // A new consumer arrived inside the grace window — keep the
+        // pipeline that's already running and cancel the pending stop.
+        stopGraceTimer?.cancel()
+        stopGraceTimer = nil
+        if captureSession == nil {
+            logger.info("Consumer connected — starting host capture pipeline")
+            startCapturePipeline()
+        }
+    }
+
+    private func handleConsumerInactive() {
+        consumerActive = false
+        // Don't tear down immediately. Most users hang up one Zoom
+        // call and start another within seconds; a 30-s grace bridges
+        // those without re-paying the AVCaptureSession warmup, and
+        // collapses the green-light flicker between calls.
+        let timer = DispatchSource.makeTimerSource(queue: .main)
+        timer.schedule(deadline: .now() + Self.stopGraceSeconds)
+        timer.setEventHandler { [weak self] in
+            guard let self, !self.consumerActive else { return }
+            logger.info("Stop grace expired — tearing down host capture pipeline")
+            self.stopCapturePipeline()
+            self.stopGraceTimer = nil
+        }
+        stopGraceTimer?.cancel()
+        stopGraceTimer = timer
+        timer.resume()
     }
 
     // MARK: - OSSystemExtensionRequestDelegate
@@ -292,6 +477,7 @@ final class VirtualCameraActivator: NSObject, ObservableObject,
                 if self.state != .off {
                     self.state = .on
                     self.scheduleHostVisibilityCheck()
+                    self.beginConsumerWatch()
                 }
             case .willCompleteAfterReboot:
                 // Rare path — extension upgrade queued for next

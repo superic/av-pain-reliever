@@ -15,6 +15,23 @@ private let logger = Logger(
 /// to the sink; the device source forwards each consumed frame
 /// here via `stream.send(...)`.
 final class CameraExtensionStreamSource: NSObject, CMIOExtensionStreamSource {
+    /// Darwin notification names used to tell the host whether any
+    /// AVCapture client is currently reading the source. The host
+    /// uses this to gate its real-camera capture pipeline (and
+    /// therefore the macOS green camera light): pipeline runs only
+    /// while a consumer is connected, plus a grace window after the
+    /// last one disconnects. Names are Team-ID-prefixed so the
+    /// sandbox lets this extension post them.
+    static let consumerActiveNotification =
+        "HLH4LEWS9S.com.ericwillis.avpainreliever.consumer-active"
+    static let consumerInactiveNotification =
+        "HLH4LEWS9S.com.ericwillis.avpainreliever.consumer-inactive"
+    /// Sent by the host when it (re)starts observing — extension
+    /// responds by re-posting the current state so a host that
+    /// missed the most recent transition can seed its initial value.
+    static let queryConsumerStateNotification =
+        "HLH4LEWS9S.com.ericwillis.avpainreliever.query-consumer-state"
+
     private(set) var stream: CMIOExtensionStream!
     private let streamFormat: CMIOExtensionStreamFormat
     weak var device: CameraExtensionDeviceSource?
@@ -60,6 +77,48 @@ final class CameraExtensionStreamSource: NSObject, CMIOExtensionStreamSource {
             clockType: .hostTime,
             source: self
         )
+        registerQueryListener()
+    }
+
+    deinit {
+        let observer = Unmanaged.passUnretained(self).toOpaque()
+        CFNotificationCenterRemoveEveryObserver(
+            CFNotificationCenterGetDarwinNotifyCenter(),
+            observer
+        )
+    }
+
+    /// Listen for the host's "what's the current state?" ping and
+    /// respond by re-broadcasting the current consumer-active value.
+    /// Lets a host that just registered observers seed its initial
+    /// state without having to read a property cross-process.
+    private func registerQueryListener() {
+        let observer = Unmanaged.passUnretained(self).toOpaque()
+        CFNotificationCenterAddObserver(
+            CFNotificationCenterGetDarwinNotifyCenter(),
+            observer,
+            { _, observer, _, _, _ in
+                guard let observer else { return }
+                let me = Unmanaged<CameraExtensionStreamSource>
+                    .fromOpaque(observer)
+                    .takeUnretainedValue()
+                me.postCurrentState()
+            },
+            Self.queryConsumerStateNotification as CFString,
+            nil,
+            .deliverImmediately
+        )
+    }
+
+    private func postCurrentState() {
+        let name = streamingCounter > 0
+            ? Self.consumerActiveNotification
+            : Self.consumerInactiveNotification
+        CFNotificationCenterPostNotification(
+            CFNotificationCenterGetDarwinNotifyCenter(),
+            CFNotificationName(name as CFString),
+            nil, nil, true
+        )
     }
 
     var formats: [CMIOExtensionStreamFormat] { [streamFormat] }
@@ -87,12 +146,31 @@ final class CameraExtensionStreamSource: NSObject, CMIOExtensionStreamSource {
     func authorizedToStartStream(for client: CMIOExtensionClient) -> Bool { true }
 
     func startStream() throws {
+        let wasIdle = streamingCounter == 0
         streamingCounter += 1
         logger.info("source startStream — streamingCounter=\(self.streamingCounter, privacy: .public)")
+        // Edge-trigger only: a 0→1 transition is the moment the host
+        // needs to spin up its capture pipeline. Subsequent clients
+        // joining a stream that's already live don't need to wake
+        // anything up.
+        if wasIdle {
+            CFNotificationCenterPostNotification(
+                CFNotificationCenterGetDarwinNotifyCenter(),
+                CFNotificationName(Self.consumerActiveNotification as CFString),
+                nil, nil, true
+            )
+        }
     }
 
     func stopStream() throws {
         if streamingCounter > 0 { streamingCounter -= 1 }
         logger.info("source stopStream — streamingCounter=\(self.streamingCounter, privacy: .public)")
+        if streamingCounter == 0 {
+            CFNotificationCenterPostNotification(
+                CFNotificationCenterGetDarwinNotifyCenter(),
+                CFNotificationName(Self.consumerInactiveNotification as CFString),
+                nil, nil, true
+            )
+        }
     }
 }

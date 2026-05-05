@@ -116,6 +116,20 @@ public final class Engine {
         evaluateAndApply()
     }
 
+    /// Force a re-apply of the current profile, even if the profile
+    /// name hasn't changed. Bypasses the applier's "skip if same
+    /// name" dedupe by clearing its last-applied state first. Used
+    /// when a config change (virtual camera toggle flip, settings
+    /// edit) means the same profile name now produces different
+    /// system-state writes — the engine has to re-run the side
+    /// effects with the new context.
+    public func reapply() {
+        guard started else { return }
+        debouncer?.cancel()
+        applier.invalidateLastApplied()
+        evaluateAndApply()
+    }
+
     /// Apply a specific profile, bypassing the resolver entirely.
     /// Used by the menu bar's "Switch to" UI when the user wants to
     /// force a profile that doesn't match the current USB state — for

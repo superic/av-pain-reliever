@@ -450,6 +450,7 @@ private struct WizardForm: View {
             configURL: deps.configURL,
             editing: deps.editing,
             existingProfileSlugs: deps.existingProfileSlugs,
+            virtualCameraEnabled: deps.virtualCameraEnabled,
             onSaved: deps.onSaved
         ))
     }
