@@ -3331,6 +3331,66 @@ Pieces left untouched:
   Reliever once" instruction stays the contract; we don't
   over-ride to be helpful.
 
+### Self-source feedback loop on late consumer connect (2026-05-05)
+
+User report: virtual camera frozen on one frame intermittently
+when sourcing from the office Neat Bar. FaceTime as the
+source worked fine. Frames showed flowing in the log, just
+all the same frame.
+
+Two interacting bugs from the prior two days landed us here:
+
+1. **`preferredCameraOverride` set `userPreferredCamera` to
+   the virtual camera** (the right call for Zoom/FaceTime
+   parity, see prior section). But
+   `CameraCaptureSession.pickInitialDevice` reads
+   `userPreferredCamera` first — so the host opened its own
+   output as a capture source. Self-source: the host writes
+   whatever it just read; the extension forwards it back; the
+   only "real" frame is whatever the extension had cached at
+   the loop's first iteration. Frozen frame, but with
+   `Consumed` / `Forwarded` / `Enqueued` cycling at 30 fps in
+   the log so it wasn't obviously broken.
+2. **Lazy capture dropped pending `setSource` requests.**
+   When a profile applied while no consumer was connected,
+   `VirtualCameraActivator.setSource` no-op'd silently and
+   forgot the requested name. So when Zoom connected later,
+   the host had no idea the active profile wanted "Neat Bar
+   Pro" and fell through to `userPreferredCamera` — bug #1.
+
+Why "sometimes": the failure mode depends on Zoom-vs-dock
+ordering. Open Zoom first, then dock → engine resolves the
+office profile → `setSource` runs against the live session →
+`switchSource` swaps inputs → real frames. Dock first, then
+open Zoom → `setSource` is a no-op + dropped → consumer
+connects → host self-sources → frozen.
+
+Fix:
+
+- `CameraCaptureSession.pickInitialDevice` rejects the
+  virtual camera at every fallback step (userPreferred,
+  systemPreferred, first discovered). New
+  `isVirtualCamera(_:)` helper that matches on
+  `VirtualCameraActivator.virtualCameraUID`. `findDevice`
+  also rejects defensively so a profile that names "AV
+  Pain Reliever" can't reopen the loop from the swap path.
+- `CameraCaptureSession` gains an `initialSourceName: String?`
+  init param. When set, it's the first thing
+  `pickInitialDevice` tries.
+- `VirtualCameraActivator.setSource` now stores the
+  requested name in `pendingSourceName` even when the
+  capture pipeline isn't running. `startCapturePipeline`
+  passes it through to `CameraCaptureSession.init`. Cleared
+  on disable + on the visibility-check failure path so the
+  next enable starts clean.
+
+Lesson: any time a capture pipeline can be torn down and
+re-created mid-session (lazy capture, sleep/wake, error
+recovery), the "what does the user want right now" state
+has to live OUTSIDE the pipeline — otherwise it's lost on
+every restart and the pipeline restarts with system defaults
+that may not match the active profile.
+
 - **When we ship a Phase 1 fix or feature**, ask: does this teach us
   something about the Swift port? If yes, add to "Lessons learned."
 - **When the user gives feedback or hits a bug**, ask: should this be
