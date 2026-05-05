@@ -390,5 +390,21 @@
                        type="application/octet-stream"
                        sparkle:edSignature="m7jtbJuI+hxukBFMqBAjyV0j6MNtl4jFxfTBoLjmpI5/HR+gz2QyXwvOEy+2GHiEBS31T6KWMtAbQJ1zQnDzDQ==" length="2896646" />
         </item>
+        <item>
+            <title>Version 0.2.0.8</title>
+            <description><![CDATA[
+<h2>What's new</h2>
+<p>Conference room save. The Neat Bar at the office was making the virtual camera freeze on one frame — sometimes, when you opened Zoom AFTER docking. Behind the scenes, the host was opening AV Pain Reliever as its OWN source. Self-source. Feedback loop. The frame you saw was just the same cached image echoing through the loop forever. Not great.</p>
+<p>Two fixes. The host now refuses to ever open the virtual camera as a source — that's its own output, would be like recording yourself recording yourself. And when a profile says "use the Neat Bar" but Zoom isn't open yet, we hold onto that — so when Zoom DOES connect, the host opens the Neat Bar on the first try. Not the virtual camera. Not whatever the system thinks is preferred. The right camera. First try. Money.</p>
+]]></description>
+            <pubDate>Tue, 05 May 2026 17:47:15 +0000</pubDate>
+            <sparkle:channel>experimental</sparkle:channel>
+            <sparkle:version>0.2.0.8</sparkle:version>
+            <sparkle:shortVersionString>0.2.0.8</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/superic/av-pain-reliever/releases/download/v0.2.0.8/AVPainReliever.app.zip"
+                       type="application/octet-stream"
+                       sparkle:edSignature="kgiZ+sI2BQLhtpbVIPKzkpSdUylbTD0rfH7h4xiAF6tkZaKrqf6qezlKlafHaVv876L92dIpZv8ZDZHhvW8eAw==" length="2898897" />
+        </item>
     </channel>
 </rss>
