@@ -256,5 +256,21 @@
                        type="application/octet-stream"
                        sparkle:edSignature="eIFNIR+aFNIsfcRm80yb9KTpexIS8vUvLn4huq8epLMSIfoBKhaV/zwjHaxpQAkv8/0XfkllwMCn73nCL3+7DQ==" length="2846656" />
         </item>
+        <item>
+            <title>Version 0.2.0.3</title>
+            <description><![CDATA[
+<h2>What's new</h2>
+<p>UX cleanup. Before this, if you were running the experimental v0.2.x with the "Receive experimental updates" toggle off, clicking Check for Updates would tell you "you're up to date" and report v0.1.15 as the newest available — even though you're running v0.2.0, which is <em>higher</em>. Confusing. Technically Sparkle was filtering the appcast to stable-only because no channels were allowlisted, but nobody reads it that way.</p>
+<p>Now the dialog explains the actual situation. Click Check for Updates on an experimental build with the toggle off, you get a tailored alert with three buttons: <strong>Enable Experimental Updates</strong> (flips the switch and runs the check fresh, this time seeing experimental items), <strong>Check Stable Anyway</strong> (the old behavior, for the rare case you want to confirm what stable says), or <strong>Cancel</strong>. One click to actually be on the experimental track instead of squinting at a contradictory dialog. <strong>Money.</strong></p>
+]]></description>
+            <pubDate>Tue, 05 May 2026 01:52:41 +0000</pubDate>
+            <sparkle:channel>experimental</sparkle:channel>
+            <sparkle:version>0.2.0.3</sparkle:version>
+            <sparkle:shortVersionString>0.2.0.3</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/superic/av-pain-reliever/releases/download/v0.2.0.3/AVPainReliever.app.zip"
+                       type="application/octet-stream"
+                       sparkle:edSignature="zuK1h/K/gaQLQfJ1ZHg+Wf92dtTUEV5nJLnIoB+hQgQG64L5faaGvjtK70mCUWziBfjs4ZuYO4DODr+bWao1BA==" length="2851766" />
+        </item>
     </channel>
 </rss>
