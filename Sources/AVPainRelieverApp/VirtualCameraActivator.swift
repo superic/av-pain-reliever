@@ -105,6 +105,15 @@ final class VirtualCameraActivator: NSObject, ObservableObject,
     private var sinkWriter: CMIOSinkWriter?
     private var captureSession: CameraCaptureSession?
 
+    /// Most recent source-camera name a profile asked us to route.
+    /// Held across the "no consumer yet" window so that when lazy
+    /// capture finally spins up (consumer connects after a profile
+    /// applied), the new `CameraCaptureSession` opens the camera
+    /// the profile actually wants — not the system-preferred one,
+    /// which post-override is the virtual camera itself and would
+    /// close a self-source feedback loop.
+    private var pendingSourceName: String?
+
     /// True after a successful `disable()` until the host process
     /// is relaunched. Re-enabling within the same process hits the
     /// macOS "queued for uninstall on reboot" CMIO quirk where the
@@ -190,6 +199,7 @@ final class VirtualCameraActivator: NSObject, ObservableObject,
         stopGraceTimer?.cancel()
         stopGraceTimer = nil
         consumerActive = false
+        pendingSourceName = nil
         stopCapturePipeline()
         Self.restoreUserPreferredCameraIfVirtual()
 
@@ -234,11 +244,14 @@ final class VirtualCameraActivator: NSObject, ObservableObject,
             width: 1280,
             height: 720
         )
-        let session = CameraCaptureSession(sink: writer)
+        let session = CameraCaptureSession(
+            sink: writer,
+            initialSourceName: pendingSourceName
+        )
         session.start()
         sinkWriter = writer
         captureSession = session
-        logger.info("Started host-side capture + CMIO sink writer")
+        logger.info("Started host-side capture + CMIO sink writer (initialSource=\(self.pendingSourceName ?? "<system-default>", privacy: .public))")
     }
 
     private func stopCapturePipeline() {
@@ -263,6 +276,12 @@ final class VirtualCameraActivator: NSObject, ObservableObject,
     }
 
     func setSource(named: String) -> CameraApplyResult {
+        // Always remember — even when the capture pipeline isn't
+        // running yet — so a consumer that connects later opens the
+        // right camera as its initial source instead of falling
+        // through to userPreferredCamera (which is the virtual
+        // camera itself under the override semantics).
+        pendingSourceName = named
         guard let captureSession else {
             // Toggle off OR mid-activation with capture not yet
             // running. Treat as silent no-op (.ok) so the engine's
@@ -301,6 +320,7 @@ final class VirtualCameraActivator: NSObject, ObservableObject,
             self.stopGraceTimer?.cancel()
             self.stopGraceTimer = nil
             self.consumerActive = false
+            self.pendingSourceName = nil
             self.stopCapturePipeline()
             self.state = .requiresRelaunch
         }

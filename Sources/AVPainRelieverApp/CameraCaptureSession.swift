@@ -43,8 +43,20 @@ final class CameraCaptureSession: NSObject {
     private var currentInput: AVCaptureDeviceInput?
     private var currentDeviceUniqueID: String?
 
-    init(sink: CMIOSinkWriter) {
+    /// Camera the active profile wanted as the source at session-
+    /// boot time. The activator remembers the most recent
+    /// `setSource(named:)` request and passes it here so that when
+    /// lazy capture starts up late (a Zoom client connects after a
+    /// profile-driven setSource fired against a then-nil session),
+    /// we open the right device on the first attempt instead of
+    /// falling through to `userPreferredCamera` — which under the
+    /// new override semantics is the virtual camera itself, and
+    /// would create a self-source feedback loop.
+    private let initialSourceName: String?
+
+    init(sink: CMIOSinkWriter, initialSourceName: String? = nil) {
         self.sink = sink
+        self.initialSourceName = initialSourceName
         super.init()
         NotificationCenter.default.addObserver(
             self,
@@ -168,14 +180,47 @@ final class CameraCaptureSession: NSObject {
         logger.info("sink.start() returned \(self.sinkStarted, privacy: .public)")
     }
 
-    /// Initial source pick before any profile has resolved. Mirrors
-    /// `AVFoundationCameraController.currentPreferredName`'s fallback
-    /// chain so the virtual camera's first frames match whatever the
-    /// system would naturally deliver to a fresh AVCapture client.
+    /// Initial source pick. Priority:
+    ///
+    /// 1. `initialSourceName` if the activator passed one — i.e. the
+    ///    active profile already named a source camera before the
+    ///    consumer connected and we'd otherwise have lost it.
+    /// 2. Fallback chain: userPreferred → systemPreferred → first
+    ///    discovered.
+    ///
+    /// In every case, the embedded virtual camera is rejected. If
+    /// the host opened its own output as a source we'd close a
+    /// feedback loop — host writes whatever it just read, the
+    /// extension forwards it back, frozen frame forever. Under the
+    /// `preferredCameraOverride` semantics `userPreferredCamera`
+    /// regularly *is* the virtual camera, which is exactly what we
+    /// want for AVFoundation-modern apps but exactly what we don't
+    /// want here.
     private func pickInitialDevice() -> AVCaptureDevice? {
-        if let user = AVCaptureDevice.userPreferredCamera { return user }
-        if let system = AVCaptureDevice.systemPreferredCamera { return system }
-        return Self.discoverySession().devices.first
+        if let name = initialSourceName,
+           let device = Self.findDevice(named: name)
+        {
+            return device
+        }
+        if let user = AVCaptureDevice.userPreferredCamera,
+           !Self.isVirtualCamera(user)
+        {
+            return user
+        }
+        if let system = AVCaptureDevice.systemPreferredCamera,
+           !Self.isVirtualCamera(system)
+        {
+            return system
+        }
+        return Self.discoverySession().devices
+            .first { !Self.isVirtualCamera($0) }
+    }
+
+    /// True iff `device` is the embedded AV Pain Reliever virtual
+    /// camera. Used to keep the host from ever opening its own
+    /// output as a capture source.
+    private static func isVirtualCamera(_ device: AVCaptureDevice) -> Bool {
+        device.uniqueID == VirtualCameraActivator.virtualCameraUID
     }
 
     /// Add an `AVCaptureDeviceInput` for `device` to the session.
@@ -246,7 +291,9 @@ final class CameraCaptureSession: NSObject {
     }
 
     private static func findDevice(named name: String) -> AVCaptureDevice? {
-        discoverySession().devices.first { $0.localizedName == name }
+        discoverySession().devices.first {
+            $0.localizedName == name && !isVirtualCamera($0)
+        }
     }
 
     private static func discoverySession() -> AVCaptureDevice.DiscoverySession {
