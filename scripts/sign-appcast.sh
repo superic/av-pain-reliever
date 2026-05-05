@@ -14,6 +14,13 @@
 #   - $RELEASE_NOTES_HTML  Pre-rendered HTML embedded as the item's
 #                          <description>. Sparkle uses this to populate
 #                          its "What's New" panel.
+#   - $CHANNEL             Sparkle release channel tag. Empty (default)
+#                          omits the <sparkle:channel> element entirely,
+#                          which is how stable releases stay visible to
+#                          every install. Set to "experimental" for
+#                          v0.2.x virtual-camera builds; only installs
+#                          that have allowlisted that channel will see
+#                          the item as an upgrade.
 #
 # Outputs to stdout:
 #   - The full <item> block (URL placeholder included; replace before
@@ -71,11 +78,21 @@ ${RELEASE_NOTES_HTML}
 "
 fi
 
+# Optional channel tag. When unset, Sparkle treats the item as
+# stable — every install considers it. When set (e.g.
+# "experimental"), only installs whose Updater has allowlisted
+# that channel will pick it up.
+CHANNEL_BLOCK=""
+if [[ -n "${CHANNEL:-}" ]]; then
+    CHANNEL_BLOCK="            <sparkle:channel>${CHANNEL}</sparkle:channel>
+"
+fi
+
 cat <<XML
         <item>
             <title>Version $VERSION</title>
 ${DESCRIPTION_BLOCK}            <pubDate>$PUBDATE</pubDate>
-            <sparkle:version>$VERSION</sparkle:version>
+${CHANNEL_BLOCK}            <sparkle:version>$VERSION</sparkle:version>
             <sparkle:shortVersionString>$VERSION</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
             <enclosure url="$ASSET_URL"

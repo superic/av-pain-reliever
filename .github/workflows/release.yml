@@ -242,6 +242,17 @@ jobs:
               echo "APPCAST_ITEM_FILE=" >> "$GITHUB_ENV"
               exit 0
           fi
+          # v0.2.x+ ships through the experimental Sparkle channel —
+          # only installs that have allowlisted "experimental" (via
+          # the Settings → General → Updates → Receive experimental
+          # updates toggle) see these items as available upgrades.
+          # v0.1.x stays on the empty/stable channel so every install
+          # picks them up automatically.
+          case "$VERSION_TAG" in
+              v0.0.0-*|v0.1.*) export CHANNEL= ;;
+              *) export CHANNEL=experimental ;;
+          esac
+          echo "Appcast channel: ${CHANNEL:-<stable>}"
           ITEM_FILE="$RUNNER_TEMP/appcast-item.xml"
           scripts/sign-appcast.sh dist/AVPainReliever.app.zip > "$ITEM_FILE"
           echo "APPCAST_ITEM_FILE=$ITEM_FILE" >> "$GITHUB_ENV"
