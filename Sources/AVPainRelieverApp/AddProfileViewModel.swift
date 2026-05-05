@@ -182,12 +182,15 @@ final class AddProfileViewModel: ObservableObject {
             }
         let disconnectedIDs = Set(disconnected.map(\.device))
 
-        // Live devices first (sorted as the watcher returned them),
-        // then disconnected entries pushed to the bottom by name so
-        // the active hardware stays grouped at the top of the list.
-        attachedDevices = liveSnapshot + disconnected.sorted {
-            $0.displayName < $1.displayName
-        }
+        // Two-tier sort for live devices: location-defining hardware
+        // (mics, speakers, cameras, capture cards, displays, docks,
+        // hubs — anything not flagged by `DevicePortability`) at the
+        // top, portable peripherals (keyboards, mice, phones,
+        // headphones, watches) at the bottom. Disconnected entries
+        // pushed to the very bottom by name so the active hardware
+        // stays grouped at the top.
+        attachedDevices = Self.sortedByTier(liveSnapshot)
+            + disconnected.sorted { $0.displayName < $1.displayName }
         disconnectedDeviceIDs = disconnectedIDs
 
         // Default selection: every currently-attached device,
@@ -230,6 +233,34 @@ final class AddProfileViewModel: ObservableObject {
 
     var outputDevices: [AudioDevice] {
         audioDevices.filter(\.supportsOutput)
+    }
+
+    /// Two-tier sort for the wizard's live device list. Top tier
+    /// holds devices that aren't flagged by `DevicePortability` —
+    /// mics, speakers, cameras, docks, hubs, capture cards, displays
+    /// — i.e. the hardware that defines a location. Bottom tier
+    /// holds the portable peripherals the wizard already suggests
+    /// unticking (keyboards, mice, phones, headphones, watches).
+    /// Within each tier, items sort alphabetically by `displayName`
+    /// so the order is stable across re-renders.
+    ///
+    /// Using the same predicate the row's "Suggested: untick" pill
+    /// uses keeps the visual signal (pill) and the spatial signal
+    /// (row position) in agreement — single source of truth in
+    /// `DevicePortability`.
+    private static func sortedByTier(_ devices: [NamedUSBDevice])
+        -> [NamedUSBDevice]
+    {
+        devices.sorted { lhs, rhs in
+            let lhsPortable = DevicePortability
+                .portabilityCategory(deviceName: lhs.name) != nil
+            let rhsPortable = DevicePortability
+                .portabilityCategory(deviceName: rhs.name) != nil
+            if lhsPortable != rhsPortable {
+                return !lhsPortable
+            }
+            return lhs.displayName < rhs.displayName
+        }
     }
 
     // MARK: - Name handling
