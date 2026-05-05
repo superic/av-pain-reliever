@@ -59,16 +59,21 @@ final class Updater {
         return true
     }
 
-    init() {
+    /// Sparkle holds a weak reference to its delegates, so we keep a
+    /// strong one here so the channel-allowlist callback survives.
+    private let channelDelegate: ChannelGatingDelegate
+
+    init(settings: SettingsStore) {
         // `startingUpdater: true` kicks off the scheduled-check loop
-        // immediately. Delegates are nil — Sparkle's defaults are
-        // fine for a single-channel public release: it'll fetch the
-        // appcast, prompt the user on first launch, and run
-        // background checks per the Info.plist's SUScheduledCheckInterval
-        // (omitted = 24h default).
+        // immediately. The delegate's `allowedChannels(for:)` hook is
+        // re-queried on every check, so flipping the experimental-
+        // updates toggle takes effect on the next scheduled tick or
+        // user-initiated check — no Updater rebuild needed.
+        let channelDelegate = ChannelGatingDelegate(settings: settings)
+        self.channelDelegate = channelDelegate
         let controller = SPUStandardUpdaterController(
             startingUpdater: true,
-            updaterDelegate: nil,
+            updaterDelegate: channelDelegate,
             userDriverDelegate: nil
         )
         self.controller = controller
@@ -112,5 +117,30 @@ final class Updater {
     func checkForUpdates() {
         NSApp.activate(ignoringOtherApps: true)
         controller.checkForUpdates(nil)
+    }
+}
+
+/// Sparkle delegate that controls which release channels the user is
+/// willing to receive. Default-empty allow-list means Sparkle only
+/// considers feed items WITHOUT a `<sparkle:channel>` tag — i.e.
+/// stable. When the user opts in via Settings, we return
+/// `["experimental"]` and items tagged with that channel become
+/// eligible. Multiple channels can be allowed simultaneously; for
+/// now there's only one experimental channel.
+///
+/// Held strongly by `Updater` because Sparkle stores its delegates
+/// as weak references — without our retention, the delegate would
+/// deallocate immediately after init and Sparkle would silently fall
+/// back to its default (no-channel-filtering) behaviour.
+private final class ChannelGatingDelegate: NSObject, SPUUpdaterDelegate {
+    private let settings: SettingsStore
+
+    init(settings: SettingsStore) {
+        self.settings = settings
+        super.init()
+    }
+
+    func allowedChannels(for updater: SPUUpdater) -> Set<String> {
+        settings.experimentalUpdates ? ["experimental"] : []
     }
 }
