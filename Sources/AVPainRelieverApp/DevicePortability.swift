@@ -78,42 +78,56 @@ enum DevicePortability {
         "airpods", "watch", "headphones", "headset", "earbuds", "buds",
     ]
 
-    /// Short label for high-priority "this defines a location"
-    /// devices — microphones, speakers, cameras, capture cards,
-    /// audio interfaces, displays. Mirror of `portabilityCategory`
-    /// but for the OTHER end of the importance scale: the wizard's
-    /// device-list sort floats these to the top so a user adding a
-    /// profile sees the hardware that distinguishes their dock
-    /// before they see anything generic.
+    /// Short label for "headline hardware" — the standalone,
+    /// dedicated devices a user is most likely to pick as their
+    /// audio in/out/camera defaults at this location. Drives the
+    /// wizard's green "Important: \(category)" pill. Mirror of
+    /// `portabilityCategory` but on the opposite end of the
+    /// importance scale.
     ///
-    /// Conservative same as the portability matcher — only words
-    /// that are reliably tied to location-defining hardware
-    /// regardless of brand. "Microphone" is safer than "blue"
-    /// (could be a vendor name); "audio" is safer than "stream"
-    /// (Stream Deck is a control deck, not audio).
-    static func priorityCategory(deviceName: String?) -> String? {
+    /// Specifically excludes display sub-components (LG UltraFine
+    /// Display Audio / Camera / Controls). Those are real,
+    /// functional USB devices — a Thunderbolt monitor exposes its
+    /// built-in camera, audio, and HID controls as separate USB
+    /// endpoints — but they're sub-components of a larger display,
+    /// not the dedicated hardware most users default to. A user
+    /// with the LG UltraFine plus an external webcam almost
+    /// always picks the external. Keeping display sub-components
+    /// off the Important list preserves the pill's signal value.
+    /// Users who DO default to a display's built-in camera can
+    /// still tick it manually — the pill is informational, not
+    /// gating.
+    static func importantCategory(deviceName: String?) -> String? {
         guard let name = deviceName?.lowercased(), !name.isEmpty else {
+            return nil
+        }
+        // Display / monitor hub-leg sub-components: skip even when
+        // they technically contain audio / camera keywords. The
+        // "ultrafine" check catches the LG UltraFine line whose
+        // camera/audio/controls all contain "UltraFine" in their
+        // product names; future monitors with similar branding
+        // would need their brand added here.
+        if name.contains("display") || name.contains("ultrafine") {
             return nil
         }
         if name.contains("microphone") || name.contains("podcast") {
             return "microphone"
         }
-        if name.contains("camera") || name.contains("capture") || name.contains("webcam") {
+        if name.contains("camera") || name.contains("webcam") {
             return "camera"
+        }
+        if name.contains("capture") {
+            return "capture card"
         }
         if name.contains("speaker") {
             return "speaker"
         }
-        // "audio" is broad — covers "Audio Interface", "Display Audio",
-        // "Thunderbolt 3 Audio". Useful but means we group docks-with-
-        // audio in with mics/speakers. Acceptable for sort priority;
-        // the alternative (more specific keywords) misses too many
-        // real-world products.
+        // "audio" without a display/ultrafine prefix is reliable
+        // shorthand for a dedicated audio interface (CalDigit
+        // Thunderbolt 3 Audio, RME, Apollo, etc.). The earlier
+        // exclusion drops display-audio sub-components.
         if name.contains("audio") || name.contains("dac") {
-            return "audio"
-        }
-        if name.contains("display") || name.contains("monitor") {
-            return "display"
+            return "audio interface"
         }
         return nil
     }

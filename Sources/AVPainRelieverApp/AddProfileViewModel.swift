@@ -122,6 +122,15 @@ final class AddProfileViewModel: ObservableObject {
     private let configURL: URL
     private let onSaved: () -> Void
     private let editingSlug: String?
+    /// Slugs of all profiles that already exist in the user's
+    /// config. The wizard consults this to suppress
+    /// `ProfileIcon.suggestedName` when its proposed slug is
+    /// already taken — auto-filling "home-office" when the user
+    /// already has a Home Office profile would just create a
+    /// pre-loaded collision they'd have to resolve at save time.
+    /// Empty set means "don't suppress" (used by tests + the
+    /// pre-collision-check codepath).
+    private let existingProfileSlugs: Set<String>
 
     /// Saved fingerprint from the profile being edited — preserved
     /// verbatim across `refresh()` so saved-but-disconnected devices
@@ -140,6 +149,7 @@ final class AddProfileViewModel: ObservableObject {
         cameraController: CameraController,
         configURL: URL,
         editing: Profile? = nil,
+        existingProfileSlugs: Set<String> = [],
         onSaved: @escaping () -> Void
     ) {
         self.watcher = watcher
@@ -148,6 +158,7 @@ final class AddProfileViewModel: ObservableObject {
         self.configURL = configURL
         self.onSaved = onSaved
         self.editingSlug = editing?.name
+        self.existingProfileSlugs = existingProfileSlugs
 
         if let profile = editing {
             // Pre-populate from the existing profile so the user can
@@ -211,15 +222,32 @@ final class AddProfileViewModel: ObservableObject {
             + disconnected.sorted { $0.displayName < $1.displayName }
         disconnectedDeviceIDs = disconnectedIDs
 
-        // Default selection: every currently-attached device,
-        // including unnamed hub legs. Capturing more is the safer
-        // default — the user knows what's plugged in right now and
-        // can uncheck peripherals (keyboards/mice/phones) that
-        // aren't location-specific. Including hub legs is fine
-        // because they're stable parts of the dock. (Skipped when
-        // editing — the saved fingerprint pre-populates selection.)
-        if selectedDeviceIDs.isEmpty {
-            selectedDeviceIDs = Set(liveSnapshot.map(\.device))
+        // Default selection: only the headline hardware classified
+        // as Important (mics, cameras, capture cards, dedicated
+        // audio interfaces). Earlier versions auto-ticked every
+        // attached device and required the user to deliberately
+        // untick the peripherals that travel — but that loaded
+        // cognitive work onto the user and produced over-broad
+        // fingerprints (a Magic Keyboard quietly winds up in a
+        // home-office fingerprint because the user forgot to
+        // untick it).
+        //
+        // Now: tick only the things we have a confident "this
+        // defines the location" signal on. The user actively ticks
+        // anything else they want in the fingerprint (hub legs,
+        // displays, Stream Decks, etc. — all visible but unticked).
+        // Skipped when editing: the saved fingerprint already
+        // populated `selectedDeviceIDs` before refresh() runs, so
+        // the empty-check fails and existing selections survive.
+        if selectedDeviceIDs.isEmpty && editingSlug == nil {
+            selectedDeviceIDs = Set(
+                liveSnapshot
+                    .filter {
+                        DevicePortability
+                            .importantCategory(deviceName: $0.name) != nil
+                    }
+                    .map(\.device)
+            )
         }
         audioDevices = audioController.availableDevices()
         cameras = cameraController.availableCameras()
@@ -239,7 +267,15 @@ final class AddProfileViewModel: ObservableObject {
         // editing keeps the existing name. The user can always rename.
         if name.isEmpty && editingSlug == nil {
             let deviceNames = liveSnapshot.compactMap { $0.name }
-            if let suggested = ProfileIcon.suggestedName(forDeviceNames: deviceNames) {
+            if let suggested = ProfileIcon.suggestedName(forDeviceNames: deviceNames),
+               !existingProfileSlugs.contains(suggested)
+            {
+                // Skip the auto-fill when a profile by the suggested
+                // slug already exists. The user clicking "Add Profile"
+                // is asking for a NEW location, not a recapture of
+                // the existing one — pre-loading the same name would
+                // just queue up a save-time collision they'd have to
+                // resolve.
                 name = PrettyName.format(suggested)
                 // Set AFTER the assignment — `name`'s didSet clears
                 // the flag, so we have to re-set true here for the
@@ -258,39 +294,36 @@ final class AddProfileViewModel: ObservableObject {
         audioDevices.filter(\.supportsOutput)
     }
 
-    /// Three-tier sort for the wizard's live device list.
+    /// Two-tier sort for the wizard's live device list. Top tier
+    /// holds devices that aren't flagged by `DevicePortability` —
+    /// docks, hubs, mics, speakers, cameras, capture cards,
+    /// displays, etc. — i.e. the location-bound hardware. Bottom
+    /// tier holds the portable peripherals the wizard already
+    /// suggests unticking (keyboards, mice, phones, headphones,
+    /// watches). Within each tier, items sort alphabetically by
+    /// `displayName` so the order is stable across re-renders.
     ///
-    /// - **Top: priority** — devices flagged by
-    ///   `DevicePortability.priorityCategory` (mics, speakers,
-    ///   cameras, capture cards, audio interfaces, displays). The
-    ///   hardware most likely to define a location.
-    /// - **Middle: neutral** — anything we don't classify either way
-    ///   (docks, hubs, card readers, control surfaces, brand-named
-    ///   peripherals our keyword lists don't catch).
-    /// - **Bottom: portable** — devices flagged by
-    ///   `DevicePortability.portabilityCategory` (keyboards, mice,
-    ///   phones, headphones, watches). Same predicate that powers
-    ///   the row's "Suggested: untick" pill, so the visual signal
-    ///   and the spatial signal agree.
-    ///
-    /// Within each tier, items sort alphabetically by `displayName`
-    /// so the order is stable across re-renders.
+    /// Important devices (mics, cameras, capture cards, dedicated
+    /// audio interfaces) get a green **Important** pill in the
+    /// row UI rather than being lifted to a separate tier — earlier
+    /// experimentation showed that for sophisticated docks almost
+    /// every device qualifies as "important," which collapsed the
+    /// tier and gave no visible benefit over alphabetical. The pill
+    /// gives the same signal without disturbing the row order.
+    /// Single source of truth for both pills:
+    /// `DevicePortability.importantCategory` /
+    /// `DevicePortability.portabilityCategory`.
     private static func sortedByTier(_ devices: [NamedUSBDevice])
         -> [NamedUSBDevice]
     {
-        func tier(of device: NamedUSBDevice) -> Int {
-            if DevicePortability.priorityCategory(deviceName: device.name) != nil {
-                return 0
+        devices.sorted { lhs, rhs in
+            let lhsPortable = DevicePortability
+                .portabilityCategory(deviceName: lhs.name) != nil
+            let rhsPortable = DevicePortability
+                .portabilityCategory(deviceName: rhs.name) != nil
+            if lhsPortable != rhsPortable {
+                return !lhsPortable
             }
-            if DevicePortability.portabilityCategory(deviceName: device.name) != nil {
-                return 2
-            }
-            return 1
-        }
-        return devices.sorted { lhs, rhs in
-            let lhsTier = tier(of: lhs)
-            let rhsTier = tier(of: rhs)
-            if lhsTier != rhsTier { return lhsTier < rhsTier }
             return lhs.displayName < rhs.displayName
         }
     }
