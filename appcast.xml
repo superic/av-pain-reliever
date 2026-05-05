@@ -355,5 +355,23 @@
                        type="application/octet-stream"
                        sparkle:edSignature="S3V97i1R1knPkVhzylBOJnTt9xRi3lBbkpNs5w3jO5zOGNfk5Xq1J+yZc2tr2LmhddgTaTv+ODpzSL9UYelzBQ==" length="2682760" />
         </item>
+        <item>
+            <title>Version 0.2.0.6</title>
+            <description><![CDATA[
+<h2>What's new</h2>
+<p>Brings the v0.1.18 wizard rework over to the experimental track.</p>
+<p>The Add Profile wizard used to start with every USB device pre-ticked and ask you to scan for the ones to remove. Now it flips: only the headline hardware (microphones, cameras, capture cards, dedicated audio interfaces) is auto-ticked. Everything else is visible but unticked — you actively tick anything else that defines this location.</p>
+<p>To make it legible, every device row wears one of three states. <strong>Green "Important: "</strong> on the auto-ticked headline gear. <strong>Muted gray "Travels with you"</strong> on portable peripherals (keyboards, mice, phones) — auto-unticked, the pill explains why your iPhone is in the list but not selected. <strong>No pill</strong> on neutral things like hub legs, displays, card readers — quietly available. The old yellow "Suggested: untick" nudge retired; once unticked is the default, the nudge is just noise.</p>
+<p>Plus: the wizard's profile-name auto-suggest finally checks for collisions. CalDigit attached used to silently fill in "Home Office" even when you already had one. Now it suppresses the suggestion if the slug is already in your config — leaving the field empty so you actually name your <em>new</em> profile. <strong>Money.</strong></p>
+]]></description>
+            <pubDate>Tue, 05 May 2026 03:49:06 +0000</pubDate>
+            <sparkle:channel>experimental</sparkle:channel>
+            <sparkle:version>0.2.0.6</sparkle:version>
+            <sparkle:shortVersionString>0.2.0.6</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/superic/av-pain-reliever/releases/download/v0.2.0.6/AVPainReliever.app.zip"
+                       type="application/octet-stream"
+                       sparkle:edSignature="0xjLGkMURkbrNewNRi8kA2I3eyb2A5gUQ80sPVXgmZHn3tU6j58ivbS5Kicjkr1/WxZ17x5YBfEmrQnB5kLjCA==" length="2875876" />
+        </item>
     </channel>
 </rss>
