@@ -151,6 +151,28 @@ final class CameraExtensionDeviceSource: NSObject, CMIOExtensionDeviceSource {
     private var consumedCount: UInt64 = 0
     private var forwardedCount: UInt64 = 0
     private var emptyConsumeCount: UInt64 = 0
+    private var heldFrameCount: UInt64 = 0
+
+    /// Most recent sample buffer received from the host. Re-emitted
+    /// when the sink yields nothing — keeps the source flowing during
+    /// the ~500 ms input-swap window inside `CameraCaptureSession`.
+    /// Without this, AVCapture clients (Zoom) see the call freeze or
+    /// drop while the new camera warms up.
+    private var lastFrameImage: CVPixelBuffer?
+    private var lastFrameFormat: CMFormatDescription?
+
+    /// Host time of the most recent frame we sent through the source
+    /// stream — whether a fresh sink frame or a held repeat. Used to
+    /// rate-limit hold-last-frame emissions to roughly the source's
+    /// declared frame duration.
+    private var lastSourceSendHostTimeNs: UInt64 = 0
+
+    /// Minimum spacing between hold-last-frame emissions. Matches the
+    /// source's declared 30 fps so AVCapture clients see a steady
+    /// cadence rather than a 90 Hz burst (the consume timer ticks at
+    /// 3× framerate, but only one in three should re-emit).
+    private static let heldFrameMinSpacingNs: UInt64 =
+        UInt64(1_000_000_000.0 / 30.0)
 
     private func consumeOne(client: CMIOExtensionClient) {
         streamSink.stream.consumeSampleBuffer(from: client) {
@@ -160,6 +182,11 @@ final class CameraExtensionDeviceSource: NSObject, CMIOExtensionDeviceSource {
                 logger.error("consume error: \(error.localizedDescription, privacy: .public)")
                 return
             }
+            let nowNs = UInt64(
+                CMClockGetTime(CMClockGetHostTimeClock()).seconds
+                    * Double(NSEC_PER_SEC)
+            )
+
             guard let sampleBuffer else {
                 self.emptyConsumeCount += 1
                 if self.emptyConsumeCount % 90 == 1 {
@@ -167,6 +194,7 @@ final class CameraExtensionDeviceSource: NSObject, CMIOExtensionDeviceSource {
                         "consume returned no buffer (\(self.emptyConsumeCount, privacy: .public) empty so far)"
                     )
                 }
+                self.maybeEmitHeldFrame(nowNs: nowNs)
                 return
             }
 
@@ -180,15 +208,23 @@ final class CameraExtensionDeviceSource: NSObject, CMIOExtensionDeviceSource {
             // Tell the sink the frame moved through, so its
             // `streamSinkEndOfData` and underrun counters stay
             // sane.
-            let nowNs = UInt64(
-                CMClockGetTime(CMClockGetHostTimeClock()).seconds
-                    * Double(NSEC_PER_SEC)
-            )
             let scheduled = CMIOExtensionScheduledOutput(
                 sequenceNumber: sequenceNumber,
                 hostTimeInNanoseconds: nowNs
             )
             self.streamSink.stream.notifyScheduledOutputChanged(scheduled)
+
+            // Cache the underlying image + format so we can re-emit
+            // it during a source swap when the sink temporarily
+            // dries up. Holding the CVPixelBuffer (not the parent
+            // CMSampleBuffer) lets us mint fresh sample buffers
+            // with current timestamps for each repeat.
+            if let image = CMSampleBufferGetImageBuffer(sampleBuffer),
+               let format = CMSampleBufferGetFormatDescription(sampleBuffer)
+            {
+                self.lastFrameImage = image
+                self.lastFrameFormat = format
+            }
 
             // Drop the frame on the floor if no AVCapture client is
             // currently watching the source. Saves the cost of
@@ -202,6 +238,7 @@ final class CameraExtensionDeviceSource: NSObject, CMIOExtensionDeviceSource {
                 discontinuity: [],
                 hostTimeInNanoseconds: ptsNs
             )
+            self.lastSourceSendHostTimeNs = nowNs
             self.forwardedCount += 1
             if self.forwardedCount == 1 || self.forwardedCount % 60 == 0 {
                 logger.info(
@@ -209,5 +246,68 @@ final class CameraExtensionDeviceSource: NSObject, CMIOExtensionDeviceSource {
                 )
             }
         }
+    }
+
+    /// Re-emit the cached frame on a sink-empty tick when (a) someone
+    /// is watching, (b) we have a frame to repeat, and (c) we haven't
+    /// already sent one recently. The "recent" gate keeps the source's
+    /// effective FPS pinned to ~30 even though the consume timer
+    /// fires at 90 Hz.
+    private func maybeEmitHeldFrame(nowNs: UInt64) {
+        guard streamSource.streamingCounter > 0,
+              let image = lastFrameImage,
+              let format = lastFrameFormat
+        else { return }
+        if nowNs - lastSourceSendHostTimeNs < Self.heldFrameMinSpacingNs {
+            return
+        }
+        guard let repeated = makeSampleBuffer(
+            image: image,
+            format: format,
+            hostTimeNs: nowNs
+        ) else { return }
+        streamSource.stream.send(
+            repeated,
+            discontinuity: [],
+            hostTimeInNanoseconds: nowNs
+        )
+        lastSourceSendHostTimeNs = nowNs
+        heldFrameCount += 1
+        if heldFrameCount == 1 || heldFrameCount % 30 == 0 {
+            logger.info(
+                "Held-last-frame emit #\(self.heldFrameCount, privacy: .public)"
+            )
+        }
+    }
+
+    private func makeSampleBuffer(
+        image: CVPixelBuffer,
+        format: CMFormatDescription,
+        hostTimeNs: UInt64
+    ) -> CMSampleBuffer? {
+        var timing = CMSampleTimingInfo(
+            duration: .invalid,
+            presentationTimeStamp: CMTime(
+                value: CMTimeValue(hostTimeNs),
+                timescale: CMTimeScale(NSEC_PER_SEC)
+            ),
+            decodeTimeStamp: .invalid
+        )
+        var out: CMSampleBuffer?
+        let status = CMSampleBufferCreateForImageBuffer(
+            allocator: kCFAllocatorDefault,
+            imageBuffer: image,
+            dataReady: true,
+            makeDataReadyCallback: nil,
+            refcon: nil,
+            formatDescription: format,
+            sampleTiming: &timing,
+            sampleBufferOut: &out
+        )
+        if status != noErr {
+            logger.error("makeSampleBuffer failed: \(status, privacy: .public)")
+            return nil
+        }
+        return out
     }
 }

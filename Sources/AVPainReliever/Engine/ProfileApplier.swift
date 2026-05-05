@@ -24,16 +24,19 @@ public protocol ApplierLogger {
 public final class ProfileApplier {
     private let audio: AudioController
     private let camera: CameraController?
+    private let virtualCameraSource: VirtualCameraSourceController?
     private let logger: ApplierLogger
     private var lastAppliedName: String?
 
     public init(
         audio: AudioController,
         camera: CameraController? = nil,
+        virtualCameraSource: VirtualCameraSourceController? = nil,
         logger: ApplierLogger
     ) {
         self.audio = audio
         self.camera = camera
+        self.virtualCameraSource = virtualCameraSource
         self.logger = logger
     }
 
@@ -52,6 +55,7 @@ public final class ProfileApplier {
         }
         if let cameraName = profile.camera {
             applyCamera(cameraName)
+            applyVirtualCameraSource(cameraName)
         }
 
         lastAppliedName = profile.name
@@ -81,6 +85,19 @@ public final class ProfileApplier {
             logger.info("set preferred camera: \(name)")
         case .notFound:
             logger.warn("camera '\(name)' not found — skipping (it may not be currently attached)")
+        }
+    }
+
+    private func applyVirtualCameraSource(_ name: String) {
+        // Silently skipped on v0.1.x builds (no virtual camera
+        // bundled) and on v0.2.x launches without
+        // AVPR_ACTIVATE_VIRTUAL_CAMERA=1. Both paths inject nil.
+        guard let virtualCameraSource else { return }
+        switch virtualCameraSource.setSource(named: name) {
+        case .ok:
+            logger.info("set virtual camera source: \(name)")
+        case .notFound:
+            logger.warn("virtual camera source '\(name)' not found — skipping (it may not be currently attached)")
         }
     }
 }

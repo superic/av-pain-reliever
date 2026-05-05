@@ -1,5 +1,6 @@
 import Foundation
 import SystemExtensions
+import AVPainReliever
 import os.log
 
 private let logger = Logger(
@@ -29,6 +30,15 @@ final class VirtualCameraActivator: NSObject, OSSystemExtensionRequestDelegate {
     private static var retained: VirtualCameraActivator?
     private static var sinkWriter: CMIOSinkWriter?
     private static var captureSession: CameraCaptureSession?
+
+    /// The running capture session as a `VirtualCameraSourceController`,
+    /// or nil if the env-var-gated activator never ran (v0.1.x build,
+    /// or v0.2.x launched without `AVPR_ACTIVATE_VIRTUAL_CAMERA=1`).
+    /// `AppDelegate.buildEngine` reads this to plumb the active
+    /// profile's camera selection into the virtual camera.
+    static var virtualCameraSource: VirtualCameraSourceController? {
+        captureSession
+    }
 
     /// Stable UUID matching the extension's
     /// `CameraExtensionDeviceSource.deviceUUID`. The host uses this

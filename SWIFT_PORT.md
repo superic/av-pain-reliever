@@ -2448,12 +2448,17 @@ the extension can't capture"):
    source stream that AVCapture clients (Zoom, Photo Booth, etc.)
    read. Initial XPC implementation was abandoned — see "Why XPC
    didn't work for the frame pipe" below.
-3. **M3 — Source switching + hold-last-frame.** Host app accepts
-   `setSourceCamera(uniqueID:)` over the XPC service, swaps the
-   `AVCaptureSession`'s source, and pauses the frame feed for
-   ~500 ms while the new source warms up. Extension holds the
-   last frame internally during the pause. Goal: prove dynamic
-   switching works without dropping the Zoom call.
+3. **M3 — Source switching + hold-last-frame.** SHIPPED
+   2026-05-04. Engine layer drives the host's running
+   `AVCaptureSession` directly through a new
+   `VirtualCameraSourceController` adapter — no XPC (M2's
+   architecture pivot eliminated the XPC service entirely). The
+   active profile's `camera` field becomes both the system
+   `userPreferredCamera` (existing behavior) AND the virtual
+   camera's source (new). Extension holds the most recent frame
+   and re-emits it at 30 fps when the sink temporarily dries up,
+   covering the ~500 ms input-swap window so Zoom doesn't see a
+   freeze.
 4. **M4 — Profile integration.** `VirtualCameraController`
    protocol + both implementations (no-op + CMIO).
    `ProfileApplier` wired up. Settings toggle to install/enable.
@@ -2470,11 +2475,32 @@ the extension can't capture"):
 
 ### Deferred / open items
 
-- **Hold-last-frame exact duration.** 500 ms is a starting point;
-  tune in M3 once we can see the actual switch on Zoom.
+- **Hold-last-frame exact duration.** Resolved in M3: there is no
+  fixed duration — the extension repeats the cached frame at 30 fps
+  for as long as the sink stays empty AND a client is watching.
+  Verified on a manual switch from `home-office` → `laptop` on
+  2026-05-04: cold-start gap on first client connect was covered by
+  one held emit before fresh frames took over.
 - **Behavior when no source camera is available** (profile says
-  camera X, X is unplugged). Black frame? "No camera connected"
-  placeholder image? Hold last frame indefinitely? Decide in M3.
+  camera X, X is unplugged). Currently logged as
+  `virtual camera source 'X' not found — skipping`; the running
+  session keeps the previous source and the virtual camera continues
+  to deliver that. No black frame, no placeholder. Revisit if the
+  user reports it as confusing in practice.
+- **Format negotiation for non-FaceTime cameras.** Resolved as
+  part of M3 (2026-05-04). Diagnosis: forced
+  `kCVPixelFormatType_32BGRA` at 1280×720 in the host's
+  `videoSettings` works for FaceTime HD but silently dropped
+  every frame from the user's HDMI to U3 capture card
+  (vendor 0x1e4e / product 0x701f) which natively delivers
+  `420v` (NV12) at 1920×1080. Fix: host accepts the device's
+  native format; `CMIOSinkWriter` runs each frame through
+  `VTPixelTransferSession` to convert to 1280×720 BGRA before
+  enqueueing. `CVPixelBufferPool` recycles the destination
+  buffers so steady-state capture doesn't churn allocations.
+  Verified end-to-end on both `home-office` (HDMI capture, NV12
+  1080p source path) and `laptop` (FaceTime HD, BGRA 720p
+  passthrough path) profiles.
 - **Resolution / format negotiation.** Match source for V2; revisit
   if Zoom complains about specific formats.
 - **Uninstall flow.** Settings should offer a "Disable virtual
@@ -2700,6 +2726,120 @@ The OBS-style sink-stream approach sidesteps this entirely:
 CMIO already has cross-process IOSurface plumbing built in,
 and using the second stream as a sink reuses that plumbing for
 free. No Mach services to register, no XPC code to maintain.
+
+### M3 — profile-driven source switching + hold-last-frame (SHIPPED 2026-05-04)
+
+End-to-end: changing the active profile (manually or by docking
+to a known location) swaps the virtual camera's source camera in
+the running `AVCaptureSession`, and the extension covers the
+~500 ms warm-up gap by re-emitting the last good frame at 30 fps.
+Zoom stays connected; the picture freezes for ~500 ms then comes
+alive on the new source. No call drop.
+
+Architecture (no XPC — M2's pivot eliminated it permanently):
+
+- **Engine layer** (`Sources/AVPainReliever/Adapters/CameraController.swift`):
+  - New `VirtualCameraSourceController` protocol with a single
+    `setSource(named:) -> CameraApplyResult` method. Mirrors the
+    existing `CameraController` shape so `ProfileApplier` handles
+    the two adapters symmetrically.
+  - `ProfileApplier` accepts an optional
+    `virtualCameraSource:`. When `profile.camera` is set it
+    drives BOTH the system `userPreferredCamera` (legacy
+    behavior, for AVFoundation-modern apps) AND the virtual
+    camera's source (new, for Zoom/Slack/Teams that ignore the
+    system preference but follow the AV Pain Reliever device).
+  - Nil injection = silent no-op. Production wires it only when
+    the env-var-gated activator booted the host capture pipeline;
+    v0.1.x and "didn't ask for virtual camera" launches inject
+    nil with no behavior change.
+
+- **Host app** (`Sources/AVPainRelieverApp/CameraCaptureSession.swift`):
+  - Refactored away from the hardcoded `.builtInWideAngleCamera`
+    lookup. Initial source is picked from the same fallback chain
+    `AVFoundationCameraController.currentPreferredName` uses
+    (`userPreferredCamera` → `systemPreferredCamera` → first
+    discovered) so the first frames match what a fresh AVCapture
+    client would naturally see.
+  - New `switchSource(toLocalizedName:)` runs on the capture
+    queue, looks up the device by `localizedName` (matches the
+    profile's camera field), and swaps inputs inside a
+    `beginConfiguration` / `commitConfiguration` block. The
+    session keeps running across the swap — no
+    `stopRunning`/`startRunning` cycle.
+  - `videoSettings` no longer forces a pixel format or
+    dimensions; the device delivers its native format
+    (FaceTime HD ships BGRA 720p, the user's HDMI capture card
+    ships NV12 1080p, etc) and the conversion happens
+    downstream in `CMIOSinkWriter`. M2's forced settings worked
+    for FaceTime but silently dropped every frame from the
+    HDMI capture card.
+  - Conforms to `VirtualCameraSourceController`. The static
+    `VirtualCameraActivator.virtualCameraSource` accessor exposes
+    the running session to `AppDelegate.buildEngine` so the
+    `ProfileApplier` gets the live adapter.
+  - `applicationDidFinishLaunching` order changed:
+    `VirtualCameraActivator.activateIfRequested()` now runs
+    BEFORE `bootEngine()` so the engine's first
+    evaluate-and-apply pass finds a live source to drive.
+
+- **Host's CMIO sink writer** (`Sources/AVPainRelieverApp/CMIOSinkWriter.swift`):
+  - Added a `VTPixelTransferSession` + `CVPixelBufferPool` pair
+    that converts every incoming frame to 1280×720 BGRA before
+    `CMSimpleQueueEnqueue`. Hardware-accelerated where the GPU
+    supports it; the pool recycles destination buffers so
+    steady-state capture allocates nothing per frame.
+  - Fast path for inputs that already match (FaceTime HD,
+    Continuity Camera) — passthrough, zero copy.
+  - Format description is re-derived per pool buffer (cached by
+    `CVPixelBuffer` pointer). Sharing one description across
+    different source frames gets rejected with -12743 because
+    VT attaches source-derived colorspace metadata to the
+    destination, and `CMSampleBufferCreateForImageBuffer`
+    validates strictly.
+  - `Host frame format: <fourcc> <w>x<h> — convert+scale|passthrough`
+    is logged once per (format, dimensions) signature change
+    so a profile switch is visible without flooding the log.
+
+- **Extension** (`Sources/AVPainRelieverCameraExtension/CameraExtensionDevice.swift`):
+  - Caches the most recent `(CVPixelBuffer, CMFormatDescription)`
+    pair from the sink. On each consume tick that yields nil and
+    the source has at least one watcher, mints a fresh
+    `CMSampleBuffer` over the cached pixel buffer with the
+    current host time and sends it through the source stream.
+  - Held emissions are rate-limited to ~30 fps (matches the
+    source's declared `frameDuration`) so the 90 Hz consume
+    timer doesn't burst the source at 3× framerate.
+  - Holding the underlying `CVPixelBuffer` (not the parent
+    `CMSampleBuffer`) lets each repeat carry a fresh PTS without
+    AVCapture clients seeing duplicate timestamps.
+
+Wiring summary:
+
+```
+profile.camera = "Logitech BRIO"
+    │
+    ▼
+ProfileApplier.applyVirtualCameraSource("Logitech BRIO")
+    │
+    ▼
+CameraCaptureSession.setSource(named:)
+    │
+    ▼  (capture queue)
+session.beginConfiguration()
+remove old input
+add new AVCaptureDeviceInput(BRIO)
+session.commitConfiguration()
+    │
+    ▼  (~500 ms while BRIO warms up — sink dry)
+extension consumeOne() returns nil
+    │
+    ▼
+extension re-emits last cached frame at 30 fps to source
+    │
+    ▼
+Zoom keeps seeing 30 fps — no freeze, no drop
+```
 
 ### M2 lessons (gotchas the architecture or first attempts hit)
 

@@ -1,6 +1,7 @@
 import Foundation
 import AVFoundation
 import CoreVideo
+import AVPainReliever
 import os.log
 
 private let logger = Logger(
@@ -8,20 +9,27 @@ private let logger = Logger(
     category: "CameraCaptureSession"
 )
 
-/// Captures from the built-in webcam (hardcoded for M2 dev) and
-/// hands each frame to `CMIOSinkWriter`, which enqueues it on the
-/// virtual camera's sink stream.
+/// Captures from a webcam and hands each frame to `CMIOSinkWriter`,
+/// which enqueues it on the virtual camera's sink stream. The host
+/// app is a normal user-process AVFoundation client — no sandbox,
+/// no recursion through CMIO. TCC permission for the camera is
+/// granted to the host on first use; the extension never touches
+/// AVFoundation.
 ///
-/// The host app is a normal user-process AVFoundation client — no
-/// sandbox, no recursion through CMIO. TCC permission for the
-/// camera is granted to the host on first use; the extension never
-/// touches AVFoundation.
+/// Source selection:
 ///
-/// M3 will replace the hardcoded `.builtInWideAngleCamera` lookup
-/// with profile-driven source-camera switching. M4 will add
-/// "should we be capturing right now" lifecycle awareness so the
-/// camera light only comes on when an AVCapture client actually
-/// has the virtual camera open.
+/// - First start picks the system's preferred camera (`userPreferredCamera`
+///   → `systemPreferredCamera` → first discovered) so the virtual
+///   camera shows *something* before the engine has resolved a
+///   profile.
+/// - `setSource(named:)` swaps inputs on the running session at
+///   runtime. The active profile drives this through
+///   `VirtualCameraSourceController` from `ProfileApplier`.
+///
+/// Switching uses `beginConfiguration` / `commitConfiguration` so
+/// the session keeps running across the swap — the only gap is the
+/// ~500 ms it takes the new device to start delivering frames. The
+/// extension covers that gap by holding the last frame.
 final class CameraCaptureSession: NSObject {
     private let session = AVCaptureSession()
     private let captureQueue = DispatchQueue(
@@ -31,6 +39,9 @@ final class CameraCaptureSession: NSObject {
     private let sink: CMIOSinkWriter
     private var sinkStarted = false
     private var capturedFrameCount: UInt64 = 0
+    private var output: AVCaptureVideoDataOutput?
+    private var currentInput: AVCaptureDeviceInput?
+    private var currentDeviceUniqueID: String?
 
     init(sink: CMIOSinkWriter) {
         self.sink = sink
@@ -59,7 +70,7 @@ final class CameraCaptureSession: NSObject {
     }
 
     /// Boots up capture asynchronously. Returns immediately.
-    /// Failures are logged; M2 doesn't surface them through any UI.
+    /// Failures are logged; the menu bar doesn't surface them today.
     func start() {
         captureQueue.async { [weak self] in
             self?.bootIfAuthorized()
@@ -107,46 +118,34 @@ final class CameraCaptureSession: NSObject {
             return
         }
 
-        guard
-            let device = AVCaptureDevice.default(
-                .builtInWideAngleCamera,
-                for: .video,
-                position: .unspecified
-            )
-        else {
-            logger.error("No built-in wide-angle camera found")
+        guard let device = pickInitialDevice() else {
+            logger.error("No video capture devices available")
             return
         }
-        logger.info("Found capture device: \(device.localizedName, privacy: .public) (\(device.uniqueID, privacy: .public))")
+        logger.info("Initial capture device: \(device.localizedName, privacy: .public) (\(device.uniqueID, privacy: .public))")
 
         session.beginConfiguration()
         session.sessionPreset = .hd1280x720
 
-        do {
-            let input = try AVCaptureDeviceInput(device: device)
-            guard session.canAddInput(input) else {
-                logger.error("Cannot add camera input")
-                session.commitConfiguration()
-                return
-            }
-            session.addInput(input)
-        } catch {
-            logger.error("AVCaptureDeviceInput failed: \(error.localizedDescription, privacy: .public)")
+        guard installInput(device: device) else {
             session.commitConfiguration()
             return
         }
 
         let output = AVCaptureVideoDataOutput()
+        // Deliver the device's NATIVE pixel format and dimensions.
+        // M2 forced 1280×720 BGRA via `videoSettings`, which works
+        // for the FaceTime HD camera but silently produces zero
+        // frames on USB capture cards (HDMI to U3 capture
+        // 0x1e4e/0x701f is the user's known case — it advertises
+        // BGRA in `availableVideoPixelFormatTypes` but the actual
+        // delivery path drops every frame). Letting the device
+        // pick its own format makes the AVCaptureSession work for
+        // every camera; `CMIOSinkWriter` then converts to
+        // 1280×720 BGRA via `VTPixelTransferSession` before
+        // enqueueing — that's the format the extension's source
+        // stream advertises to AVCapture clients.
         output.videoSettings = [
-            kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
-            // Force frames to the dimensions the extension's source
-            // stream declared, regardless of the camera's native
-            // resolution. AVFoundation does the downscale in
-            // hardware where possible. Without these keys the
-            // FaceTime HD Camera ignores .hd1280x720 and ships
-            // 1920x1080.
-            kCVPixelBufferWidthKey as String: 1280,
-            kCVPixelBufferHeightKey as String: 720,
             kCVPixelBufferIOSurfacePropertiesKey as String: [:],
         ]
         output.alwaysDiscardsLateVideoFrames = true
@@ -158,6 +157,7 @@ final class CameraCaptureSession: NSObject {
             return
         }
         session.addOutput(output)
+        self.output = output
         session.commitConfiguration()
 
         logger.info("Calling session.startRunning()")
@@ -166,6 +166,100 @@ final class CameraCaptureSession: NSObject {
 
         sinkStarted = sink.start()
         logger.info("sink.start() returned \(self.sinkStarted, privacy: .public)")
+    }
+
+    /// Initial source pick before any profile has resolved. Mirrors
+    /// `AVFoundationCameraController.currentPreferredName`'s fallback
+    /// chain so the virtual camera's first frames match whatever the
+    /// system would naturally deliver to a fresh AVCapture client.
+    private func pickInitialDevice() -> AVCaptureDevice? {
+        if let user = AVCaptureDevice.userPreferredCamera { return user }
+        if let system = AVCaptureDevice.systemPreferredCamera { return system }
+        return Self.discoverySession().devices.first
+    }
+
+    /// Add an `AVCaptureDeviceInput` for `device` to the session.
+    /// Caller is responsible for `beginConfiguration` /
+    /// `commitConfiguration`. Updates `currentInput` and
+    /// `currentDeviceUniqueID` on success.
+    private func installInput(device: AVCaptureDevice) -> Bool {
+        do {
+            let input = try AVCaptureDeviceInput(device: device)
+            guard session.canAddInput(input) else {
+                logger.error("Cannot add input for \(device.localizedName, privacy: .public)")
+                return false
+            }
+            session.addInput(input)
+            currentInput = input
+            currentDeviceUniqueID = device.uniqueID
+            return true
+        } catch {
+            logger.error("AVCaptureDeviceInput failed for \(device.localizedName, privacy: .public): \(error.localizedDescription, privacy: .public)")
+            return false
+        }
+    }
+
+    /// Swap the running session's input to the camera with the given
+    /// `localizedName`. No-ops when the source is already that
+    /// device. Runs on `captureQueue` so it serializes with frame
+    /// delivery.
+    func switchSource(toLocalizedName name: String) {
+        captureQueue.async { [weak self] in
+            self?.swapInputLocked(toLocalizedName: name)
+        }
+    }
+
+    private func swapInputLocked(toLocalizedName name: String) {
+        guard let device = Self.findDevice(named: name) else {
+            logger.error("switchSource: no camera with localizedName '\(name, privacy: .public)' — skipping")
+            return
+        }
+        if device.uniqueID == currentDeviceUniqueID {
+            logger.info("switchSource: already on '\(name, privacy: .public)' — no-op")
+            return
+        }
+
+        logger.info("switchSource: '\(self.currentDeviceUniqueID ?? "<none>", privacy: .public)' → '\(device.uniqueID, privacy: .public)' (\(name, privacy: .public))")
+
+        session.beginConfiguration()
+        if let currentInput {
+            session.removeInput(currentInput)
+            self.currentInput = nil
+            self.currentDeviceUniqueID = nil
+        }
+        _ = installInput(device: device)
+        session.commitConfiguration()
+
+        if !session.isRunning {
+            // installAndStart never finished (e.g. initial discovery
+            // returned nil). Start now that we have a real source.
+            logger.info("switchSource: session was not running — starting")
+            session.startRunning()
+        }
+
+        if !sinkStarted {
+            sinkStarted = sink.start()
+            if sinkStarted {
+                logger.info("switchSource: sink started after source swap")
+            }
+        }
+    }
+
+    private static func findDevice(named name: String) -> AVCaptureDevice? {
+        discoverySession().devices.first { $0.localizedName == name }
+    }
+
+    private static func discoverySession() -> AVCaptureDevice.DiscoverySession {
+        AVCaptureDevice.DiscoverySession(
+            deviceTypes: [
+                .builtInWideAngleCamera,
+                .external,
+                .continuityCamera,
+                .deskViewCamera,
+            ],
+            mediaType: .video,
+            position: .unspecified
+        )
     }
 }
 
@@ -208,5 +302,15 @@ extension CameraCaptureSession: AVCaptureVideoDataOutputSampleBufferDelegate {
         let hostTime = CMClockGetTime(CMClockGetHostTimeClock())
         let hostTimeNs = UInt64(hostTime.seconds * Double(NSEC_PER_SEC))
         sink.enqueue(pixelBuffer: pixelBuffer, hostTimeNs: hostTimeNs)
+    }
+}
+
+extension CameraCaptureSession: VirtualCameraSourceController {
+    func setSource(named: String) -> CameraApplyResult {
+        guard Self.findDevice(named: named) != nil else {
+            return .notFound
+        }
+        switchSource(toLocalizedName: named)
+        return .ok
     }
 }

@@ -2,6 +2,7 @@ import Foundation
 import CoreMediaIO
 import CoreMedia
 import CoreVideo
+import VideoToolbox
 import os.log
 
 private let logger = Logger(
@@ -29,20 +30,50 @@ final class CMIOSinkWriter {
     private var streamID: CMIOStreamID = 0
     private var queue: CMSimpleQueue?
 
-    /// Cached format description matching the most recent pixel
-    /// buffer. We derive this per-frame rather than pre-building
-    /// because the camera's actual delivered dimensions may not
-    /// match what `sessionPreset` requested (e.g., FaceTime HD
-    /// camera ignores `.hd1280x720` and ships 1920x1080 unless
-    /// width/height keys are set on the output's videoSettings).
-    private var formatDescription: CMFormatDescription?
-    private var formatDescriptionDimensions: (Int, Int) = (0, 0)
+    /// Format description used for the most recent enqueue,
+    /// keyed by the underlying pixel buffer pointer. Re-derived
+    /// when the buffer changes — VT-converted destination
+    /// buffers carry source-derived color attachments that the
+    /// strict CMSampleBuffer validator (-12743) rejects when a
+    /// format description from one buffer is reused for another,
+    /// even when dimensions + format are identical. M2's lesson:
+    /// derive the format description from the SAME buffer you're
+    /// wrapping. The pool recycles a small handful of buffers, so
+    /// in steady state the cache hits 90%+ even with this strict
+    /// keying.
+    private var lastFormatBufferPtr: UnsafeRawPointer?
+    private var lastFormatDescription: CMFormatDescription?
+
+    /// Convert + scale arbitrary input pixel buffers (any format,
+    /// any dimensions — capture cards typically deliver YUV at
+    /// 1080p) to the target 1280×720 BGRA. Hardware-accelerated
+    /// where the GPU supports it. Created lazily on first enqueue
+    /// so we don't pay the cost when the host isn't producing.
+    private var transferSession: VTPixelTransferSession?
+
+    /// Recycles the destination BGRA pixel buffers VT writes into.
+    /// Pool size is left to CV defaults (small, refill as needed)
+    /// — capture is steady-state at 30 fps so we'd retain at most
+    /// a couple of buffers in flight.
+    private var bufferPool: CVPixelBufferPool?
+
+    /// Logged once per (format, dimensions) pair the host
+    /// delivers, so a profile change shows up in the log without
+    /// flooding with one line per frame.
+    private var lastLoggedInputSignature: (OSType, Int, Int) = (0, 0, 0)
+
+    /// Output target. The extension's source stream advertises
+    /// 1280×720 BGRA; matching here avoids a format mismatch on
+    /// AVCapture clients that read from the source.
+    private static let outputWidth: Int = 1280
+    private static let outputHeight: Int = 720
+    private static let outputFormat: OSType = kCVPixelFormatType_32BGRA
 
     init(deviceUID: String, width: Int32, height: Int32) {
         self.deviceUID = deviceUID
         // width/height retained as ignored params for backward-
-        // compat with the call site; the actual format used at
-        // runtime is derived per-pixel-buffer below.
+        // compat with the call site; the output target is fixed
+        // at 1280×720 BGRA (matches the extension's source format).
         _ = width
         _ = height
     }
@@ -90,6 +121,11 @@ final class CMIOSinkWriter {
         deviceID = 0
         streamID = 0
         queue = nil
+        transferSession = nil
+        bufferPool = nil
+        lastFormatBufferPtr = nil
+        lastFormatDescription = nil
+        lastLoggedInputSignature = (0, 0, 0)
     }
 
     private var enqueueCount: UInt64 = 0
@@ -107,9 +143,13 @@ final class CMIOSinkWriter {
             return
         }
 
-        guard let formatDescription = formatDescription(for: pixelBuffer) else {
-            return
-        }
+        logIncomingFormatIfChanged(pixelBuffer: pixelBuffer)
+
+        guard let convertedBuffer = convertToOutputBuffer(input: pixelBuffer)
+        else { return }
+
+        guard let formatDescription = ensureOutputFormatDescription(for: convertedBuffer)
+        else { return }
 
         var timing = CMSampleTimingInfo(
             duration: .invalid,
@@ -122,7 +162,7 @@ final class CMIOSinkWriter {
         var sampleBuffer: CMSampleBuffer?
         let status = CMSampleBufferCreateForImageBuffer(
             allocator: kCFAllocatorDefault,
-            imageBuffer: pixelBuffer,
+            imageBuffer: convertedBuffer,
             dataReady: true,
             makeDataReadyCallback: nil,
             refcon: nil,
@@ -257,16 +297,18 @@ final class CMIOSinkWriter {
         return nil
     }
 
-    /// Returns a format description matching the supplied pixel
-    /// buffer. Cached so steady-state captures don't allocate a
-    /// fresh description per frame.
-    private func formatDescription(for pixelBuffer: CVPixelBuffer)
+    /// Returns a format description derived from the supplied
+    /// pixel buffer. Cached against the buffer's pointer because
+    /// the pool recycles a small handful of IOSurface-backed
+    /// buffers — same pointer → same attachments → cache hit.
+    /// New pointer → rebuild, because VT-attached colorspace
+    /// metadata differs per source frame.
+    private func ensureOutputFormatDescription(for pixelBuffer: CVPixelBuffer)
         -> CMFormatDescription?
     {
-        let width = CVPixelBufferGetWidth(pixelBuffer)
-        let height = CVPixelBufferGetHeight(pixelBuffer)
-        if let cached = formatDescription,
-           formatDescriptionDimensions == (width, height)
+        let ptr = Unmanaged.passUnretained(pixelBuffer).toOpaque()
+        if let cached = lastFormatDescription,
+           lastFormatBufferPtr == UnsafeRawPointer(ptr)
         {
             return cached
         }
@@ -280,12 +322,130 @@ final class CMIOSinkWriter {
             logger.error("CMVideoFormatDescriptionCreateForImageBuffer failed: \(status)")
             return nil
         }
-        formatDescription = fmt
-        formatDescriptionDimensions = (width, height)
-        logger.info(
-            "Built format description for \(width, privacy: .public)x\(height, privacy: .public)"
-        )
+        lastFormatBufferPtr = UnsafeRawPointer(ptr)
+        lastFormatDescription = fmt
         return fmt
+    }
+
+    /// Convert + scale `input` into a freshly-pooled 1280×720 BGRA
+    /// pixel buffer. Returns the input as-is when it already
+    /// matches the target format AND dimensions, so built-in
+    /// cameras that natively deliver 1280×720 BGRA stay on the
+    /// zero-copy fast path. USB capture cards (HDMI to U3 capture
+    /// is the user's known case) deliver 1080p YUV422 — those
+    /// flow through `VTPixelTransferSessionTransferImage` for
+    /// hardware-accelerated downscale + colorspace conversion.
+    private func convertToOutputBuffer(input: CVPixelBuffer) -> CVPixelBuffer? {
+        let inputWidth = CVPixelBufferGetWidth(input)
+        let inputHeight = CVPixelBufferGetHeight(input)
+        let inputFormat = CVPixelBufferGetPixelFormatType(input)
+        if inputFormat == Self.outputFormat
+            && inputWidth == Self.outputWidth
+            && inputHeight == Self.outputHeight
+        {
+            return input
+        }
+
+        guard let session = ensureTransferSession(),
+              let pool = ensureBufferPool()
+        else { return nil }
+
+        var destination: CVPixelBuffer?
+        let createStatus = CVPixelBufferPoolCreatePixelBuffer(
+            kCFAllocatorDefault, pool, &destination
+        )
+        guard createStatus == kCVReturnSuccess, let destination else {
+            logger.error(
+                "CVPixelBufferPoolCreatePixelBuffer failed: \(createStatus, privacy: .public)"
+            )
+            return nil
+        }
+
+        let xferStatus = VTPixelTransferSessionTransferImage(
+            session,
+            from: input,
+            to: destination
+        )
+        guard xferStatus == noErr else {
+            logger.error(
+                "VTPixelTransferSessionTransferImage failed: \(xferStatus, privacy: .public)"
+            )
+            return nil
+        }
+        return destination
+    }
+
+    private func ensureTransferSession() -> VTPixelTransferSession? {
+        if let transferSession { return transferSession }
+        var session: VTPixelTransferSession?
+        let status = VTPixelTransferSessionCreate(
+            allocator: kCFAllocatorDefault,
+            pixelTransferSessionOut: &session
+        )
+        guard status == noErr, let session else {
+            logger.error("VTPixelTransferSessionCreate failed: \(status, privacy: .public)")
+            return nil
+        }
+        // High-quality scaling — hardware path on Apple Silicon,
+        // worth the negligible cost on Intel too. The session
+        // reads the source/destination buffer attributes to pick
+        // an internal pixel-transfer pipeline; no further config
+        // needed for our 30-fps single-stream use case.
+        VTSessionSetProperty(
+            session,
+            key: kVTPixelTransferPropertyKey_ScalingMode,
+            value: kVTScalingMode_Letterbox
+        )
+        transferSession = session
+        return session
+    }
+
+    private func ensureBufferPool() -> CVPixelBufferPool? {
+        if let bufferPool { return bufferPool }
+        let attrs: [String: Any] = [
+            kCVPixelBufferPixelFormatTypeKey as String: Self.outputFormat,
+            kCVPixelBufferWidthKey as String: Self.outputWidth,
+            kCVPixelBufferHeightKey as String: Self.outputHeight,
+            // IOSurface-backed so the buffer can be marshalled
+            // across the host → extension process boundary by
+            // CMIO without an extra copy.
+            kCVPixelBufferIOSurfacePropertiesKey as String: [:],
+        ]
+        var pool: CVPixelBufferPool?
+        let status = CVPixelBufferPoolCreate(
+            kCFAllocatorDefault,
+            nil,
+            attrs as CFDictionary,
+            &pool
+        )
+        guard status == kCVReturnSuccess, let pool else {
+            logger.error("CVPixelBufferPoolCreate failed: \(status, privacy: .public)")
+            return nil
+        }
+        bufferPool = pool
+        return pool
+    }
+
+    private func logIncomingFormatIfChanged(pixelBuffer: CVPixelBuffer) {
+        let signature = (
+            CVPixelBufferGetPixelFormatType(pixelBuffer),
+            CVPixelBufferGetWidth(pixelBuffer),
+            CVPixelBufferGetHeight(pixelBuffer)
+        )
+        if signature == lastLoggedInputSignature { return }
+        lastLoggedInputSignature = signature
+        let fourcc = String(bytes: [
+            UInt8((signature.0 >> 24) & 0xFF),
+            UInt8((signature.0 >> 16) & 0xFF),
+            UInt8((signature.0 >> 8) & 0xFF),
+            UInt8(signature.0 & 0xFF),
+        ], encoding: .ascii) ?? "????"
+        let needsConversion = signature.0 != Self.outputFormat
+            || signature.1 != Self.outputWidth
+            || signature.2 != Self.outputHeight
+        logger.info(
+            "Host frame format: \(fourcc, privacy: .public) \(signature.1, privacy: .public)x\(signature.2, privacy: .public) — \(needsConversion ? "convert+scale" : "passthrough", privacy: .public)"
+        )
     }
 
     private func streamDirection(streamID: CMIOStreamID) -> UInt32? {

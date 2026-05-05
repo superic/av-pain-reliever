@@ -51,6 +51,20 @@ struct ProfileApplierTests {
         func currentPreferredName() -> String? { currentPreferredNameStub }
     }
 
+    final class MockVirtualCameraSource: VirtualCameraSourceController {
+        struct Call: Equatable {
+            let name: String
+        }
+        private(set) var calls: [Call] = []
+        var resultsByName: [String: CameraApplyResult] = [:]
+        var defaultResult: CameraApplyResult = .ok
+
+        func setSource(named: String) -> CameraApplyResult {
+            calls.append(Call(name: named))
+            return resultsByName[named] ?? defaultResult
+        }
+    }
+
     final class MockLogger: ApplierLogger {
         private(set) var infos: [String] = []
         private(set) var warns: [String] = []
@@ -235,6 +249,87 @@ struct ProfileApplierTests {
         applier.apply(Self.homeOffice) // no camera field set
 
         #expect(camera.calls.isEmpty)
+    }
+
+    // MARK: - Virtual camera source
+
+    @Test("drives virtual camera source with the same name as the system camera")
+    func appliesVirtualCameraSource() {
+        let camera = MockCamera()
+        let source = MockVirtualCameraSource()
+        let log = MockLogger()
+        let applier = ProfileApplier(
+            audio: MockAudio(),
+            camera: camera,
+            virtualCameraSource: source,
+            logger: log
+        )
+        let p = Profile(
+            name: "home",
+            fingerprint: [],
+            camera: "LG UltraFine Display Camera"
+        )
+
+        applier.apply(p)
+
+        #expect(camera.calls == [.init(name: "LG UltraFine Display Camera")])
+        #expect(source.calls == [.init(name: "LG UltraFine Display Camera")])
+        #expect(log.infos.contains { $0.contains("set virtual camera source: LG UltraFine") })
+    }
+
+    @Test("warns when virtual camera source is not currently attached")
+    func warnsWhenVirtualCameraSourceMissing() {
+        let source = MockVirtualCameraSource()
+        source.resultsByName["LG UltraFine Display Camera"] = .notFound
+        let log = MockLogger()
+        let applier = ProfileApplier(
+            audio: MockAudio(),
+            virtualCameraSource: source,
+            logger: log
+        )
+        let p = Profile(
+            name: "home",
+            fingerprint: [],
+            camera: "LG UltraFine Display Camera"
+        )
+
+        applier.apply(p)
+
+        #expect(log.warns.contains {
+            $0.contains("virtual camera source") && $0.contains("not found")
+        })
+    }
+
+    @Test("silently skips virtual camera source when not configured")
+    func skipsVirtualCameraSourceWithoutController() {
+        let log = MockLogger()
+        let applier = ProfileApplier(
+            audio: MockAudio(),
+            virtualCameraSource: nil,
+            logger: log
+        )
+        let p = Profile(
+            name: "home",
+            fingerprint: [],
+            camera: "Some Camera"
+        )
+
+        applier.apply(p)
+
+        #expect(!log.warns.contains { $0.contains("virtual camera source") })
+    }
+
+    @Test("does not touch virtual camera source when profile.camera is nil")
+    func skipsNilVirtualCameraSource() {
+        let source = MockVirtualCameraSource()
+        let applier = ProfileApplier(
+            audio: MockAudio(),
+            virtualCameraSource: source,
+            logger: MockLogger()
+        )
+        applier.apply(Self.homeOffice) // no camera field
+
+        #expect(source.calls.isEmpty)
     }
 
     @Test("applying a different profile after a no-op fires side effects again")

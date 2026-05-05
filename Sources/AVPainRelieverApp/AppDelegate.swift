@@ -157,14 +157,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         // foreground for windows. Generated at runtime so a palette
         // tweak doesn't need a regenerated `.icns` asset.
         NSApp.applicationIconImage = AppIcon.image
+        // V2 / M1+M2+M3: env-var-gated Camera Extension activation.
+        // Boots the host-side capture pipeline (M2) and exposes the
+        // running session as a `VirtualCameraSourceController` so the
+        // engine that follows can drive its source from the active
+        // profile (M3). No-op unless `AVPR_ACTIVATE_VIRTUAL_CAMERA=1`
+        // is set AND the host has the
+        // `com.apple.developer.system-extension.install` entitlement
+        // (v0.2.0+ builds only). Runs before `bootEngine()` so the
+        // engine's first evaluate-and-apply finds a live source to
+        // drive.
+        VirtualCameraActivator.activateIfRequested()
         bootEngine()
         applyLaunchAtLoginPreference()
-        // V2 / M1: env-var-gated Camera Extension activation. No-op
-        // unless AVPR_ACTIVATE_VIRTUAL_CAMERA=1 is set in the
-        // environment AND the host app has the
-        // `com.apple.developer.system-extension.install` entitlement
-        // (v0.2.0+ builds only). v0.1.x users see no behavior change.
-        VirtualCameraActivator.activateIfRequested()
         // Spin up Sparkle only inside a real .app bundle that has a
         // real EdDSA public key embedded. The full predicate (and
         // the reasoning behind each branch) lives on Updater itself
@@ -480,7 +485,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         let resolver = ProfileResolver(profiles: profiles)
         let audio = CoreAudioController()
         let camera = AVFoundationCameraController()
-        let applier = ProfileApplier(audio: audio, camera: camera, logger: logger)
+        // Plumbed only when the env-var-gated activator booted the
+        // capture pipeline. v0.1.x and "didn't ask for virtual camera"
+        // launches inject nil, which `ProfileApplier` treats as
+        // silent skip. Set on first `bootEngine()` and stable across
+        // `reloadConfig()` — the activator runs once per launch.
+        let virtualCameraSource = VirtualCameraActivator.virtualCameraSource
+        let applier = ProfileApplier(
+            audio: audio,
+            camera: camera,
+            virtualCameraSource: virtualCameraSource,
+            logger: logger
+        )
         return Engine(
             watcher: watcher,
             resolver: resolver,

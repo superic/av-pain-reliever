@@ -58,6 +58,30 @@ public protocol CameraController {
     func currentPreferredName() -> String?
 }
 
+/// Drives the source camera that AV Pain Reliever's own virtual
+/// camera streams from. Conceptually parallel to `CameraController`
+/// (which sets the system-wide `userPreferredCamera`) but operates
+/// on a different surface: the in-app virtual camera that Zoom /
+/// Slack / Teams pick when the user selects "AV Pain Reliever" in
+/// their own camera UI. A profile that names a camera should drive
+/// both:
+///
+/// - `CameraController` so AVFoundation-modern apps follow the system
+///   default.
+/// - `VirtualCameraSourceController` so apps connected to the virtual
+///   camera see frames from that same source.
+///
+/// `nil` injection (or omitting from `ProfileApplier`'s init) yields
+/// a silent no-op — the v0.1.x release path that doesn't bundle the
+/// Camera Extension simply doesn't pass one.
+public protocol VirtualCameraSourceController {
+    /// Switch the virtual camera's source to the AVFoundation device
+    /// whose `localizedName` matches `named`. Idempotent — a re-set
+    /// to the currently-active source returns `.ok` without churning
+    /// the running capture session.
+    func setSource(named: String) -> CameraApplyResult
+}
+
 /// Production `CameraController` backed by AVFoundation. Stateless —
 /// every call constructs a fresh `DiscoverySession`. Sessions are
 /// cheap (microseconds) and we want fresh results when the user
