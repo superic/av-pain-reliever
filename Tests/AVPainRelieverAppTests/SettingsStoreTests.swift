@@ -24,6 +24,9 @@ struct SettingsStoreTests {
         // Launch-at-login defaults off — fresh users opt in, per
         // macOS background-task etiquette.
         #expect(store.launchAtLogin == false)
+        // Experimental updates default off — only the stable channel
+        // is consumed unless the user explicitly opts in.
+        #expect(store.experimentalUpdates == false)
     }
 
     @Test("launchAtLogin persists across reloads")
@@ -83,5 +86,16 @@ struct SettingsStoreTests {
         }
         let reopened = SettingsStore(defaults: defaults)
         #expect(reopened.suppressedWelcome == true)
+    }
+
+    @Test("experimentalUpdates persists across reloads")
+    func experimentalUpdatesPersists() {
+        let defaults = makeSuite()
+        do {
+            let store = SettingsStore(defaults: defaults)
+            store.experimentalUpdates = true
+        }
+        let reopened = SettingsStore(defaults: defaults)
+        #expect(reopened.experimentalUpdates == true)
     }
 }

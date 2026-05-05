@@ -19,6 +19,7 @@ final class SettingsStore: ObservableObject {
         static let profileSwitchCount = "profileSwitchCount"
         static let suppressedWelcome = "suppressedWelcome"
         static let launchAtLogin = "launchAtLogin"
+        static let experimentalUpdates = "experimentalUpdates"
     }
 
     /// Toast on profile change?  Default on — the at-a-glance signal
@@ -84,6 +85,18 @@ final class SettingsStore: ObservableObject {
         }
     }
 
+    /// Opt-in to updates from the `experimental` Sparkle channel.
+    /// Default off — only stable releases reach the user. When on,
+    /// the Updater's allowedChannels delegate hook returns
+    /// `["experimental"]`, so feed items tagged
+    /// `<sparkle:channel>experimental</sparkle:channel>` become
+    /// eligible upgrades. Used to gate the v0.2.x virtual-camera
+    /// builds behind a deliberate user choice while the feature is
+    /// still maturing.
+    @Published var experimentalUpdates: Bool {
+        didSet { defaults.set(experimentalUpdates, forKey: Key.experimentalUpdates) }
+    }
+
     private let defaults: UserDefaults
 
     init(defaults: UserDefaults = .standard) {
@@ -100,6 +113,7 @@ final class SettingsStore: ObservableObject {
         self.profileSwitchCount = (defaults.object(forKey: Key.profileSwitchCount) as? Int) ?? 0
         self.suppressedWelcome = (defaults.object(forKey: Key.suppressedWelcome) as? Bool) ?? false
         self.launchAtLogin = (defaults.object(forKey: Key.launchAtLogin) as? Bool) ?? false
+        self.experimentalUpdates = (defaults.object(forKey: Key.experimentalUpdates) as? Bool) ?? false
     }
 
     func incrementSwitchCount() {
