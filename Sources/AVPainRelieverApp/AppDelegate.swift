@@ -212,7 +212,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
             bundleIdentifier: Bundle.main.bundleIdentifier,
             publicKey: Bundle.main.object(forInfoDictionaryKey: "SUPublicEDKey") as? String
         ) {
-            updater = Updater()
+            updater = Updater(settings: settings)
         }
         maybeShowWelcomeWindow()
     }

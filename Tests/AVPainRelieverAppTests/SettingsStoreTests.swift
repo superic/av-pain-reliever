@@ -28,6 +28,9 @@ struct SettingsStoreTests {
         // so opt-in is mandatory both for principle and for
         // notarization etiquette.
         #expect(store.virtualCameraEnabled == false)
+        // Experimental updates default off — only the stable channel
+        // is consumed unless the user explicitly opts in.
+        #expect(store.experimentalUpdates == false)
     }
 
     @Test("launchAtLogin persists across reloads")
@@ -98,5 +101,16 @@ struct SettingsStoreTests {
         }
         let reopened = SettingsStore(defaults: defaults)
         #expect(reopened.virtualCameraEnabled == true)
+    }
+
+    @Test("experimentalUpdates persists across reloads")
+    func experimentalUpdatesPersists() {
+        let defaults = makeSuite()
+        do {
+            let store = SettingsStore(defaults: defaults)
+            store.experimentalUpdates = true
+        }
+        let reopened = SettingsStore(defaults: defaults)
+        #expect(reopened.experimentalUpdates == true)
     }
 }

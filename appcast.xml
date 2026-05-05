@@ -172,5 +172,30 @@
                        type="application/octet-stream"
                        sparkle:edSignature="q+sHcRcb758O7eBFVzgMZ3RqNs+DZQusax31B7ebXefKeVDBs7k1LLK7FRBsRUg/jr3VSCzLHdy/3TVautLdBg==" length="2648951" />
         </item>
+        <item>
+            <title>Version 0.2.0</title>
+            <description><![CDATA[
+<h2>What's new</h2>
+<p>OK here's the deal. v0.2.0 is the big one. <strong>AV Pain Reliever is now a virtual camera.</strong> That's right — the same app that's been quietly swapping your audio defaults all this time can now also be the camera that Zoom, Slack, Teams, and any other video app picks up. One camera in their picker. One name. <strong>AV Pain Reliever.</strong> It streams whatever real camera the active profile names — your built-in webcam at the laptop, the HDMI capture at the home office, your iPhone via Continuity at the conference room — whatever you've configured. The profile changes, the picture follows. Money.</p>
+<p>Here's what this fixes: Zoom, Slack, and Teams keep their <em>own</em> camera selection that ignores the system default. So back in v0.1.x when you docked at a new location, your microphone and speakers would change, but Zoom would just sit there showing your laptop webcam like nothing happened. That's amateur hour. With v0.2.0, you pick "AV Pain Reliever" in Zoom once and you're done. Forever.</p>
+<p>It's <strong>off by default</strong> — installing a virtual camera is a real thing and we're not turning it on without your permission, that's not how we do business. Open <strong>Settings → Camera</strong> and flip the toggle. macOS will ask you to approve the extension once (System Settings → Login Items &amp; Extensions → Camera Extensions). After that, you're in.</p>
+<p>A few technical things, briefly, because if you're reading this far you probably care:</p>
+<ul>
+<li><strong>Hold-last-frame</strong> during the swap. When you change profiles, the new camera takes a beat to warm up — about half a second. Instead of flashing black at your Zoom call, the virtual camera holds the last frame from the old camera until the new one's delivering frames. You see a soft pause; nobody on the call sees a glitch.</li>
+<li><strong>Format conversion</strong> for any camera. Built-in webcams ship BGRA, USB capture cards ship YUV at 1080p, every device has its quirks. We accept whatever the camera natively delivers and convert to 1280×720 BGRA on the fly, hardware-accelerated where possible. Means your weird HDMI capture card just works.</li>
+<li><strong>Profile-driven everywhere.</strong> The same Add Profile wizard that picks your audio defaults now also picks the camera the virtual camera streams. No new config to learn — it's the same camera field you've already been using. v0.1.x configs upgrade clean.</li>
+</ul>
+<p>One known thing: if you toggle the virtual camera off and then back on inside the same launch, macOS holds the extension in a stale state and the feed goes black. The Settings UI catches this and gives you a <strong>Restart AV Pain Reliever</strong> button that handles it. One click, fresh process, you're back. Edge case — most folks turn it on once and leave it. Not a deal-breaker.</p>
+<p>That's the update. Virtual camera, profile-driven, hold-last-frame, universal format support. v0.1.x will keep getting patch releases in parallel for anyone who doesn't need any of this. <strong>Money.</strong></p>
+]]></description>
+            <pubDate>Tue, 05 May 2026 01:02:59 +0000</pubDate>
+            <sparkle:channel>experimental</sparkle:channel>
+            <sparkle:version>0.2.0</sparkle:version>
+            <sparkle:shortVersionString>0.2.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/superic/av-pain-reliever/releases/download/v0.2.0/AVPainReliever.app.zip"
+                       type="application/octet-stream"
+                       sparkle:edSignature="VQMbQ90x5GU+KbspCyr+Iw8cL/yGKNtfBicFvtQOwDItV+MX+Lwi4HDYCr7eKtZdgosma8BDBfuljbJnmd2eAA==" length="2836820" />
+        </item>
     </channel>
 </rss>
