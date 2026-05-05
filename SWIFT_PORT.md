@@ -2489,9 +2489,20 @@ the extension can't capture"):
    notarized + stapled both bundles, signed appcast item
    appended to main, draft published. v0.2.0 live at
    https://github.com/superic/av-pain-reliever/releases/tag/v0.2.0.
-   The Sparkle upgrade-replace verification (v0.2.0 → v0.2.0.1)
-   is its own follow-up — separate small patch release whenever
-   we have the next reason to cut one.
+7. **M7 — Sparkle release channel split.** SHIPPED 2026-05-04.
+   v0.2.0 was retroactively marked
+   `<sparkle:channel>experimental</sparkle:channel>` so v0.1.x
+   users stop being prompted to upgrade. v0.1.14 ships an
+   "Receive experimental updates" toggle to Settings → General
+   → Updates plus an `SPUUpdaterDelegate` that returns
+   `["experimental"]` when the toggle is on (default off).
+   `scripts/sign-appcast.sh` now takes a `CHANNEL` env var; the
+   release workflow auto-sets it to `experimental` for v0.2.x+
+   tags. v0.2.0.1 backports the channel-aware Updater to
+   feature/virtual-camera (live at
+   https://github.com/superic/av-pain-reliever/releases/tag/v0.2.0.1)
+   so users on the experimental track get future patches
+   normally.
 
 ### Deferred / open items
 
