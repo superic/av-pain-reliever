@@ -189,6 +189,7 @@
 <p>That's the update. Virtual camera, profile-driven, hold-last-frame, universal format support. v0.1.x will keep getting patch releases in parallel for anyone who doesn't need any of this. <strong>Money.</strong></p>
 ]]></description>
             <pubDate>Tue, 05 May 2026 01:02:59 +0000</pubDate>
+            <sparkle:channel>experimental</sparkle:channel>
             <sparkle:version>0.2.0</sparkle:version>
             <sparkle:shortVersionString>0.2.0</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
