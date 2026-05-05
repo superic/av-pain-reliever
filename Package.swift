@@ -18,6 +18,15 @@ let package = Package(
     products: [
         .library(name: "AVPainReliever", targets: ["AVPainReliever"]),
         .executable(name: "AVPainRelieverApp", targets: ["AVPainRelieverApp"]),
+        // V2 virtual-camera Camera Extension. Built only when the
+        // make-app-with-virtual-camera.sh release script asks for it
+        // — the default `make-app.sh` (v0.1.x) doesn't embed it. See
+        // SWIFT_PORT.md "V2 plan: native virtual camera" for the
+        // architecture rationale.
+        .executable(
+            name: "AVPainRelieverCameraExtension",
+            targets: ["AVPainRelieverCameraExtension"]
+        ),
     ],
     dependencies: [
         // TOML parser. Foundation has JSON/plist but no TOML; locked
@@ -64,6 +73,14 @@ let package = Package(
         .testTarget(
             name: "AVPainRelieverAppTests",
             dependencies: ["AVPainRelieverApp"]
+        ),
+        // Camera Extension binary. Imports CoreMediaIO directly; no
+        // dependency on AVPainReliever or AVPainRelieverApp — the
+        // extension runs in its own process with a clean boundary.
+        // The compiled binary is wrapped in a .systemextension bundle
+        // by scripts/make-app-with-virtual-camera.sh.
+        .executableTarget(
+            name: "AVPainRelieverCameraExtension"
         ),
     ]
 )

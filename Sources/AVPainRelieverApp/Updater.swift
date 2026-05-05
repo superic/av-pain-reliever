@@ -21,6 +21,7 @@ import OSLog
 /// they've consented) is what we want.
 final class Updater {
     private let controller: SPUStandardUpdaterController
+    private let settings: SettingsStore
     private static let logger = Logger(
         subsystem: "com.ericwillis.avpainreliever",
         category: "updater"
@@ -69,6 +70,7 @@ final class Updater {
         // re-queried on every check, so flipping the experimental-
         // updates toggle takes effect on the next scheduled tick or
         // user-initiated check — no Updater rebuild needed.
+        self.settings = settings
         let channelDelegate = ChannelGatingDelegate(settings: settings)
         self.channelDelegate = channelDelegate
         let controller = SPUStandardUpdaterController(
@@ -114,9 +116,85 @@ final class Updater {
     /// appears after the feed fetch — without this, an LSUIElement
     /// build's update window can land behind whatever app you've
     /// switched to while the network call was in flight.
+    ///
+    /// One pre-check intercept: when the user is running an
+    /// experimental version (v0.2.x+) AND the experimental-updates
+    /// toggle is off, Sparkle would silently filter the appcast to
+    /// stable-only and tell the user "you're up to date" while they
+    /// run a version newer than the latest stable. That's
+    /// technically true (relative to the channels they consume) but
+    /// reads as a bug to the user. Show a tailored alert that
+    /// explains the situation and offers a one-click path to enable
+    /// the experimental channel.
     func checkForUpdates() {
         NSApp.activate(ignoringOtherApps: true)
+        if let version = Self.runningVersion(),
+           Self.isExperimentalVersion(version),
+           !settings.experimentalUpdates
+        {
+            showExperimentalNudge(currentVersion: version)
+            return
+        }
         controller.checkForUpdates(nil)
+    }
+
+    /// Bundle's marketing version, e.g. "0.2.0". Falls back to
+    /// `CFBundleVersion` if the marketing key is missing — should
+    /// never happen in a real release build but keeps the predicate
+    /// total in any case.
+    private static func runningVersion() -> String? {
+        let info = Bundle.main.infoDictionary
+        if let s = info?["CFBundleShortVersionString"] as? String, !s.isEmpty {
+            return s
+        }
+        return info?["CFBundleVersion"] as? String
+    }
+
+    /// True for versions that ship through the experimental Sparkle
+    /// channel. Mirrors the workflow's tag-prefix dispatch: anything
+    /// at v0.2.x or higher (including v1.x) is experimental;
+    /// v0.0.x and v0.1.x are stable. Prefix-matches the leading
+    /// `MAJOR.MINOR` so suffixes like "-iter-m3" or build metadata
+    /// don't break the parse.
+    static func isExperimentalVersion(_ version: String) -> Bool {
+        let parts = version.split(separator: ".")
+        guard parts.count >= 2,
+              let major = Int(parts[0]),
+              // The minor segment may carry suffixes (e.g. "1-rc"),
+              // so split it on a non-digit prefix.
+              let minor = Int(parts[1].prefix(while: { $0.isNumber }))
+        else { return false }
+        if major == 0 { return minor >= 2 }
+        return major >= 1
+    }
+
+    private func showExperimentalNudge(currentVersion: String) {
+        let alert = NSAlert()
+        alert.messageText = "You're running an experimental version"
+        alert.informativeText = """
+            AV Pain Reliever \(currentVersion) is from the experimental release channel. To receive future experimental patches automatically, enable Experimental Updates in Settings → General → Updates.
+
+            Otherwise, only stable releases appear when you check for updates — and the latest stable is currently older than what you're running.
+            """
+        alert.alertStyle = .informational
+        alert.icon = NSApp.applicationIconImage
+        alert.addButton(withTitle: "Enable Experimental Updates")
+        alert.addButton(withTitle: "Check Stable Anyway")
+        alert.addButton(withTitle: "Cancel")
+        let response = alert.runModal()
+        switch response {
+        case .alertFirstButtonReturn:
+            // Flipping the toggle in-process re-queries the
+            // ChannelGatingDelegate on the next check, so we can
+            // immediately fire a real Sparkle check that now
+            // considers experimental items.
+            settings.experimentalUpdates = true
+            controller.checkForUpdates(nil)
+        case .alertSecondButtonReturn:
+            controller.checkForUpdates(nil)
+        default:
+            break
+        }
     }
 }
 

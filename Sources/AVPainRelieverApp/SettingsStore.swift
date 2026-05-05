@@ -19,6 +19,7 @@ final class SettingsStore: ObservableObject {
         static let profileSwitchCount = "profileSwitchCount"
         static let suppressedWelcome = "suppressedWelcome"
         static let launchAtLogin = "launchAtLogin"
+        static let virtualCameraEnabled = "virtualCameraEnabled"
         static let experimentalUpdates = "experimentalUpdates"
     }
 
@@ -85,6 +86,19 @@ final class SettingsStore: ObservableObject {
         }
     }
 
+    /// Opt-in toggle for the V2 virtual camera. Default off. When on,
+    /// the app installs/activates its CMIO Camera Extension and the
+    /// active profile drives the virtual camera's source. When off,
+    /// the extension is deactivated and the host capture pipeline is
+    /// torn down — keeping the camera light off and AVCapture clients
+    /// like Zoom from seeing a stale "AV Pain Reliever" device.
+    /// `VirtualCameraActivator` reads this on launch and observes
+    /// changes; `AppDelegate.applyVirtualCameraEnabled(_:)` mediates
+    /// the actual state transitions.
+    @Published var virtualCameraEnabled: Bool {
+        didSet { defaults.set(virtualCameraEnabled, forKey: Key.virtualCameraEnabled) }
+    }
+
     /// Opt-in to updates from the `experimental` Sparkle channel.
     /// Default off — only stable releases reach the user. When on,
     /// the Updater's allowedChannels delegate hook returns
@@ -113,6 +127,7 @@ final class SettingsStore: ObservableObject {
         self.profileSwitchCount = (defaults.object(forKey: Key.profileSwitchCount) as? Int) ?? 0
         self.suppressedWelcome = (defaults.object(forKey: Key.suppressedWelcome) as? Bool) ?? false
         self.launchAtLogin = (defaults.object(forKey: Key.launchAtLogin) as? Bool) ?? false
+        self.virtualCameraEnabled = (defaults.object(forKey: Key.virtualCameraEnabled) as? Bool) ?? false
         self.experimentalUpdates = (defaults.object(forKey: Key.experimentalUpdates) as? Bool) ?? false
     }
 

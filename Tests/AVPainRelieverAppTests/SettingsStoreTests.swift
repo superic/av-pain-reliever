@@ -24,6 +24,10 @@ struct SettingsStoreTests {
         // Launch-at-login defaults off — fresh users opt in, per
         // macOS background-task etiquette.
         #expect(store.launchAtLogin == false)
+        // Virtual camera defaults off — installs a system extension,
+        // so opt-in is mandatory both for principle and for
+        // notarization etiquette.
+        #expect(store.virtualCameraEnabled == false)
         // Experimental updates default off — only the stable channel
         // is consumed unless the user explicitly opts in.
         #expect(store.experimentalUpdates == false)
@@ -86,6 +90,17 @@ struct SettingsStoreTests {
         }
         let reopened = SettingsStore(defaults: defaults)
         #expect(reopened.suppressedWelcome == true)
+    }
+
+    @Test("virtualCameraEnabled persists across reloads")
+    func virtualCameraEnabledPersists() {
+        let defaults = makeSuite()
+        do {
+            let store = SettingsStore(defaults: defaults)
+            store.virtualCameraEnabled = true
+        }
+        let reopened = SettingsStore(defaults: defaults)
+        #expect(reopened.virtualCameraEnabled == true)
     }
 
     @Test("experimentalUpdates persists across reloads")

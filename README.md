@@ -10,6 +10,8 @@ When you carry a MacBook between locations — your home office, a work desk, a 
 
 Configure your video apps (Zoom, Slack, Teams) once to follow the system, and after that the right setup is active the moment you plug in. Unplug and it returns to your laptop's built-in mic and speakers.
 
+Some apps — Zoom, Slack, Teams — keep their own camera selection that ignores the system default. For those, AV Pain Reliever can also act as a **virtual camera** that always streams whatever camera the active profile names. See *Virtual camera* below.
+
 The app lives in your menu bar — no Dock icon, no windows in your way.
 
 ---
@@ -56,6 +58,23 @@ Click the menu bar icon for:
 - **Add Profile…** — capture the dock you're at right now (⌘N).
 - **Settings…** — notifications, menu bar appearance, profile management, Launch at Login (⌘,).
 - **About** — version and updates.
+
+---
+
+## Virtual camera (optional)
+
+Zoom, Slack, and Teams remember the camera you pick *inside their own settings* and ignore the system default. So even after AV Pain Reliever changes your system camera, those apps keep using whatever you last chose in their picker.
+
+The virtual camera fixes that. Once turned on, **AV Pain Reliever** appears as a camera in any video app's picker. Pick it once and it then streams whichever real camera the active profile names — built-in, USB capture card, iPhone Continuity Camera, anything you can configure in a profile. When the profile changes, the picture follows.
+
+To enable:
+
+1. Open **Settings… → Camera**.
+2. Toggle **Enable AV Pain Reliever as a virtual camera**.
+3. Approve in **System Settings → General → Login Items & Extensions** when prompted (one-time setup).
+4. In Zoom / Slack / Teams, pick **AV Pain Reliever** as your camera.
+
+To turn it off, flip the toggle back. The "AV Pain Reliever" entry stops showing up in those apps' camera lists.
 
 ---
 

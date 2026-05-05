@@ -450,11 +450,23 @@ private struct WizardForm: View {
             configURL: deps.configURL,
             editing: deps.editing,
             existingProfileSlugs: deps.existingProfileSlugs,
+            virtualCameraEnabled: deps.virtualCameraEnabled,
             onSaved: deps.onSaved
         ))
     }
 
     var body: some View {
         AddProfileView(viewModel: viewModel, dismiss: onDismiss)
+            // The wizard reads `cameras` once at init time. If the
+            // user opens the wizard while the Camera Extension is
+            // still activating (or before the host has TCC-grant
+            // settled), the embedded virtual camera is missing from
+            // the picker. Re-pull the device lists when the
+            // activator transitions to `.on` so a wizard already on
+            // screen catches up without the user having to click
+            // Refresh.
+            .onReceive(delegate.virtualCameraActivator.$state) { state in
+                if case .on = state { viewModel.refresh() }
+            }
     }
 }

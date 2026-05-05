@@ -1,10 +1,19 @@
 # Releasing AV Pain Reliever
 
 The release pipeline is defined in `.github/workflows/release.yml` and
-triggered by pushing a `v*.*.*` git tag. Until the seven GitHub Secrets
-listed below are populated, every step that depends on Apple credentials
-or the Sparkle private key skips with a warning, so a `v0.0.0-dryrun`
-tag can verify the workflow shape without exposing anything sensitive.
+triggered by pushing a `v*.*.*` git tag. The workflow picks the build
+script from the tag prefix:
+
+- **v0.1.x** tags build with `scripts/make-app.sh` — the original
+  no-virtual-camera bundle. Keeps shipping unblocked from `main`.
+- **v0.2.x+** tags build with `scripts/make-app-with-virtual-camera.sh`
+  — the bundle that embeds the CMIO Camera Extension. Tagged from
+  `feature/virtual-camera`.
+
+Until the GitHub Secrets listed below are populated, every step that
+depends on Apple credentials or the Sparkle private key skips with a
+warning, so a `v0.0.0-dryrun` tag can verify the workflow shape
+without exposing anything sensitive.
 
 This doc is the runbook for getting from "secrets unset" to "first
 real signed release."
@@ -71,17 +80,25 @@ file** once it's safe.
 ### 3. GitHub Secrets
 
 In the repo: **Settings → Secrets and variables → Actions → New
-repository secret**. Add these seven:
+repository secret**. Add these eight:
 
 | Name                          | Source                                                                 |
 | ----------------------------- | ---------------------------------------------------------------------- |
 | `MACOS_CERTIFICATE`           | `base64 -i cert.p12 \| pbcopy` — paste                                  |
 | `MACOS_CERTIFICATE_PASSWORD`  | The password you set when exporting the `.p12`                          |
 | `MACOS_KEYCHAIN_PASSWORD`     | Random — `openssl rand -base64 32 \| pbcopy`                            |
+| `MACOS_PROVISIONING_PROFILE`  | `base64 -i AVPainReliever.provisionprofile \| pbcopy` — only required for v0.2.x+ |
 | `APPLE_ID`                    | Your developer Apple ID email (the one you used to enrol in the Developer Program) |
 | `APPLE_ID_PASSWORD`           | App-specific password from step 4 above                                 |
 | `APPLE_TEAM_ID`               | 10-char Team ID from step 5 above                                       |
 | `SPARKLE_PRIVATE_KEY`         | `cat sparkle-private-key.txt \| pbcopy` — paste raw (no extra newlines) |
+
+`MACOS_PROVISIONING_PROFILE` is only consulted for tags that match
+v0.2.x or later (the virtual-camera build); v0.1.x patch releases
+skip the decode step entirely. Generate the profile at
+developer.apple.com → Profiles → New → Developer ID, bound to the
+host App ID (`com.ericwillis.avpainreliever`) with the System
+Extension capability enabled.
 
 Or via `gh` (run from the repo root once `gh auth login` is set up):
 
@@ -89,6 +106,7 @@ Or via `gh` (run from the repo root once `gh auth login` is set up):
 gh secret set MACOS_CERTIFICATE          < <(base64 -i cert.p12)
 gh secret set MACOS_CERTIFICATE_PASSWORD --body 'your-p12-password'
 gh secret set MACOS_KEYCHAIN_PASSWORD    --body "$(openssl rand -base64 32)"
+gh secret set MACOS_PROVISIONING_PROFILE < <(base64 -i AVPainReliever.provisionprofile)
 gh secret set APPLE_ID                   --body 'you@example.com'
 gh secret set APPLE_ID_PASSWORD          --body 'xxxx-xxxx-xxxx-xxxx'
 gh secret set APPLE_TEAM_ID              --body 'XXXXXXXXXX'

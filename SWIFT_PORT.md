@@ -2294,7 +2294,1042 @@ for any future caller that wants "the original."
 
 ---
 
-## How to use this document
+## V2 plan: native virtual camera (CMIO Camera Extension)
+
+**Status:** planning, 2026-05-04. Decisions captured below; no code
+yet. This section is the canonical record for the V2 work — update it
+as the design evolves and as milestones land.
+
+### Why this, why now
+
+Today's app sets `AVCaptureDevice.userPreferredCamera`, which covers
+FaceTime and browsers (Safari/Chrome `getUserMedia`) automatically.
+It does **not** cover Zoom, Slack, or Teams — those apps store their
+own camera selection and ignore the system preference. There is no
+public API to change Zoom's selection from the outside.
+
+The earlier plan was to recommend OBS Virtual Camera as the bridge:
+configure OBS once with a per-scene camera, point Zoom/Slack at "OBS
+Virtual Camera," and let OBS scene-switching handle the rest. That
+plan was retired on 2026-05-04 — OBS is a third-party dependency
+and the project mandate is "self-contained" (no Hammerspoon, no OBS,
+neither in the UI nor in the docs).
+
+The V2 path: ship a native macOS Camera Extension (CoreMedia I/O,
+macOS 13+) bundled inside the app. Zoom/Slack/Teams see "AV Pain
+Reliever" in their picker, the user selects it once, and from then
+on the active profile drives what frames flow through. CMIO Camera
+Extensions are the modern macOS API used by mmhmm, Hand Mirror,
+Detail, Camo, Ecamm Live, and OBS itself (since OBS migrated off the
+deprecated DAL plug-in path in 2022).
+
+### Decisions (settled 2026-05-04)
+
+- **Activation is opt-in.** Default install behaves exactly like
+  v0.1.x — no system-extension prompt, no extra entry in Zoom's
+  picker. Users enable the virtual camera from a Settings toggle,
+  which triggers the system-extension approval flow at that moment.
+  Rationale: most users may already be happy with FaceTime/browser
+  coverage; an opt-in toggle respects that and keeps first-launch
+  identical.
+- **On profile switch, hold last frame.** The virtual camera holds
+  the last good frame from the outgoing source for ~500 ms while
+  the new source initializes, then cuts. Polite to viewers in a
+  live call, no jarring black flash. Exact hold duration is a tuning
+  knob, not a design decision.
+- **macOS 13+ floor for v0.2.0.** This is a modern app; CMIO Camera
+  Extensions need 13+. Users still on macOS 12 stay on the v0.1.x
+  Sparkle channel and miss the feature, which is fine.
+- **Picker name: "AV Pain Reliever".** Short, matches the app name,
+  reads correctly in narrow Zoom/Slack pickers. No "Camera" suffix,
+  no "Virtual" parenthetical.
+- **Source mirrors the active profile.** The virtual camera vends
+  frames from whatever camera the current profile says is the
+  preferred camera. No separate "virtual camera source" config —
+  one less knob, and it matches the user mental model ("Zoom should
+  finally follow my profiles").
+- **Apple entitlement request happens after a working prototype.**
+  Build first on user's machine in `systemextensionsctl developer
+  on` mode, prove the architecture end-to-end, then submit the
+  request. Risk: turnaround is days to weeks, so we may end up with
+  a finished feature waiting on Apple. Acceptable — the existing
+  release line keeps shipping in parallel.
+
+### Architecture
+
+Three pieces, separated by process boundary:
+
+1. **Main app (existing process).** Owns USB watching, profile
+   resolution, settings, the menu-bar UI. Adds a new
+   `VirtualCameraController` protocol with two implementations:
+   - `NoopVirtualCameraController` — does nothing. Used in the
+     default v0.1.x build. Lets the existing release pipeline
+     continue untouched.
+   - `CMIOVirtualCameraController` — captures from the active
+     profile's source camera using AVFoundation, encodes each
+     frame as an IOSurface, and pushes it to the extension over
+     XPC. Receives extension-side status (active client count,
+     errors).
+2. **Camera Extension (`AVPainRelieverCameraExtension.systemextension`).**
+   A `CMIOExtensionProvider` host with one `CMIOExtensionDevice`
+   ("AV Pain Reliever") and one `CMIOExtensionStream`. **Pure
+   relay** — receives `IOSurface` frames from the host app over
+   XPC, wraps each in a `CMSampleBuffer`, sends downstream via
+   `stream.send(...)`. Handles hold-last-frame on source-camera
+   switch (i.e., when the host app pauses the XPC frame feed).
+3. **XPC pipe.** Both frames and commands flow over the same XPC
+   connection. Frames piggyback on `IOSurface` references (zero-
+   copy across the process boundary). Commands are simple
+   messages: `setSourceCamera(uniqueID:)`, `pause()`, `resume()`,
+   `currentStatus()`.
+
+**The extension never touches AVFoundation or the physical camera
+hardware.** This is forced by an M2 lesson learned the hard way
+(see "Why the extension can't capture" below): a CMIO Camera
+Extension that calls `AVCaptureSession` enumerates devices through
+the very CMIO subsystem it's plugged into, sees itself in the
+list, and creates an IOKit-level deadlock that wedges every camera
+app on the machine. OBS, mmhmm, Hand Mirror, Camo all use the
+host-app-captures + XPC-to-extension pattern for the same reason.
+
+`ProfileApplier` gains one new step: after setting
+`userPreferredCamera`, also tell the `VirtualCameraController` to
+switch its source. With the no-op implementation this is free; with
+the CMIO implementation it forwards over XPC.
+
+The extension does not own any audio. The existing `AudioController`
+path is unchanged — audio still flows through the system default
+device, which Zoom/Slack pick up via "Same as System" as today.
+
+### Branch + build setup
+
+- **Branch:** `feature/virtual-camera`, cut off `main` at whatever
+  commit is current when work starts. Long-lived. `main` continues
+  to ship `v0.1.x` patch releases independently.
+- **Project structure shift:** A `.systemextension` target requires
+  an actual Xcode bundle, which Swift Package Manager can't build
+  alone. Add a thin `AVPainReliever.xcodeproj` alongside `Package.swift`
+  that references the existing SPM packages and adds two targets:
+  the Camera Extension and an XPC service. SPM development for the
+  main app continues unchanged — `swift build`, `swift test`, the
+  current scripts. The Xcode project is only invoked for v0.2.0
+  release builds.
+- **Build configuration:** Two configs — `Release` (existing,
+  no extension embedded, no camera-extension entitlement, ships as
+  v0.1.x) and `ReleaseWithVirtualCamera` (embeds the extension,
+  declares the entitlement, ships as v0.2.0+). The
+  `VirtualCameraController` injection is selected by build setting
+  so the no-op build genuinely doesn't link the CMIO code path.
+- **CI:** Existing GitHub Actions release workflow keeps working as-
+  is for v0.1.x. A second workflow (or a parameter on the existing
+  one) handles v0.2.0+ builds via xcodebuild. Notarization stays the
+  same Developer ID flow; the only delta is the entitled
+  provisioning profile after Apple approves the entitlement.
+
+### Milestones
+
+Rough ordering, not a timeline (this is a side project; whenever
+each lands, it lands). Re-numbered after the M2 retreat (see "Why
+the extension can't capture"):
+
+1. **M1 — Project scaffold.** ~~`AVPainReliever.xcodeproj`~~ kept
+   the SPM + shell-script build pattern. Empty Camera Extension
+   target that activates and shows up in Zoom but vends a black
+   frame. Goal: prove the activation/signing/embedding plumbing
+   works. **SHIPPED 2026-05-04.**
+2. **M2 — Host-side capture + CMIO sink-stream pipe.** SHIPPED
+   2026-05-04. Host app opens an `AVCaptureSession` against the
+   built-in webcam, opens AV Pain Reliever's sink stream via raw
+   CMIO C API, and enqueues each captured `CMSampleBuffer` into
+   the sink's `CMSimpleQueue`. The kernel passes the underlying
+   IOSurfaces across the process boundary. Extension consumes
+   from the sink via `stream.consumeSampleBuffer(from:)` on a
+   timer at 3× framerate and forwards each consumed frame to the
+   source stream that AVCapture clients (Zoom, Photo Booth, etc.)
+   read. Initial XPC implementation was abandoned — see "Why XPC
+   didn't work for the frame pipe" below.
+3. **M3 — Source switching + hold-last-frame.** SHIPPED
+   2026-05-04. Engine layer drives the host's running
+   `AVCaptureSession` directly through a new
+   `VirtualCameraSourceController` adapter — no XPC (M2's
+   architecture pivot eliminated the XPC service entirely). The
+   active profile's `camera` field becomes both the system
+   `userPreferredCamera` (existing behavior) AND the virtual
+   camera's source (new). Extension holds the most recent frame
+   and re-emits it at 30 fps when the sink temporarily dries up,
+   covering the ~500 ms input-swap window so Zoom doesn't see a
+   freeze.
+4. **M4 — Settings UI + opt-in toggle.** SHIPPED 2026-05-04.
+   `SettingsStore.virtualCameraEnabled` (default off).
+   `VirtualCameraActivator` refactored from a static one-shot
+   into a stateful `ObservableObject` with state machine
+   (`.off` / `.activating` / `.needsApproval` / `.on` /
+   `.failed` / `.requiresRelaunch`) and a `relaunch()` action.
+   Camera tab in Settings shows toggle + live status row +
+   contextual button (Open Login Items & Extensions for
+   approval, Restart AV Pain Reliever for the in-session
+   re-enable quirk). `AVPR_ACTIVATE_VIRTUAL_CAMERA=1` kept as a
+   debug override that locks the toggle for the launch and shows
+   a "Debug override" badge.
+5. **M5 — Release readiness.** SHIPPED 2026-05-04. Release
+   workflow now picks the right build script per tag (v0.1.x →
+   make-app.sh, v0.2.x+ → make-app-with-virtual-camera.sh) so
+   the v0.1.x release line stays unblocked. New
+   `MACOS_PROVISIONING_PROFILE` GitHub Secret carries the
+   profile that the extension needs for activation outside
+   developer mode. README has a "Virtual camera" section
+   explaining the feature install-first; Settings UI's Camera
+   tab is the discovery path. Sparkle/extension upgrade-replace
+   verification is documented as an end-to-end test plan to be
+   run with the v0.2.0 → v0.2.0.1 cycle in M6 — can't be
+   shippable-verified until at least one v0.2.x release exists
+   on the appcast.
+6. **M6 — Tag v0.2.0.** SHIPPED 2026-05-04. CI workflow ran
+   clean (1m48s) using `make-app-with-virtual-camera.sh`,
+   notarized + stapled both bundles, signed appcast item
+   appended to main, draft published. v0.2.0 live at
+   https://github.com/superic/av-pain-reliever/releases/tag/v0.2.0.
+7. **M7 — Sparkle release channel split.** SHIPPED 2026-05-04.
+   v0.2.0 was retroactively marked
+   `<sparkle:channel>experimental</sparkle:channel>` so v0.1.x
+   users stop being prompted to upgrade. v0.1.14 ships an
+   "Receive experimental updates" toggle to Settings → General
+   → Updates plus an `SPUUpdaterDelegate` that returns
+   `["experimental"]` when the toggle is on (default off).
+   `scripts/sign-appcast.sh` now takes a `CHANNEL` env var; the
+   release workflow auto-sets it to `experimental` for v0.2.x+
+   tags. v0.2.0.1 backports the channel-aware Updater to
+   feature/virtual-camera (live at
+   https://github.com/superic/av-pain-reliever/releases/tag/v0.2.0.1)
+   so users on the experimental track get future patches
+   normally.
+
+### Deferred / open items
+
+- **Hold-last-frame exact duration.** Resolved in M3: there is no
+  fixed duration — the extension repeats the cached frame at 30 fps
+  for as long as the sink stays empty AND a client is watching.
+  Verified on a manual switch from `home-office` → `laptop` on
+  2026-05-04: cold-start gap on first client connect was covered by
+  one held emit before fresh frames took over.
+- **Behavior when no source camera is available** (profile says
+  camera X, X is unplugged). Currently logged as
+  `virtual camera source 'X' not found — skipping`; the running
+  session keeps the previous source and the virtual camera continues
+  to deliver that. No black frame, no placeholder. Revisit if the
+  user reports it as confusing in practice.
+- **Format negotiation for non-FaceTime cameras.** Resolved as
+  part of M3 (2026-05-04). Diagnosis: forced
+  `kCVPixelFormatType_32BGRA` at 1280×720 in the host's
+  `videoSettings` works for FaceTime HD but silently dropped
+  every frame from the user's HDMI to U3 capture card
+  (vendor 0x1e4e / product 0x701f) which natively delivers
+  `420v` (NV12) at 1920×1080. Fix: host accepts the device's
+  native format; `CMIOSinkWriter` runs each frame through
+  `VTPixelTransferSession` to convert to 1280×720 BGRA before
+  enqueueing. `CVPixelBufferPool` recycles the destination
+  buffers so steady-state capture doesn't churn allocations.
+  Verified end-to-end on both `home-office` (HDMI capture, NV12
+  1080p source path) and `laptop` (FaceTime HD, BGRA 720p
+  passthrough path) profiles.
+- **Resolution / format negotiation.** Match source for V2; revisit
+  if Zoom complains about specific formats.
+- **Uninstall flow.** Resolved in M4 (2026-05-04). The Settings
+  toggle calls `OSSystemExtensionRequest.deactivationRequest` on
+  flip-off and tears down the host capture pipeline. Surfaces in
+  System Settings → Login Items & Extensions for true uninstall.
+- **In-session toggle off → on quirk.** Surfaced and partially
+  resolved in M4 (2026-05-04). `OSSystemExtensionRequest.deactivationRequest`
+  doesn't actually stop the running extension process — it
+  queues `[terminated waiting to uninstall on reboot]` while the
+  extension stays alive and visible to AVCapture clients. Toggle
+  back on in the same host process can't get fresh CMIO state for
+  the device (the host's CMIO context already saw the device as
+  "going away") so the pipeline produces a black feed. Detected
+  via the activator's `deactivatedThisSession` flag; toggle-on
+  routes to `.requiresRelaunch` and the Settings UI surfaces a
+  "Restart AV Pain Reliever" button that quits + relaunches the
+  host (fresh process → fresh CMIO context → device found
+  immediately, same path that works on every cold launch). Not
+  pretty, but mac OS doesn't expose a userspace API to tear down
+  an extension and re-attach in the same process.
+- **Sparkle + extension replacement edge cases.** Specifically the
+  "user has Zoom open with the virtual camera active when v0.2.1
+  installs" case. Investigate in M6.
+- **Entitlement request body.** Draft once M4 lands so we can
+  describe a working feature, not a hypothetical.
+
+### M1 — project scaffold (SHIPPED 2026-05-04)
+
+Branch: `feature/virtual-camera`. Approach: extend the existing
+SPM + shell-script build pattern rather than introduce an Xcode
+project. A `.systemextension` is just a different bundle wrapper
+around a Swift binary; the existing `make-app.sh` already proves
+hand-rolled bundle assembly works for this project.
+
+What landed:
+
+- `Sources/AVPainRelieverCameraExtension/` — four Swift files:
+  `main.swift` (entry point), `CameraExtensionProvider.swift`
+  (CMIOExtensionProviderSource), `CameraExtensionDevice.swift`
+  (CMIOExtensionDeviceSource — single device, stable UUID),
+  `CameraExtensionStream.swift` (CMIOExtensionStreamSource —
+  vends 1280×720 BGRA black frames at 30 fps via a
+  `DispatchSourceTimer` + `CVPixelBufferPool`).
+- `Package.swift` — added
+  `AVPainRelieverCameraExtension` as an executable target. No
+  dependency on `AVPainReliever` or `AVPainRelieverApp`; clean
+  process boundary from the start.
+- `Resources/AVPainRelieverCameraExtension-Info.plist` — minimal
+  bundle metadata (`CFBundlePackageType = SYSX`, child bundle ID
+  `com.ericwillis.avpainreliever.CameraExtension`).
+- `Resources/AVPainRelieverCameraExtension.entitlements` —
+  sandboxed (`com.apple.security.app-sandbox = true`).
+- `Resources/AVPainReliever-WithVirtualCamera.entitlements` —
+  v0.2.0 host-app entitlements adding
+  `com.apple.developer.system-extension.install`. The default
+  `Resources/AVPainReliever.entitlements` is unchanged so the
+  v0.1.x signing pipeline is byte-for-byte the same.
+- `scripts/make-app-with-virtual-camera.sh` — parallel-track
+  build script. Runs `swift build` for both products, assembles
+  both bundles, embeds the extension at
+  `Contents/Library/SystemExtensions/`, signs inside-out (Sparkle
+  nested → Sparkle.framework → Camera Extension → host app).
+- `Sources/AVPainRelieverApp/VirtualCameraActivator.swift` +
+  `AppDelegate.applicationDidFinishLaunching` hook — env-var-gated
+  (`AVPR_ACTIVATE_VIRTUAL_CAMERA=1`) `OSSystemExtensionRequest`
+  activation. No-op on v0.1.x builds (entitlement absent → request
+  fails harmlessly). M4 will replace this with a real Settings
+  toggle.
+- `docs/VIRTUAL_CAMERA_DEV.md` — local-test recipe:
+  `systemextensionsctl developer on`, build, ditto into
+  `/Applications`, env-var-launch, verify in Zoom, iteration loop,
+  uninstall, common failure modes.
+
+What's deliberately not done: no main-app integration with
+`ProfileApplier`, no source-camera switching, no XPC service yet.
+Those are M2 / M3 / M4. M1's only job is to prove the
+activation/embedding/signing plumbing works.
+
+Verification (2026-05-04, second attempt): activated successfully
+end-to-end. `systemextensionsctl list` reports `[activated enabled]`,
+the extension process is alive under `_cmiodalassistants`, the host
+app's activation request returns success, and "AV Pain Reliever"
+appears in Zoom's camera picker showing the black 1280×720 frame at
+30 fps. M1 success criteria met.
+
+### M1 lessons (gotchas the original scaffold missed)
+
+The first build attempt failed activation because the original
+plumbing was missing several non-obvious requirements. Each of
+these surfaced as a distinct error from `sysextd`, requiring
+re-signing and re-installing to fix. Documenting them so future
+milestones don't relearn the same things:
+
+1. **`open` strips environment variables.** The `AVPR_ACTIVATE_VIRTUAL_CAMERA=1`
+   env var has to be passed via `open --env AVPR_ACTIVATE_VIRTUAL_CAMERA=1`,
+   not the shell-prefix form, because `open` hands off to `launchd`
+   which doesn't inherit the calling shell's environment. The
+   shell-prefix form sets the var only for the `open` command
+   itself, not for the launched app.
+2. **Notarization is required for system extension activation,
+   even with valid Developer ID signing.** `sysextd` queries the
+   notary daemon during validation; an unnotarized bundle gets
+   `bundle code signature is not valid - does not satisfy
+   requirement: -67050`. The `make-app-with-virtual-camera.sh`
+   script grew a notarization step gated by
+   `NOTARIZE_KEYCHAIN_PROFILE=avpain-notary` (using the existing
+   v0.1.x notarytool keychain profile). One round trip is ~30s; a
+   `SKIP_NOTARIZE` style escape hatch is a future-niceness if
+   non-system-extension iteration speed becomes a concern.
+3. **The Info.plist `CMIOExtension` dict is the type marker.**
+   Without it, `sysextd` reports "system extension does not appear
+   to belong to any extension categories" — the daemon cycles
+   through DriverKit / NetworkExtension / EndpointSecurity checks,
+   finds no marker for any of them, and rejects the bundle. The
+   correct shape is `<dict><key>CMIOExtensionMachServiceName</key>
+   <string>{TEAMID}.{appgroup-id}.{suffix}</string></dict>`. We
+   substitute `__TEAM_ID__` at build time, parsed out of
+   `MAC_CERT_NAME`.
+4. **Mach service name must be prefixed by an App Group declared
+   in the extension's entitlements.** The error from `sysextd` is
+   "invalid mach service name or is not signed, the value must be
+   prefixed with one of the App Groups in the entitlement." This
+   meant registering an App Group at developer.apple.com
+   (`group.com.ericwillis.avpainreliever`), enabling the App
+   Groups capability on both App IDs (host + extension),
+   regenerating the Developer ID provisioning profile, and adding
+   `com.apple.security.application-groups` to both entitlements
+   files with the team-prefixed form
+   (`HLH4LEWS9S.group.com.ericwillis.avpainreliever`).
+5. **AMFI's entitlement parser doesn't tolerate XML comments.**
+   The entitlement plists need to be plain key/value dicts; even
+   well-formed `<!-- ... -->` comments fail signing with "Failed
+   to parse entitlements: AMFIUnserializeXML: syntax error."
+   Documentation has to live in adjacent files, not inline.
+6. **Final activation needs explicit user approval in System
+   Settings.** `[activated waiting for user]` is the
+   intermediate state; the user opens **System Settings → General
+   → Login Items & Extensions → Camera Extensions** and toggles
+   the extension on. State then transitions to
+   `[activated enabled]`.
+
+The dev workflow (`docs/VIRTUAL_CAMERA_DEV.md`) was rewritten in a
+follow-up commit to reflect the actual recipe instead of the
+ad-hoc + developer-mode + SIP-off path I originally documented.
+
+### Why the extension can't capture (M2 attempt #1, 2026-05-04)
+
+First M2 attempt put an `AVCaptureSession` inside the Camera
+Extension, opened against the built-in webcam, and forwarded the
+captured `CMSampleBuffer`s to `stream.send(...)`. The extension
+compiled, signed, notarized, and activated cleanly. But as soon as
+any client (Photo Booth, Zoom) selected the AV Pain Reliever
+camera, the entire camera pipeline on the machine wedged — Photo
+Booth froze hard, requiring force-quit and (sometimes) `sudo
+killall VDCAssistant` to unwedge.
+
+Diagnosis from the extension's logs: `AVCaptureSession` triggered
+`AVCaptureDALDevice _refreshPreferredCameraProperties` and full
+device-list enumeration *inside* the extension process. CMIO holds
+the system-wide camera-device list while waiting for the
+extension's reply on `startStream`; concurrently the extension was
+asking AVFoundation to enumerate cameras, which routes back through
+CMIO, which sees our extension as one of the devices, which calls
+back into the same path. IOKit deadlock — every camera app gets
+queued behind it.
+
+Architectural rule that fell out: **a CMIO Camera Extension cannot
+use AVFoundation.** Frames have to enter the extension from the
+outside, via XPC from the host app or a sibling helper. OBS,
+mmhmm, Hand Mirror, Camo, Ecamm Live all use the host-app-captures
++ XPC-to-extension pattern.
+
+This invalidates the original M2/M3 split (where M2 = "frames in
+the extension" and M3 = "XPC for commands"). Re-architected:
+M2 now means host-side capture + XPC frame pipe; source switching
+becomes a one-line change in M3.
+
+Concrete changes after the rollback:
+- `CameraExtensionStream.swift` reverted to the M1 black-frame
+  timer (no AVFoundation in the extension, ever).
+- Camera entitlement (`com.apple.security.device.camera`) and
+  `NSCameraUsageDescription` removed from the extension —
+  permanently. The extension doesn't need either.
+- `Resources/AVPainRelieverCameraExtension.entitlements` keeps
+  `com.apple.security.app-sandbox` and the App Group; nothing
+  else.
+- M2 plan rewritten in milestones list above.
+
+### M2 — host-side capture + CMIO sink (SHIPPED 2026-05-04)
+
+End-to-end working: host captures from the built-in FaceTime HD
+camera at 1280×720 BGRA, writes frames into the extension's sink
+stream via CMIO's `CMSimpleQueueEnqueue`, the extension drains
+the sink and forwards to the source stream that Zoom and Photo
+Booth read. Live webcam feed flows through the AV Pain Reliever
+virtual camera with no perceptible latency.
+
+Architecture (matches OBS's `mac-virtualcam` pattern,
+referenced for design):
+
+- **Extension**: declares two streams on its single device — a
+  `.source` stream (AVCapture clients read this) and a `.sink`
+  stream (host writes here). Owns no AVFoundation. Runs a
+  consume timer at 90 Hz that drains the sink and calls
+  `stream.send(...)` on the source when there's an active
+  consumer (`streamingCounter > 0`). See
+  `Sources/AVPainRelieverCameraExtension/`:
+  - `CameraExtensionStream.swift` — source side, just tracks
+    streaming counter.
+  - `CameraExtensionStreamSink.swift` — sink side, captures the
+    `CMIOExtensionClient` in `authorizedToStartStream`.
+  - `CameraExtensionDevice.swift` — owns both streams + the
+    consume loop.
+
+- **Host**: opens AV Pain Reliever as a CMIO consumer, queries
+  each stream's `kCMIOStreamPropertyDirection` to find the sink
+  (NOT the index 1 trick — direction-property check is robust
+  against ID ordering changes), gets the buffer queue via
+  `CMIOStreamCopyBufferQueue`, calls `CMIODeviceStartStream`,
+  then enqueues each captured frame via `CMSimpleQueueEnqueue`.
+  See `Sources/AVPainRelieverApp/`:
+  - `CameraCaptureSession.swift` — AVFoundation capture against
+    built-in camera (no recursion since host is a normal app).
+  - `CMIOSinkWriter.swift` — raw CMIO sink-write path.
+
+### Why XPC didn't work for the frame pipe
+
+First attempt put NSXPCConnection between host and extension on
+a Mach service named `HLH4LEWS9S.group.com.ericwillis.avpainreliever.framepipe`.
+The XPC connection failed with `failed to do a bootstrap look-up:
+xpc_error=[3: No such process]`. Root cause:
+`NSXPCListener(machServiceName:)` only attaches to launchd-
+registered services — system extensions don't have launchd
+plists for their custom Mach names, so the listener never
+registered the service and clients couldn't find it.
+
+The OBS-style sink-stream approach sidesteps this entirely:
+CMIO already has cross-process IOSurface plumbing built in,
+and using the second stream as a sink reuses that plumbing for
+free. No Mach services to register, no XPC code to maintain.
+
+### M3 — profile-driven source switching + hold-last-frame (SHIPPED 2026-05-04)
+
+End-to-end: changing the active profile (manually or by docking
+to a known location) swaps the virtual camera's source camera in
+the running `AVCaptureSession`, and the extension covers the
+~500 ms warm-up gap by re-emitting the last good frame at 30 fps.
+Zoom stays connected; the picture freezes for ~500 ms then comes
+alive on the new source. No call drop.
+
+Architecture (no XPC — M2's pivot eliminated it permanently):
+
+- **Engine layer** (`Sources/AVPainReliever/Adapters/CameraController.swift`):
+  - New `VirtualCameraSourceController` protocol with a single
+    `setSource(named:) -> CameraApplyResult` method. Mirrors the
+    existing `CameraController` shape so `ProfileApplier` handles
+    the two adapters symmetrically.
+  - `ProfileApplier` accepts an optional
+    `virtualCameraSource:`. When `profile.camera` is set it
+    drives BOTH the system `userPreferredCamera` (legacy
+    behavior, for AVFoundation-modern apps) AND the virtual
+    camera's source (new, for Zoom/Slack/Teams that ignore the
+    system preference but follow the AV Pain Reliever device).
+  - Nil injection = silent no-op. Production wires it only when
+    the env-var-gated activator booted the host capture pipeline;
+    v0.1.x and "didn't ask for virtual camera" launches inject
+    nil with no behavior change.
+
+- **Host app** (`Sources/AVPainRelieverApp/CameraCaptureSession.swift`):
+  - Refactored away from the hardcoded `.builtInWideAngleCamera`
+    lookup. Initial source is picked from the same fallback chain
+    `AVFoundationCameraController.currentPreferredName` uses
+    (`userPreferredCamera` → `systemPreferredCamera` → first
+    discovered) so the first frames match what a fresh AVCapture
+    client would naturally see.
+  - New `switchSource(toLocalizedName:)` runs on the capture
+    queue, looks up the device by `localizedName` (matches the
+    profile's camera field), and swaps inputs inside a
+    `beginConfiguration` / `commitConfiguration` block. The
+    session keeps running across the swap — no
+    `stopRunning`/`startRunning` cycle.
+  - `videoSettings` no longer forces a pixel format or
+    dimensions; the device delivers its native format
+    (FaceTime HD ships BGRA 720p, the user's HDMI capture card
+    ships NV12 1080p, etc) and the conversion happens
+    downstream in `CMIOSinkWriter`. M2's forced settings worked
+    for FaceTime but silently dropped every frame from the
+    HDMI capture card.
+  - Conforms to `VirtualCameraSourceController`. The static
+    `VirtualCameraActivator.virtualCameraSource` accessor exposes
+    the running session to `AppDelegate.buildEngine` so the
+    `ProfileApplier` gets the live adapter.
+  - `applicationDidFinishLaunching` order changed:
+    `VirtualCameraActivator.activateIfRequested()` now runs
+    BEFORE `bootEngine()` so the engine's first
+    evaluate-and-apply pass finds a live source to drive.
+
+- **Host's CMIO sink writer** (`Sources/AVPainRelieverApp/CMIOSinkWriter.swift`):
+  - Added a `VTPixelTransferSession` + `CVPixelBufferPool` pair
+    that converts every incoming frame to 1280×720 BGRA before
+    `CMSimpleQueueEnqueue`. Hardware-accelerated where the GPU
+    supports it; the pool recycles destination buffers so
+    steady-state capture allocates nothing per frame.
+  - Fast path for inputs that already match (FaceTime HD,
+    Continuity Camera) — passthrough, zero copy.
+  - Format description is re-derived per pool buffer (cached by
+    `CVPixelBuffer` pointer). Sharing one description across
+    different source frames gets rejected with -12743 because
+    VT attaches source-derived colorspace metadata to the
+    destination, and `CMSampleBufferCreateForImageBuffer`
+    validates strictly.
+  - `Host frame format: <fourcc> <w>x<h> — convert+scale|passthrough`
+    is logged once per (format, dimensions) signature change
+    so a profile switch is visible without flooding the log.
+
+- **Extension** (`Sources/AVPainRelieverCameraExtension/CameraExtensionDevice.swift`):
+  - Caches the most recent `(CVPixelBuffer, CMFormatDescription)`
+    pair from the sink. On each consume tick that yields nil and
+    the source has at least one watcher, mints a fresh
+    `CMSampleBuffer` over the cached pixel buffer with the
+    current host time and sends it through the source stream.
+  - Held emissions are rate-limited to ~30 fps (matches the
+    source's declared `frameDuration`) so the 90 Hz consume
+    timer doesn't burst the source at 3× framerate.
+  - Holding the underlying `CVPixelBuffer` (not the parent
+    `CMSampleBuffer`) lets each repeat carry a fresh PTS without
+    AVCapture clients seeing duplicate timestamps.
+
+Wiring summary:
+
+```
+profile.camera = "Logitech BRIO"
+    │
+    ▼
+ProfileApplier.applyVirtualCameraSource("Logitech BRIO")
+    │
+    ▼
+CameraCaptureSession.setSource(named:)
+    │
+    ▼  (capture queue)
+session.beginConfiguration()
+remove old input
+add new AVCaptureDeviceInput(BRIO)
+session.commitConfiguration()
+    │
+    ▼  (~500 ms while BRIO warms up — sink dry)
+extension consumeOne() returns nil
+    │
+    ▼
+extension re-emits last cached frame at 30 fps to source
+    │
+    ▼
+Zoom keeps seeing 30 fps — no freeze, no drop
+```
+
+### M4 — Settings UI + opt-in toggle (SHIPPED 2026-05-04)
+
+The Camera Extension is now opt-in via a real Settings toggle
+instead of the env-var-only path used in M1–M3. Default off, so
+fresh installs see no system extension activity until the user
+turns it on. The env var (`AVPR_ACTIVATE_VIRTUAL_CAMERA=1`) stays
+as a debug affordance — it forces enable on launch regardless of
+the persisted setting and shows a "Debug override" badge in the
+Settings UI so the user understands why the toggle is greyed out.
+
+Architecture:
+
+- **`SettingsStore.virtualCameraEnabled`** — persisted `Bool`,
+  default false. Same `UserDefaults` pattern as the other
+  toggles. New unit test covers the default + persistence.
+
+- **`VirtualCameraActivator` refactor** — was a static one-shot
+  in M1; now an `ObservableObject` with a state machine:
+
+  ```
+  .off ──enable()──▶ .activating ──didFinishWithResult──▶ .on
+   ▲ ▲                   │
+   │ │                   ├─requestNeedsUserApproval──▶ .needsApproval
+   │ │                   └─didFailWithError──────────▶ .failed
+   │ └────disable()─────┐
+   │                    │
+   ┴────────────────────┘
+       (deactivatedThisSession=true)
+                ↓
+       enable() → .requiresRelaunch
+   ```
+
+  `enable()` and `disable()` are both idempotent and log every
+  transition for debugging. `relaunch()` quits + reopens the
+  host bundle via `/usr/bin/open <path>` so the fresh process
+  picks up the persisted toggle and gets a clean CMIO context.
+
+- **AppDelegate wiring** — owns the activator (was static).
+  Subscribes to `settings.$virtualCameraEnabled` via Combine;
+  toggle changes route through `applyVirtualCameraToggle`. The
+  activator is itself the `VirtualCameraSourceController`
+  plumbed into `ProfileApplier` — silently no-ops when off
+  (returns `.ok` without doing anything), forwards to the
+  running `CameraCaptureSession` when on. No engine rebuild
+  needed on toggle flip.
+
+- **Settings UI — Camera tab** — third tab alongside General
+  and Profiles. Shows the toggle, a live status row (colored
+  dot + label that mirrors the activator state), and a
+  contextual button: "Open Login Items & Extensions" when in
+  `.needsApproval` / `.failed`, "Restart AV Pain Reliever" when
+  in `.requiresRelaunch`. Footer hint adapts to the state
+  (e.g. "Pick 'AV Pain Reliever' in Zoom" when on, "macOS holds
+  the virtual camera in a stale state…" when restart is
+  required). Footer rendered as a `Text` row inside the section
+  body per the project memory's macOS-14 `Form(.grouped)`
+  footer-slot convention.
+
+### M5 — release readiness (SHIPPED 2026-05-04)
+
+Three sub-tasks, all landed:
+
+1. **README — virtual camera section.** New "Virtual camera
+   (optional)" section between "Using the app" and "Privacy".
+   Install-first, scannable, executive aesthetic preserved
+   (per the README-audience memory). Calls out that Zoom /
+   Slack / Teams ignore the system default and tells the user
+   the four steps to enable it.
+
+2. **CI release workflow updates.**
+   `.github/workflows/release.yml` now picks the build script
+   from the tag prefix: `v0.0.0-*` and `v0.1.*` keep using
+   `scripts/make-app.sh`; everything else (`v0.2.*` and later)
+   uses `scripts/make-app-with-virtual-camera.sh`. New
+   `MACOS_PROVISIONING_PROFILE` GitHub Secret holds the
+   base64-encoded provisioning profile; decoded into
+   `Resources/AVPainReliever.provisionprofile` only for v0.2.x+
+   runs (skipped silently on v0.1.x to keep that pipeline a
+   no-op). `docs/RELEASING.md` updated to reflect the new
+   secret + the script-selection logic.
+
+3. **Sparkle / extension upgrade-replace verification —
+   recipe documented; execution in M6.** Can't be properly
+   verified until at least one v0.2.x release exists on the
+   appcast and there's an installed Sparkle-capable client to
+   upgrade FROM. The recipe lives in this section's "Upgrade-
+   replace test plan" subsection below; M6 runs it for real.
+
+### M5 — Sparkle upgrade-replace test plan (run during M6)
+
+The macOS quirk we hit during M3/M4 dev iteration was: rebuilding
+the extension binary marks the previous version
+`[terminated waiting to uninstall on reboot]`, and CMIO stops
+exposing the device until reboot or a Settings toggle off/on
+cycle. **This test plan validates that Sparkle's normal upgrade
+flow doesn't reproduce that quirk for end users**, because
+Sparkle quits the running host before swapping the bundle (fresh
+process for the new version, clean CMIO context).
+
+Pre-requisites:
+- v0.2.0 already released and live on the appcast.
+- A Mac with v0.2.0 installed via Sparkle (not via dev build)
+  and the virtual camera toggle ON for at least one launch (so
+  the extension is `[activated enabled]` in `systemextensionsctl
+  list`).
+
+Test steps:
+1. On the local dev machine, bump the source to a v0.2.0.1 patch
+   (e.g. trivial README typo or release-notes copy edit).
+2. `git tag v0.2.0.1 && git push --tags` — CI workflow runs.
+3. Verify the workflow used `make-app-with-virtual-camera.sh` and
+   notarization succeeded for both the host AND the embedded
+   extension bundle.
+4. Verify the workflow appended a new `<item>` to `appcast.xml`
+   on `main` with the v0.2.0.1 enclosure URL + EdDSA signature.
+5. On the test Mac (running v0.2.0): About → Check for Updates.
+   Sparkle should detect v0.2.0.1, prompt, download, quit,
+   replace the bundle, relaunch.
+6. Verify on the test Mac after Sparkle's relaunch:
+   - `systemextensionsctl list` — old v0.2.0 entry should
+     transition cleanly to v0.2.0.1; the previous version may
+     show as `[terminated waiting to uninstall on reboot]` for
+     a moment (expected) but the new version should be
+     `[activated enabled]`.
+   - `system_profiler SPCameraDataType` — AV Pain Reliever
+     entry still present.
+   - Open Photo Booth → AV Pain Reliever → live frames flowing
+     (no black screen).
+   - Settings → Camera → status row shows "Active".
+7. If step 6 shows black frames, that's the same-process CMIO
+   stale-handle bug from M4's known issues; click the
+   `Restart AV Pain Reliever` affordance in Settings → Camera
+   (which already exists) to recover. If we see this, file a
+   follow-up to investigate whether Sparkle's pre-upgrade quit
+   is reaching the activator's deactivation path cleanly.
+
+Failure modes worth watching for:
+- Apple's notary service rejecting the embedded extension bundle
+  for any reason (would surface in the workflow's "Notarize and
+  staple" step).
+- Sparkle's downloader / installer not preserving the embedded
+  `Library/SystemExtensions/...` directory (the extension would
+  be missing from the new bundle; would surface as the
+  activation request failing on the test Mac's first launch
+  after upgrade).
+
+### v0.2.0 release notes (draft, ready to copy)
+
+Paste this into the GitHub Release body when pre-creating the v0.2.0
+draft release (per `docs/RELEASING.md`'s curated-notes flow). The CI
+workflow renders it through GitHub's `/markdown` API and pipes the
+HTML into the appcast `<description>`, so what you write here is
+exactly what shows up in Sparkle's "What's New" panel for upgrading
+v0.1.x users.
+
+```markdown
+## What's new
+
+OK here's the deal. v0.2.0 is the big one. **AV Pain Reliever is now
+a virtual camera.** That's right — the same app that's been quietly
+swapping your audio defaults all this time can now also be the camera
+that Zoom, Slack, Teams, and any other video app picks up. One
+camera in their picker. One name. **AV Pain Reliever.** It streams
+whatever real camera the active profile names — your built-in webcam
+at the laptop, the HDMI capture at the home office, your iPhone via
+Continuity at the conference room — whatever you've configured. The
+profile changes, the picture follows. Money.
+
+Here's what this fixes: Zoom, Slack, and Teams keep their *own*
+camera selection that ignores the system default. So back in v0.1.x
+when you docked at a new location, your microphone and speakers
+would change, but Zoom would just sit there showing your laptop
+webcam like nothing happened. That's amateur hour. With v0.2.0, you
+pick "AV Pain Reliever" in Zoom once and you're done. Forever.
+
+It's **off by default** — installing a virtual camera is a real thing
+and we're not turning it on without your permission, that's not how
+we do business. Open **Settings → Camera** and flip the toggle.
+macOS will ask you to approve the extension once (System Settings →
+Login Items & Extensions → Camera Extensions). After that, you're in.
+
+A few technical things, briefly, because if you're reading this far
+you probably care:
+
+- **Hold-last-frame** during the swap. When you change profiles, the
+  new camera takes a beat to warm up — about half a second. Instead
+  of flashing black at your Zoom call, the virtual camera holds the
+  last frame from the old camera until the new one's delivering
+  frames. You see a soft pause; nobody on the call sees a glitch.
+- **Format conversion** for any camera. Built-in webcams ship BGRA,
+  USB capture cards ship YUV at 1080p, every device has its quirks.
+  We accept whatever the camera natively delivers and convert to
+  1280×720 BGRA on the fly, hardware-accelerated where possible.
+  Means your weird HDMI capture card just works.
+- **Profile-driven everywhere.** The same Add Profile wizard that
+  picks your audio defaults now also picks the camera the virtual
+  camera streams. No new config to learn — it's the same `camera =`
+  field you've already been using. v0.1.x configs upgrade clean.
+
+One known thing: if you toggle the virtual camera off and then back
+on inside the same launch, macOS holds the extension in a stale
+state and the feed goes black. The Settings UI catches this and
+gives you a **Restart AV Pain Reliever** button that handles it. One
+click, fresh process, you're back. Edge case — most folks turn it
+on once and leave it. Not a deal-breaker.
+
+That's the update. Virtual camera, profile-driven, hold-last-frame,
+universal format support. v0.1.x will keep getting patch releases
+in parallel for anyone who doesn't need any of this. **Money.**
+```
+
+### M2 lessons (gotchas the architecture or first attempts hit)
+
+1. **`AVCaptureVideoDataOutput.sessionPreset` ≠ output
+   dimensions.** Setting `session.sessionPreset = .hd1280x720`
+   does not force the output to 1280×720 — the FaceTime HD camera
+   shipped 1920×1080 frames anyway. Fix: add
+   `kCVPixelBufferWidthKey`/`kCVPixelBufferHeightKey` to
+   `output.videoSettings`. AVFoundation does the downscale.
+2. **Pre-built `CMFormatDescription` is fragile.** If the format
+   description's dimensions don't match the actual pixel buffer,
+   `CMSampleBufferCreateForImageBuffer` fails with -12743
+   (`kCMSampleBufferError_InvalidMediaFormat`). Derive the
+   format description from the pixel buffer (cached when
+   dimensions stay constant). See
+   `CMIOSinkWriter.formatDescription(for:)`.
+3. **Don't trust stream array order.** OBS's plugin uses
+   `streams[1]` to find its sink, but that's not portable across
+   device implementations. Query
+   `kCMIOStreamPropertyDirection` (0 = output/sink,
+   1 = input/source) and pick by direction.
+4. **Hardened runtime needs `com.apple.security.device.camera`
+   even outside the sandbox.** TCC won't even prompt — it
+   silently denies. Without that key, `requestAccess` returns
+   `denied` with no UI. Add the entitlement to the v0.2.0 host
+   entitlements file.
+5. **Swift `NSLog` doesn't reach unified logging on
+   macOS 14+** in our LSUIElement host or the system extension.
+   Use `os.Logger(subsystem:category:)` exclusively. Tail with
+   `log stream --predicate 'subsystem CONTAINS "ericwillis.avpainreliever"' --info --style compact`.
+6. **Iterating on the extension binary requires either a reboot
+   OR a Settings toggle off/on cycle.** Each new extension
+   version queues the previous one as
+   `[terminated waiting to uninstall on reboot]`, and macOS
+   stops exposing the device through `system_profiler
+   SPCameraDataType` until that queue clears. Confirmed both
+   paths work: full reboot or System Settings → General →
+   Login Items & Extensions → Camera Extensions → toggle off,
+   wait, toggle on. The toggle path is faster but doesn't
+   always work; reboot is the supported recovery.
+7. **`open --env VAR=val`, not `VAR=val open`.** The shell-prefix
+   form is stripped by `open` before launchd handoff. Has
+   bitten us in M1 too — kept as a permanent note.
+8. **Don't overlay a new bundle in `/Applications` between a
+   build and a reboot.** macOS picks up the new bundle during
+   boot and kicks off another upgrade cycle, undoing whatever
+   the reboot was supposed to clean up. Reboot first, then
+   install.
+
+### Wizard camera-picker discovery (2026-05-04)
+
+User report: after activating the virtual camera, "AV Pain
+Reliever" showed up in Photo Booth but not in the Add/Edit
+Profile wizard's camera picker. Three independent gotchas
+overlapping; fix had to address each:
+
+1. **Camera TCC for the host process.** `AVCaptureDevice.DiscoverySession`
+   in a host that's never been granted camera permission
+   silently hides `.external` devices including the host's
+   own embedded Camera Extension. `CameraCaptureSession` only
+   asks when the sink pipeline starts, which leaves the
+   wizard blind on toggle-on-but-never-opened-Add states.
+   Fix: `AppDelegate.applicationDidFinishLaunching` now
+   pre-grants on `.notDetermined` so TCC settles before any
+   wizard opens. Idempotent — `AVCaptureDevice.requestAccess`
+   no-ops once authorized.
+2. **Wizard reads the camera list once, at init.**
+   `AddProfileViewModel.refresh()` runs from the initializer
+   and from the manual Refresh button — nothing observes
+   `VirtualCameraActivator.state`. A wizard opened during
+   `.activating` / `.needsApproval` froze without the virtual
+   camera. Fix: `WizardForm` now `.onReceive`s
+   `delegate.virtualCameraActivator.$state` and triggers
+   `viewModel.refresh()` on `.on`.
+3. **Host process can't always see its own Camera Extension.**
+   Even with TCC and a fresh refresh, AVFoundation's
+   in-process discovery cache stays stale on first
+   activation in some launches. Photo Booth (separate
+   process) sees it; the host doesn't until relaunch.
+   Same family as the existing disable→re-enable
+   `requiresRelaunch` quirk. Fix:
+   `VirtualCameraActivator.scheduleHostVisibilityCheck()`
+   runs ~1.5 s after state flips to `.on`, runs a fresh
+   `DiscoverySession`, looks for the extension by
+   `virtualCameraUID`. If absent, escalates to
+   `.requiresRelaunch` and stops the capture pipeline so
+   the existing Settings "Restart" affordance handles it.
+
+Lesson: a CMIO Camera Extension being live in the OS-level
+graph does not guarantee the host that activated it can see
+it. Always test the picker from inside the host, not just
+Photo Booth.
+
+### Lazy capture, signaled from the extension (2026-05-04)
+
+User report: "macOS shows the green camera light on whenever
+AV Pain Reliever is running, even when I'm not in a call.
+OBS doesn't do this."
+
+Root cause: `VirtualCameraActivator.enable()` was opening an
+`AVCaptureSession` on the user's webcam the moment the
+toggle flipped, regardless of whether anything was reading
+the virtual camera. Always-on capture = always-on green
+light. The original M3 design picked this for hold-last-frame
+guarantees during mid-call source swaps, but those guarantees
+only matter while a call is in progress; the rest of the
+time the running session was pure waste.
+
+OBS comparison: OBS gates capture on (a) a scene that uses
+the camera being active AND (b) a downstream consumer
+reading the OBS Virtual Camera output. We had neither gate.
+
+Constraint that shaped the fix (M2 attempt #1, above): the
+Camera Extension itself can't run AVFoundation, so we can't
+move capture into the extension. Capture stays host-side; the
+only knob is *when* the host starts/stops it.
+
+Design:
+
+- Extension exposes a "consumer is active" signal via Darwin
+  notifications (Team-ID-prefixed names so the sandbox lets
+  the extension post). Edge-triggered on `streamingCounter`
+  0↔1 transitions in `CameraExtensionStreamSource.startStream`
+  / `stopStream`.
+- Host (`VirtualCameraActivator`) registers
+  `CFNotificationCenter` Darwin observers as soon as state
+  reaches `.on`, posts a "what's the current state?" ping so
+  the extension re-broadcasts (covers the "host launches with
+  extension already streaming a Zoom call from a previous
+  host instance" case), and routes notifications to
+  `handleConsumerActive` / `handleConsumerInactive`.
+- Active: cancel any pending stop, start the pipeline if not
+  running.
+- Inactive: schedule a 30-s `DispatchSourceTimer` grace.
+  Cancelled if a new consumer joins inside the window.
+  Stops the pipeline on expiry.
+
+Why Darwin notifications and not custom CMIO properties: the
+CMIOExtension framework's bridging from `CMIOExtensionProperty`
+(string-based) to host-visible `CMIOObjectAddPropertyListener`
+(OSType selectors) isn't documented for custom properties.
+Darwin notifications are 1980s-tech, but they work cleanly
+across the sandbox boundary with a Team-ID prefix and are
+edge-triggered for free. The "host launches mid-stream" case
+is solved by a single ping at observer-registration time.
+
+Result:
+
+- Idle (toggle on, no Zoom call): green light off, no
+  capture.
+- Zoom opens our virtual camera: ~300-500 ms warmup, then
+  frames flow.
+- Zoom call ends: capture stays warm 30 s; green light goes
+  off after.
+- Profile-driven mid-call source swap: unchanged — the
+  extension still re-emits the cached frame to cover the
+  source-swap gap.
+
+What we explicitly didn't add: a logo splash for the warmup
+window. AV Pain Reliever's "passive utility" identity says
+the camera should show the user's actual face, not our
+brand, even for half a second.
+
+### Profile camera = source, virtual camera = output (2026-05-04)
+
+User caught a conceptual mismatch the day after the wizard
+fix shipped: the per-profile Camera picker was listing
+"AV Pain Reliever" alongside real cameras. That treated the
+virtual camera as a possible *input source* — which is
+nonsense, since the virtual camera's whole purpose is to be
+the *output* that Zoom/Slack/etc. point at. A profile names
+the *real* camera the virtual camera should route per
+location.
+
+Decision (option #2 of the three we walked through): when the
+virtual camera is the active routing layer, the system-wide
+preferred camera (`AVCaptureDevice.userPreferredCamera`)
+points at the virtual camera, not the real one. Reasoning:
+
+- Users set Zoom/Slack/Teams to "AV Pain Reliever" once,
+  manually. That's the contract.
+- AVFoundation-modern apps (FaceTime, Safari getUserMedia,
+  Photo Booth) honour `userPreferredCamera` automatically.
+  Setting it to the virtual camera makes those apps follow
+  the same routing as Zoom — one coherent system state.
+- System Settings → Cameras → Preferred Camera shows
+  "AV Pain Reliever," which reinforces the model when the
+  user goes looking.
+
+Implementation:
+
+- New `VirtualCameraSourceController.preferredCameraOverride: String?`
+  protocol property (default `nil` so existing impls / tests
+  compile unchanged).
+- `VirtualCameraActivator` returns `"AV Pain Reliever"` when
+  state is `.on`, nil otherwise. During `.activating` /
+  `.needsApproval` / `.requiresRelaunch` / `.failed` we don't
+  redirect — the device might not deliver frames.
+- `ProfileApplier`: when `preferredCameraOverride` is non-nil,
+  `setPreferred` gets the override; `setSource` still gets
+  the profile's literal real-camera name. When nil, both
+  calls get the literal name (legacy V1 behaviour).
+- Wizard filters the virtual camera out of the picker
+  (`AddProfileViewModel.refresh`) and quietly clears any
+  saved profile value that points at it (legacy migration
+  for profiles created during the buggy window). Helper text
+  under the picker now adapts to the toggle state — explains
+  the routing model when the virtual camera is on.
+- `Engine.reapply()` + `ProfileApplier.invalidateLastApplied()`:
+  the same profile name now produces different system-state
+  writes depending on the toggle, so the dedupe key has to be
+  invalidated when the toggle flips. Toggle off ⇒ AppDelegate
+  calls `engine.reapply()` synchronously; toggle on ⇒ the
+  activator's `.on` transition fires a `$state` Combine
+  observer that does the same.
+- `VirtualCameraActivator.disable()`: defensively clears
+  `userPreferredCamera` if it's currently the virtual camera,
+  so AVFoundation-modern apps don't get stuck on a now-dead
+  device while the engine catches up.
+
+Pieces left untouched:
+
+- Menu bar's `currentCameraDisplay` still shows the
+  *profile's* real camera name. Correct under the new
+  model — the profile's intent is "use BRIO at this
+  location," and the menu surfaces that intent.
+- We don't programmatically set `userPreferredCamera` on
+  toggle-on outside of the next profile apply. If the
+  active profile has `camera == nil`, the system pref
+  isn't touched. The user's "set Zoom to AV Pain
+  Reliever once" instruction stays the contract; we don't
+  over-ride to be helpful.
 
 - **When we ship a Phase 1 fix or feature**, ask: does this teach us
   something about the Swift port? If yes, add to "Lessons learned."

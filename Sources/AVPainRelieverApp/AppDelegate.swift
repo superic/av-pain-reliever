@@ -1,5 +1,6 @@
 import Foundation
 import AppKit
+import AVFoundation
 import SwiftUI
 import Combine
 import AVPainReliever
@@ -22,6 +23,11 @@ struct AddProfileDependencies {
     /// already taken — preventing the wizard from pre-loading a
     /// duplicate name that would collide at save time.
     let existingProfileSlugs: Set<String>
+    /// Whether the virtual camera is the active routing layer at
+    /// wizard-open time. Drives the camera picker's filter (the
+    /// virtual camera is hidden from the list) and the helper text
+    /// that explains the per-profile camera setting under each mode.
+    let virtualCameraEnabled: Bool
     let onSaved: () -> Void
 }
 
@@ -65,6 +71,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
     @Published var lastUnknownDevices: Set<USBDevice> = []
 
     private var engine: Engine?
+
+    /// Owns the lifecycle of the embedded Camera Extension and the
+    /// host capture pipeline. SwiftUI views observe this directly
+    /// so the Settings UI can show a live status badge as the
+    /// extension activates / fails / deactivates. Stable across
+    /// `bootEngine()` calls — only `enable()` / `disable()` change
+    /// its internal pipeline state.
+    let virtualCameraActivator = VirtualCameraActivator()
 
     /// Pick the bundle-aware UserNotifications notifier when running
     /// inside the signed `.app` (clean icon, click-to-dismiss). Fall
@@ -130,6 +144,47 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         settings.objectWillChange
             .sink { [weak self] in self?.objectWillChange.send() }
             .store(in: &cancellables)
+        // Same propagation for the activator — Settings views show a
+        // live state badge that needs to repaint on every state
+        // transition.
+        virtualCameraActivator.objectWillChange
+            .sink { [weak self] in self?.objectWillChange.send() }
+            .store(in: &cancellables)
+        // Drive the activator from the persisted toggle. Skips the
+        // initial value (delivered synchronously when the sink
+        // attaches) — `applicationDidFinishLaunching` handles the
+        // first apply once `submitRequest` is safe to call. Runtime
+        // changes (user flipping the toggle in Settings) come
+        // through here, and we rebuild the engine afterwards so
+        // `ProfileApplier`'s `virtualCameraSource` reference picks
+        // up the activator's new lifecycle state.
+        settings.$virtualCameraEnabled
+            .removeDuplicates()
+            .dropFirst()
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] enabled in
+                self?.applyVirtualCameraToggle(enabled: enabled)
+            }
+            .store(in: &cancellables)
+        // The activator's `preferredCameraOverride` flips with state.
+        // When state crosses into / out of `.on`, the active profile's
+        // camera should be re-applied with the new override semantics
+        // (system-wide preferred = virtual camera vs. = real camera).
+        // `removeDuplicates` collapses the no-op transitions so we
+        // don't reapply on every internal `.activating` →
+        // `.needsApproval` shimmer.
+        virtualCameraActivator.$state
+            .map { state -> Bool in
+                if case .on = state { return true }
+                return false
+            }
+            .removeDuplicates()
+            .dropFirst()
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                self?.engine?.reapply()
+            }
+            .store(in: &cancellables)
     }
 
     private static let profilesTOMLURL: URL =
@@ -163,6 +218,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         // foreground for windows. Generated at runtime so a palette
         // tweak doesn't need a regenerated `.icns` asset.
         NSApp.applicationIconImage = AppIcon.image
+        // Pre-grant camera TCC for the host process. Without this,
+        // `AVCaptureDevice.DiscoverySession` from inside the wizard
+        // hides the embedded Camera Extension even though Photo
+        // Booth and other approved apps see it. Idempotent — once
+        // the user has accepted, subsequent launches return
+        // immediately without re-prompting.
+        if AVCaptureDevice.authorizationStatus(for: .video) == .notDetermined {
+            AVCaptureDevice.requestAccess(for: .video) { _ in }
+        }
+        // V2: enable the virtual camera if (a) the user previously
+        // turned the Settings toggle on, OR (b) the
+        // `AVPR_ACTIVATE_VIRTUAL_CAMERA=1` debug override is set.
+        // The override stays in the codebase as a developer
+        // affordance — useful for re-activation after a
+        // `systemextensionsctl uninstall` without touching the
+        // persisted setting. Runs before `bootEngine()` so the
+        // engine's first evaluate-and-apply finds a live source.
+        let envOverride = ProcessInfo.processInfo
+            .environment[VirtualCameraActivator.envVar] == "1"
+        if VirtualCameraActivator.shouldAutoEnable(
+            persistedToggle: settings.virtualCameraEnabled
+        ) {
+            virtualCameraActivator.enable(envOverride: envOverride)
+        }
         bootEngine()
         applyLaunchAtLoginPreference()
         // Spin up Sparkle only inside a real .app bundle that has a
@@ -410,6 +489,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
             configURL: Self.profilesTOMLURL,
             editing: editing,
             existingProfileSlugs: existing,
+            virtualCameraEnabled: virtualCameraActivator.state == .on,
             onSaved: { [weak self] in
                 // Saving any profile is taken as the user being
                 // committed — no need to keep showing the welcome
@@ -489,7 +569,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         let resolver = ProfileResolver(profiles: profiles)
         let audio = CoreAudioController()
         let camera = AVFoundationCameraController()
-        let applier = ProfileApplier(audio: audio, camera: camera, logger: logger)
+        // The activator is itself a `VirtualCameraSourceController` —
+        // it forwards `setSource` to the running capture session
+        // when enabled, and silently no-ops when disabled. Always
+        // injected so toggle flips at runtime are picked up
+        // without rebuilding the engine.
+        let applier = ProfileApplier(
+            audio: audio,
+            camera: camera,
+            virtualCameraSource: virtualCameraActivator,
+            logger: logger
+        )
         return Engine(
             watcher: watcher,
             resolver: resolver,
@@ -498,6 +588,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
             debounceInterval: settings.debounceInterval,
             clock: DispatchClock()
         )
+    }
+
+    /// User flipped the Settings toggle. The activator handles
+    /// idempotency for repeats; this method is a thin dispatcher.
+    /// Engine rebuild is unnecessary because the activator is the
+    /// `VirtualCameraSourceController` plumbed into `ProfileApplier`
+    /// — its forwarding behavior changes with state, no engine
+    /// reconfiguration needed.
+    private func applyVirtualCameraToggle(enabled: Bool) {
+        if enabled {
+            virtualCameraActivator.enable(envOverride: false)
+            // The `.on` transition (when activation completes)
+            // triggers `engine.reapply()` via the state observer
+            // wired up in `init`. Nothing to do here.
+        } else {
+            virtualCameraActivator.disable()
+            // Disable is synchronous — state goes to `.off`
+            // immediately. Re-apply the active profile so its
+            // camera setting flows back to the real device, not
+            // the virtual one we just torn down. (`disable` itself
+            // already cleared a stale `userPreferredCamera`; this
+            // gives the profile applier a chance to set it
+            // explicitly to the profile's real camera.)
+            engine?.reapply()
+        }
     }
 
     // MARK: - Convenience surfaces for the menu

@@ -24,16 +24,19 @@ public protocol ApplierLogger {
 public final class ProfileApplier {
     private let audio: AudioController
     private let camera: CameraController?
+    private let virtualCameraSource: VirtualCameraSourceController?
     private let logger: ApplierLogger
     private var lastAppliedName: String?
 
     public init(
         audio: AudioController,
         camera: CameraController? = nil,
+        virtualCameraSource: VirtualCameraSourceController? = nil,
         logger: ApplierLogger
     ) {
         self.audio = audio
         self.camera = camera
+        self.virtualCameraSource = virtualCameraSource
         self.logger = logger
     }
 
@@ -51,10 +54,30 @@ public final class ProfileApplier {
             applyAudio(output, role: .output)
         }
         if let cameraName = profile.camera {
-            applyCamera(cameraName)
+            // When the virtual camera is the active routing layer,
+            // the *system-wide* preferred camera should point at the
+            // virtual camera itself — that's what FaceTime / Safari
+            // / any AVFoundation-modern client picks up, mirroring
+            // what Zoom/Slack/Teams see once the user has manually
+            // selected "AV Pain Reliever". The profile's literal
+            // camera name still drives the virtual camera's *source*
+            // (the real webcam frames feed in there).
+            let preferredName = virtualCameraSource?.preferredCameraOverride
+                ?? cameraName
+            applyCamera(preferredName)
+            applyVirtualCameraSource(cameraName)
         }
 
         lastAppliedName = profile.name
+    }
+
+    /// Forget the dedupe key so the next `apply(profile)` re-fires
+    /// every side effect even when the profile name hasn't changed.
+    /// Used by the host when a config change (e.g. flipping the
+    /// virtual-camera toggle) means the same profile name should
+    /// resolve to a different set of system-state writes.
+    public func invalidateLastApplied() {
+        lastAppliedName = nil
     }
 
     private func applyAudio(_ name: String, role: AudioDeviceRole) {
@@ -81,6 +104,19 @@ public final class ProfileApplier {
             logger.info("set preferred camera: \(name)")
         case .notFound:
             logger.warn("camera '\(name)' not found — skipping (it may not be currently attached)")
+        }
+    }
+
+    private func applyVirtualCameraSource(_ name: String) {
+        // Silently skipped on v0.1.x builds (no virtual camera
+        // bundled) and on v0.2.x launches without
+        // AVPR_ACTIVATE_VIRTUAL_CAMERA=1. Both paths inject nil.
+        guard let virtualCameraSource else { return }
+        switch virtualCameraSource.setSource(named: name) {
+        case .ok:
+            logger.info("set virtual camera source: \(name)")
+        case .notFound:
+            logger.warn("virtual camera source '\(name)' not found — skipping (it may not be currently attached)")
         }
     }
 }
