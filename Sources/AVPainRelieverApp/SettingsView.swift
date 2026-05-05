@@ -10,6 +10,7 @@ enum SettingsTab: Hashable {
     case general
     case profiles
     case camera
+    case advanced
 }
 
 /// The Settings scene has three tabs: General (toggles + slider),
@@ -49,6 +50,12 @@ struct SettingsView: View {
                     Label("Camera", systemImage: "camera")
                 }
                 .tag(SettingsTab.camera)
+
+            AdvancedSettingsTab(settings: settings, delegate: delegate)
+                .tabItem {
+                    Label("Advanced", systemImage: "slider.horizontal.3")
+                }
+                .tag(SettingsTab.advanced)
         }
         .frame(width: 480, height: 380)
         .centeredOnScreen()
@@ -456,6 +463,146 @@ private struct ProfileRow: View {
         let separator = Text("  •  ")
         return parts.dropFirst().reduce(parts[0]) { acc, next in
             acc + separator + next
+        }
+    }
+}
+
+/// Advanced tab — currently houses the local stats screen behind an
+/// opt-in toggle. Future home for diagnostic/dev settings (logs,
+/// reset state, etc.). Stats tracking ships off; the Stats section
+/// collapses to just the toggle + helper text on a fresh install,
+/// avoiding "what is this stuff?" friction before the user has
+/// chosen to keep notes.
+private struct AdvancedSettingsTab: View {
+    @ObservedObject var settings: SettingsStore
+    @ObservedObject var delegate: AppDelegate
+    @State private var resetConfirmationVisible = false
+
+    var body: some View {
+        Form {
+            Section {
+                Toggle("Track usage stats locally", isOn: $settings.statsTrackingEnabled)
+                Text("Counts only — what profile switched, when, and how often. No meeting content, no durations, no telemetry. Stays on this Mac.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .fixedSize(horizontal: false, vertical: true)
+                if settings.statsTrackingEnabled {
+                    statsRows
+                }
+            } header: {
+                Label("Stats", systemImage: "chart.bar.fill")
+            }
+
+            if hasAnyStatsValue {
+                Section {
+                    Button(role: .destructive) {
+                        resetConfirmationVisible = true
+                    } label: {
+                        Text("Reset stats…")
+                    }
+                } header: {
+                    Label("Reset", systemImage: "arrow.counterclockwise")
+                }
+            }
+        }
+        .formStyle(.grouped)
+        .alert(
+            "Reset all usage stats?",
+            isPresented: $resetConfirmationVisible
+        ) {
+            Button("Reset", role: .destructive) {
+                settings.resetStats()
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This wipes every counter and date on this screen. Your profiles and other settings are untouched.")
+        }
+    }
+
+    /// True iff any stats value is non-zero / non-empty. Used to show
+    /// the Reset section even when tracking is off, so a user who
+    /// disables tracking after collecting some history can still wipe.
+    private var hasAnyStatsValue: Bool {
+        settings.profileSwitchCount > 0
+            || !settings.perProfileCounts.isEmpty
+            || settings.lastSwitchSlug != nil
+            || settings.manualOverrideCount > 0
+            || settings.activeDaysCount > 0
+            || !settings.uniqueDeviceFingerprints.isEmpty
+            || settings.statsStartDate != nil
+    }
+
+    @ViewBuilder
+    private var statsRows: some View {
+        LabeledContent("Tracking since", value: trackingSinceString)
+        LabeledContent("Auto-switches", value: "\(settings.profileSwitchCount)")
+        if let lastLine = lastSwitchedString {
+            LabeledContent("Last switched", value: lastLine)
+        }
+        if let (topSlug, topCount) = topProfile {
+            LabeledContent("Most-used location", value: "\(PrettyName.format(topSlug)) (\(topCount))")
+            ForEach(otherProfiles, id: \.0) { slug, count in
+                LabeledContent(PrettyName.format(slug), value: "\(count)")
+            }
+        }
+        LabeledContent("Manual overrides", value: "\(settings.manualOverrideCount)")
+        LabeledContent("Current streak", value: streakString(settings.currentStreakDays))
+        LabeledContent("Longest streak", value: streakString(settings.longestStreakDays))
+        LabeledContent("Active days", value: "\(settings.activeDaysCount)")
+        LabeledContent("Unique USB devices recognized", value: "\(settings.uniqueDevicesSeenCount)")
+    }
+
+    /// "Today" on day 0, "Yesterday" on day 1, "N days ago" beyond.
+    /// Renders nil-state as "Not yet" so a freshly-enabled user
+    /// doesn't see "0 days ago" before any data has been collected.
+    private var trackingSinceString: String {
+        guard let start = settings.statsStartDate else { return "Not yet" }
+        let days = Calendar.current.dateComponents(
+            [.day],
+            from: Calendar.current.startOfDay(for: start),
+            to: Calendar.current.startOfDay(for: Date())
+        ).day ?? 0
+        switch days {
+        case 0: return "Today"
+        case 1: return "Yesterday (1 day)"
+        default: return "\(days) days ago"
+        }
+    }
+
+    private var lastSwitchedString: String? {
+        guard let date = settings.lastSwitchDate, let slug = settings.lastSwitchSlug
+        else { return nil }
+        let formatter = RelativeDateTimeFormatter()
+        formatter.unitsStyle = .abbreviated
+        let relative = formatter.localizedString(for: date, relativeTo: Date())
+        return "\(relative) → \(PrettyName.format(slug))"
+    }
+
+    /// Highest entry in `perProfileCounts`; nil when the dictionary
+    /// is empty.
+    private var topProfile: (String, Int)? {
+        settings.perProfileCounts.max { $0.value < $1.value }
+            .map { ($0.key, $0.value) }
+    }
+
+    /// All entries except the top one, sorted by descending count.
+    /// The top one is rendered as the "Most-used location" highlight
+    /// just above; this list adds the rankings without duplicating
+    /// the leader.
+    private var otherProfiles: [(String, Int)] {
+        guard let top = topProfile else { return [] }
+        return settings.perProfileCounts
+            .filter { $0.key != top.0 }
+            .sorted { $0.value > $1.value }
+            .map { ($0.key, $0.value) }
+    }
+
+    private func streakString(_ days: Int) -> String {
+        switch days {
+        case 0: return "—"
+        case 1: return "1 day"
+        default: return "\(days) days"
         }
     }
 }

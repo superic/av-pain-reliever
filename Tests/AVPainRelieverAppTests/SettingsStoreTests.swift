@@ -1,5 +1,6 @@
 import Testing
 import Foundation
+@testable import AVPainReliever
 @testable import AVPainRelieverApp
 
 @Suite("SettingsStore")
@@ -31,6 +32,18 @@ struct SettingsStoreTests {
         // Experimental updates default off — only the stable channel
         // is consumed unless the user explicitly opts in.
         #expect(store.experimentalUpdates == false)
+        // Stats tracking ships off — privacy-first default. All
+        // counter / dictionary fields stay empty until the user opts in.
+        #expect(store.statsTrackingEnabled == false)
+        #expect(store.statsStartDate == nil)
+        #expect(store.perProfileCounts.isEmpty)
+        #expect(store.lastSwitchSlug == nil)
+        #expect(store.lastSwitchDate == nil)
+        #expect(store.manualOverrideCount == 0)
+        #expect(store.currentStreakDays == 0)
+        #expect(store.longestStreakDays == 0)
+        #expect(store.activeDaysCount == 0)
+        #expect(store.uniqueDevicesSeenCount == 0)
     }
 
     @Test("launchAtLogin persists across reloads")
@@ -67,11 +80,12 @@ struct SettingsStoreTests {
         #expect(reopened.debounceInterval == 2.5)
     }
 
-    @Test("incrementSwitchCount persists across reloads")
+    @Test("incrementSwitchCount persists across reloads when tracking is enabled")
     func switchCountIncrements() {
         let defaults = makeSuite()
         do {
             let store = SettingsStore(defaults: defaults)
+            store.statsTrackingEnabled = true
             store.incrementSwitchCount()
             store.incrementSwitchCount()
             store.incrementSwitchCount()
@@ -112,5 +126,173 @@ struct SettingsStoreTests {
         }
         let reopened = SettingsStore(defaults: defaults)
         #expect(reopened.experimentalUpdates == true)
+    }
+
+    // MARK: - Stats tracking
+
+    @Test("with tracking off, every record/increment method is a no-op")
+    func gatedMethodsNoOpWhenDisabled() {
+        let store = SettingsStore(defaults: makeSuite())
+        // Default state: tracking off.
+        #expect(store.statsTrackingEnabled == false)
+
+        store.incrementSwitchCount()
+        store.incrementManualOverrideCount()
+        store.recordSwitch(toSlug: "home-office")
+        store.recordDevicesSeen([USBDevice(vendorID: 0x2188, productID: 0x6533)])
+
+        #expect(store.profileSwitchCount == 0)
+        #expect(store.manualOverrideCount == 0)
+        #expect(store.perProfileCounts.isEmpty)
+        #expect(store.lastSwitchSlug == nil)
+        #expect(store.lastSwitchDate == nil)
+        #expect(store.currentStreakDays == 0)
+        #expect(store.longestStreakDays == 0)
+        #expect(store.activeDaysCount == 0)
+        #expect(store.uniqueDevicesSeenCount == 0)
+    }
+
+    @Test("first opt-in stamps statsStartDate; toggling off-on does not re-stamp")
+    func optInStampsStartDateOnce() {
+        let store = SettingsStore(defaults: makeSuite())
+        #expect(store.statsStartDate == nil)
+
+        let beforeFirst = Date()
+        store.statsTrackingEnabled = true
+        let stampedFirst = store.statsStartDate
+        #expect(stampedFirst != nil)
+        // Stamp must be at-or-after the pre-flip moment.
+        #expect((stampedFirst ?? .distantPast) >= beforeFirst)
+
+        // Off → on again: should NOT re-stamp.
+        store.statsTrackingEnabled = false
+        store.statsTrackingEnabled = true
+        #expect(store.statsStartDate == stampedFirst)
+    }
+
+    @Test("recordSwitch updates per-profile counts and last-switch fields")
+    func recordSwitchUpdatesBasics() {
+        let store = SettingsStore(defaults: makeSuite())
+        store.statsTrackingEnabled = true
+
+        let t = Date()
+        store.recordSwitch(toSlug: "home-office", at: t)
+        store.recordSwitch(toSlug: "home-office", at: t)
+        store.recordSwitch(toSlug: "conference-room", at: t)
+
+        #expect(store.perProfileCounts["home-office"] == 2)
+        #expect(store.perProfileCounts["conference-room"] == 1)
+        #expect(store.lastSwitchSlug == "conference-room")
+        #expect(store.lastSwitchDate == t)
+    }
+
+    @Test("streak: same calendar day does not advance currentStreak or activeDays")
+    func streakSameDayNoOp() {
+        let store = SettingsStore(defaults: makeSuite())
+        store.statsTrackingEnabled = true
+        let morning = Calendar.current.startOfDay(for: Date()).addingTimeInterval(9 * 3600)
+        let afternoon = morning.addingTimeInterval(5 * 3600)
+
+        store.recordSwitch(toSlug: "a", at: morning)
+        #expect(store.currentStreakDays == 1)
+        #expect(store.activeDaysCount == 1)
+
+        store.recordSwitch(toSlug: "b", at: afternoon)
+        // Same day — no streak advance, no activeDays increment.
+        #expect(store.currentStreakDays == 1)
+        #expect(store.activeDaysCount == 1)
+    }
+
+    @Test("streak: consecutive days advance; gap resets; longest tracks max")
+    func streakAdvanceGapAndLongest() {
+        let store = SettingsStore(defaults: makeSuite())
+        store.statsTrackingEnabled = true
+        let cal = Calendar.current
+        let day0 = cal.startOfDay(for: Date())
+        let day1 = cal.date(byAdding: .day, value: 1, to: day0)!
+        let day2 = cal.date(byAdding: .day, value: 2, to: day0)!
+        let day5 = cal.date(byAdding: .day, value: 5, to: day0)!
+
+        store.recordSwitch(toSlug: "a", at: day0)
+        store.recordSwitch(toSlug: "a", at: day1)
+        store.recordSwitch(toSlug: "a", at: day2)
+        #expect(store.currentStreakDays == 3)
+        #expect(store.longestStreakDays == 3)
+        #expect(store.activeDaysCount == 3)
+
+        // Gap of 2 days resets the streak; longest is preserved.
+        store.recordSwitch(toSlug: "a", at: day5)
+        #expect(store.currentStreakDays == 1)
+        #expect(store.longestStreakDays == 3)
+        #expect(store.activeDaysCount == 4)
+    }
+
+    @Test("recordDevicesSeen deduplicates and only writes when set grows")
+    func uniqueDevicesDedup() {
+        let store = SettingsStore(defaults: makeSuite())
+        store.statsTrackingEnabled = true
+
+        let dock = USBDevice(vendorID: 0x2188, productID: 0x6533)
+        let cam = USBDevice(vendorID: 0x046d, productID: 0x085e)
+
+        store.recordDevicesSeen([dock])
+        #expect(store.uniqueDevicesSeenCount == 1)
+
+        // Re-seeing the same device shouldn't grow the set.
+        store.recordDevicesSeen([dock])
+        #expect(store.uniqueDevicesSeenCount == 1)
+
+        store.recordDevicesSeen([dock, cam])
+        #expect(store.uniqueDevicesSeenCount == 2)
+    }
+
+    @Test("resetStats wipes counters; tracking flag is preserved")
+    func resetStatsWipes() {
+        let defaults = makeSuite()
+        let store = SettingsStore(defaults: defaults)
+        store.statsTrackingEnabled = true
+        store.incrementSwitchCount()
+        store.recordSwitch(toSlug: "home-office")
+        store.incrementManualOverrideCount()
+        store.recordDevicesSeen([USBDevice(vendorID: 0x2188, productID: 0x6533)])
+
+        let stampBeforeReset = store.statsStartDate
+        store.resetStats()
+
+        #expect(store.profileSwitchCount == 0)
+        #expect(store.perProfileCounts.isEmpty)
+        #expect(store.lastSwitchSlug == nil)
+        #expect(store.lastSwitchDate == nil)
+        #expect(store.manualOverrideCount == 0)
+        #expect(store.currentStreakDays == 0)
+        #expect(store.longestStreakDays == 0)
+        #expect(store.activeDaysCount == 0)
+        #expect(store.uniqueDevicesSeenCount == 0)
+        // Tracking stays on; statsStartDate gets re-stamped to "now"
+        // (>= the stamp the original opt-in produced).
+        #expect(store.statsTrackingEnabled == true)
+        #expect((store.statsStartDate ?? .distantPast) >= (stampBeforeReset ?? .distantPast))
+    }
+
+    @Test("stats fields persist across reloads")
+    func statsFieldsRoundTrip() {
+        let defaults = makeSuite()
+        let date = Date()
+        do {
+            let store = SettingsStore(defaults: defaults)
+            store.statsTrackingEnabled = true
+            store.recordSwitch(toSlug: "home-office", at: date)
+            store.recordSwitch(toSlug: "conference-room", at: date)
+            store.incrementManualOverrideCount()
+            store.recordDevicesSeen([USBDevice(vendorID: 0x2188, productID: 0x6533)])
+        }
+        let reopened = SettingsStore(defaults: defaults)
+        #expect(reopened.statsTrackingEnabled == true)
+        #expect(reopened.statsStartDate != nil)
+        #expect(reopened.perProfileCounts["home-office"] == 1)
+        #expect(reopened.perProfileCounts["conference-room"] == 1)
+        #expect(reopened.lastSwitchSlug == "conference-room")
+        #expect(reopened.manualOverrideCount == 1)
+        #expect(reopened.uniqueDevicesSeenCount == 1)
     }
 }

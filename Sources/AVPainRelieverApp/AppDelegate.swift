@@ -354,6 +354,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         engine.onUnknownLocation = { [weak self] devices in
             self?.handleUnknownLocation(devices: devices)
         }
+        engine.onDevicesEvaluated = { [weak self] devices in
+            // Stats: feed the unique-devices set. SettingsStore
+            // gates on `statsTrackingEnabled` internally — when the
+            // user has tracking off, this is a no-op.
+            self?.settings.recordDevicesSeen(devices)
+        }
         engine.start()
         self.engine = engine
     }
@@ -372,6 +378,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         // toast (default on; users can mute from Preferences).
         if let last = lastNotifiedName, last != profile.name {
             settings.incrementSwitchCount()
+            settings.recordSwitch(toSlug: profile.name)
             if settings.notificationsEnabled {
                 notifier.notify(
                     title: NotificationCopy.title(forSlug: profile.name),
@@ -457,6 +464,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
     /// configuration or apply a "wrong-for-now" profile (e.g. set
     /// home-office audio defaults while undocked).
     func applyManually(_ profile: Profile) {
+        // Stats: every menu-driven force-apply increments the
+        // manual-override counter. The engine still goes on to fire
+        // `onProfileApplied`, which counts this as a regular switch
+        // too — that's correct: it IS a switch, just one the user
+        // forced. Both counters are gated on `statsTrackingEnabled`.
+        settings.incrementManualOverrideCount()
         engine?.applyManually(profile)
     }
 
