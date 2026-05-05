@@ -298,7 +298,7 @@ struct AddProfileView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .fixedSize(horizontal: false, vertical: true)
         } else {
-            Text("Uncheck peripherals that aren't unique to this location (keyboards, mice, phones). The profile matches when every checked device is attached.")
+            Text("Important hardware (mics, cameras, capture cards, audio interfaces) is pre-selected. Tick anything else that uniquely identifies this location. The profile matches when every ticked device is attached.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -330,16 +330,32 @@ struct AddProfileView: View {
                                     // location. Yellow pill makes
                                     // the unavailable state obvious.
                                     pill(text: "Not connected", tint: Theme.Color.warn)
+                                } else if DevicePortability
+                                    .portabilityCategory(deviceName: entry.name) != nil {
+                                    // Muted gray "Travels with you"
+                                    // pill on portable peripherals
+                                    // (keyboards, mice, phones,
+                                    // AirPods, watches, headphones).
+                                    // These are auto-unticked by the
+                                    // view model — the pill is
+                                    // informational, explaining why
+                                    // the row is shown unticked. Tone
+                                    // is descriptive, not directive.
+                                    pill(text: "Travels with you", tint: Theme.Color.muted)
                                 } else if let category = DevicePortability
-                                    .portabilityCategory(deviceName: entry.name) {
-                                    // Yellow "Suggested: untick" pill so
-                                    // the user immediately spots the
-                                    // travelling peripherals (keyboards,
-                                    // mice, phones) that shouldn't go in
-                                    // a location fingerprint. Hint, not
-                                    // an instruction — the user is free
-                                    // to keep them ticked.
-                                    pill(text: "Suggested: untick (\(category))", tint: Theme.Color.warn)
+                                    .importantCategory(deviceName: entry.name) {
+                                    // Green "Important" pill on the
+                                    // headline hardware that's most
+                                    // likely defining this location —
+                                    // dedicated mics, cameras, capture
+                                    // cards, audio interfaces.
+                                    // Auto-ticked by the view model;
+                                    // pill confirms the auto-selection
+                                    // and explains why. Mutually
+                                    // exclusive with "Travels with you"
+                                    // by classifier construction
+                                    // (their keywords don't overlap).
+                                    pill(text: "Important: \(category)", tint: Theme.Color.success)
                                 }
                             }
                             Text(idLine(for: entry.device))

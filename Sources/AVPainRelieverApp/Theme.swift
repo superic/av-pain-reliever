@@ -28,6 +28,13 @@ enum Theme {
         /// icon. System red, same as Apple's own destructive action
         /// styling.
         static let error = SwiftUI.Color.red
+        /// Quiet, informational pills — "Travels with you" tag on
+        /// portable peripherals in the wizard. Lower visual volume
+        /// than the warn / success / error tints so the
+        /// informational signal doesn't compete with the actionable
+        /// pills (green Important, yellow error banners). System
+        /// gray adapts to light/dark mode automatically.
+        static let muted = SwiftUI.Color.gray
     }
 
     enum Symbol {

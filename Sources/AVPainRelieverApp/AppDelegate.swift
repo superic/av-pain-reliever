@@ -16,6 +16,12 @@ struct AddProfileDependencies {
     let cameraController: CameraController
     let configURL: URL
     let editing: Profile?
+    /// Slugs of profiles already saved in the user's config. The
+    /// wizard's auto-suggest path consults this to suppress
+    /// `ProfileIcon.suggestedName` when the proposed name is
+    /// already taken — preventing the wizard from pre-loading a
+    /// duplicate name that would collide at save time.
+    let existingProfileSlugs: Set<String>
     let onSaved: () -> Void
 }
 
@@ -389,12 +395,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
     func addProfileDependencies() -> AddProfileDependencies {
         let editing = profileBeingEdited
         profileBeingEdited = nil
+        // Snapshot the current profile slugs at wizard-open time so
+        // the auto-suggest can avoid proposing a name the user
+        // already has. When editing, exclude the editing profile's
+        // own slug so its name doesn't suppress its own suggestion
+        // (the wizard's name field is pre-populated from the
+        // editing profile separately).
+        let existing = Set(availableProfiles.map(\.name))
+            .subtracting([editing?.name].compactMap { $0 })
         return AddProfileDependencies(
             watcher: IOKitUSBWatcher(),
             audioController: CoreAudioController(),
             cameraController: AVFoundationCameraController(),
             configURL: Self.profilesTOMLURL,
             editing: editing,
+            existingProfileSlugs: existing,
             onSaved: { [weak self] in
                 // Saving any profile is taken as the user being
                 // committed — no need to keep showing the welcome
