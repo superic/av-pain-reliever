@@ -49,6 +49,21 @@ final class AddProfileViewModel: ObservableObject {
     @Published private(set) var attachedDevices: [NamedUSBDevice] = []
     /// Subset of `attachedDevices` IDs the user has checked.
     @Published var selectedDeviceIDs: Set<USBDevice> = []
+
+    /// True when the user has zero devices ticked, which makes the
+    /// profile an *implicit fallback*: the resolver treats an empty
+    /// fingerprint as matching any USB state with specificity 0, so
+    /// it wins only when no more-specific profile matches. The wizard
+    /// surfaces this state with a tailored hint so a user who saves
+    /// without realizing what they did doesn't end up with (a) an
+    /// always-matching profile that drowns out their other locations
+    /// or (b) the inverse — a many-device fingerprint accidentally
+    /// captured on a profile they meant to be the fallback. The
+    /// canonical user case for this hint is the default "laptop"
+    /// profile: empty fingerprint, kicks in when undocked.
+    var willMatchAnywhere: Bool {
+        selectedDeviceIDs.isEmpty
+    }
     /// Devices in `attachedDevices` that came from the editing
     /// profile's fingerprint but are NOT currently plugged in. The
     /// view shows these with a yellow "Not connected" badge and

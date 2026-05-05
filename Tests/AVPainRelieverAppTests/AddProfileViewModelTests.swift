@@ -328,6 +328,37 @@ struct AddProfileViewModelTests {
         let loaded = try ConfigLoader().loadProfiles(from: url)
         #expect(Set(loaded.map(\.name)) == ["home-studio"])
     }
+
+    @Test("willMatchAnywhere is true when no devices are ticked")
+    func willMatchAnywhereOnEmptySelection() {
+        let url = URL(fileURLWithPath: "/tmp/wma.toml")
+        let watcher = FakeWatcher()
+        // Watcher returns one attached device so the selection is
+        // non-default — the auto-tick logic in refresh() picks it up,
+        // exercising both states of the property.
+        watcher.named = [
+            NamedUSBDevice(
+                device: USBDevice(vendorID: 0x2188, productID: 0x6533),
+                name: "CalDigit"
+            )
+        ]
+        let vm = AddProfileViewModel(
+            watcher: watcher,
+            audioController: FakeAudio(devices: []),
+            cameraController: FakeCamera(cameras: []),
+            configURL: url,
+            editing: nil,
+            onSaved: {}
+        )
+        // With one auto-ticked device, willMatchAnywhere is false.
+        #expect(vm.selectedDeviceIDs.isEmpty == false)
+        #expect(vm.willMatchAnywhere == false)
+
+        // Untick everything. Now this profile is the implicit
+        // fallback at save time — the wizard hint covers this state.
+        vm.selectedDeviceIDs.removeAll()
+        #expect(vm.willMatchAnywhere == true)
+    }
 }
 
 // MARK: - Test fakes
