@@ -60,6 +60,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
 
     private var engine: Engine?
 
+    /// Owns the lifecycle of the embedded Camera Extension and the
+    /// host capture pipeline. SwiftUI views observe this directly
+    /// so the Settings UI can show a live status badge as the
+    /// extension activates / fails / deactivates. Stable across
+    /// `bootEngine()` calls — only `enable()` / `disable()` change
+    /// its internal pipeline state.
+    let virtualCameraActivator = VirtualCameraActivator()
+
     /// Pick the bundle-aware UserNotifications notifier when running
     /// inside the signed `.app` (clean icon, click-to-dismiss). Fall
     /// back to the AppleScript shim for `swift run` dev binaries that
@@ -124,6 +132,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         settings.objectWillChange
             .sink { [weak self] in self?.objectWillChange.send() }
             .store(in: &cancellables)
+        // Same propagation for the activator — Settings views show a
+        // live state badge that needs to repaint on every state
+        // transition.
+        virtualCameraActivator.objectWillChange
+            .sink { [weak self] in self?.objectWillChange.send() }
+            .store(in: &cancellables)
+        // Drive the activator from the persisted toggle. Skips the
+        // initial value (delivered synchronously when the sink
+        // attaches) — `applicationDidFinishLaunching` handles the
+        // first apply once `submitRequest` is safe to call. Runtime
+        // changes (user flipping the toggle in Settings) come
+        // through here, and we rebuild the engine afterwards so
+        // `ProfileApplier`'s `virtualCameraSource` reference picks
+        // up the activator's new lifecycle state.
+        settings.$virtualCameraEnabled
+            .removeDuplicates()
+            .dropFirst()
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] enabled in
+                self?.applyVirtualCameraToggle(enabled: enabled)
+            }
+            .store(in: &cancellables)
     }
 
     private static let profilesTOMLURL: URL =
@@ -157,17 +187,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         // foreground for windows. Generated at runtime so a palette
         // tweak doesn't need a regenerated `.icns` asset.
         NSApp.applicationIconImage = AppIcon.image
-        // V2 / M1+M2+M3: env-var-gated Camera Extension activation.
-        // Boots the host-side capture pipeline (M2) and exposes the
-        // running session as a `VirtualCameraSourceController` so the
-        // engine that follows can drive its source from the active
-        // profile (M3). No-op unless `AVPR_ACTIVATE_VIRTUAL_CAMERA=1`
-        // is set AND the host has the
-        // `com.apple.developer.system-extension.install` entitlement
-        // (v0.2.0+ builds only). Runs before `bootEngine()` so the
-        // engine's first evaluate-and-apply finds a live source to
-        // drive.
-        VirtualCameraActivator.activateIfRequested()
+        // V2: enable the virtual camera if (a) the user previously
+        // turned the Settings toggle on, OR (b) the
+        // `AVPR_ACTIVATE_VIRTUAL_CAMERA=1` debug override is set.
+        // The override stays in the codebase as a developer
+        // affordance — useful for re-activation after a
+        // `systemextensionsctl uninstall` without touching the
+        // persisted setting. Runs before `bootEngine()` so the
+        // engine's first evaluate-and-apply finds a live source.
+        let envOverride = ProcessInfo.processInfo
+            .environment[VirtualCameraActivator.envVar] == "1"
+        if VirtualCameraActivator.shouldAutoEnable(
+            persistedToggle: settings.virtualCameraEnabled
+        ) {
+            virtualCameraActivator.enable(envOverride: envOverride)
+        }
         bootEngine()
         applyLaunchAtLoginPreference()
         // Spin up Sparkle only inside a real .app bundle that has a
@@ -485,16 +519,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         let resolver = ProfileResolver(profiles: profiles)
         let audio = CoreAudioController()
         let camera = AVFoundationCameraController()
-        // Plumbed only when the env-var-gated activator booted the
-        // capture pipeline. v0.1.x and "didn't ask for virtual camera"
-        // launches inject nil, which `ProfileApplier` treats as
-        // silent skip. Set on first `bootEngine()` and stable across
-        // `reloadConfig()` — the activator runs once per launch.
-        let virtualCameraSource = VirtualCameraActivator.virtualCameraSource
+        // The activator is itself a `VirtualCameraSourceController` —
+        // it forwards `setSource` to the running capture session
+        // when enabled, and silently no-ops when disabled. Always
+        // injected so toggle flips at runtime are picked up
+        // without rebuilding the engine.
         let applier = ProfileApplier(
             audio: audio,
             camera: camera,
-            virtualCameraSource: virtualCameraSource,
+            virtualCameraSource: virtualCameraActivator,
             logger: logger
         )
         return Engine(
@@ -505,6 +538,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
             debounceInterval: settings.debounceInterval,
             clock: DispatchClock()
         )
+    }
+
+    /// User flipped the Settings toggle. The activator handles
+    /// idempotency for repeats; this method is a thin dispatcher.
+    /// Engine rebuild is unnecessary because the activator is the
+    /// `VirtualCameraSourceController` plumbed into `ProfileApplier`
+    /// — its forwarding behavior changes with state, no engine
+    /// reconfiguration needed.
+    private func applyVirtualCameraToggle(enabled: Bool) {
+        if enabled {
+            virtualCameraActivator.enable(envOverride: false)
+        } else {
+            virtualCameraActivator.disable()
+        }
     }
 
     // MARK: - Convenience surfaces for the menu

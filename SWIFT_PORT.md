@@ -2459,10 +2459,18 @@ the extension can't capture"):
    and re-emits it at 30 fps when the sink temporarily dries up,
    covering the ~500 ms input-swap window so Zoom doesn't see a
    freeze.
-4. **M4 — Profile integration.** `VirtualCameraController`
-   protocol + both implementations (no-op + CMIO).
-   `ProfileApplier` wired up. Settings toggle to install/enable.
-   Goal: end-to-end feature works on user's machine.
+4. **M4 — Settings UI + opt-in toggle.** SHIPPED 2026-05-04.
+   `SettingsStore.virtualCameraEnabled` (default off).
+   `VirtualCameraActivator` refactored from a static one-shot
+   into a stateful `ObservableObject` with state machine
+   (`.off` / `.activating` / `.needsApproval` / `.on` /
+   `.failed` / `.requiresRelaunch`) and a `relaunch()` action.
+   Camera tab in Settings shows toggle + live status row +
+   contextual button (Open Login Items & Extensions for
+   approval, Restart AV Pain Reliever for the in-session
+   re-enable quirk). `AVPR_ACTIVATE_VIRTUAL_CAMERA=1` kept as a
+   debug override that locks the toggle for the launch and shows
+   a "Debug override" badge.
 5. **M5 — Release readiness review.** No separate Apple entitlement
    request needed (system-extension.install is auto-granted with
    Developer Program); App Group registration was the surprise gate
@@ -2503,9 +2511,25 @@ the extension can't capture"):
   passthrough path) profiles.
 - **Resolution / format negotiation.** Match source for V2; revisit
   if Zoom complains about specific formats.
-- **Uninstall flow.** Settings should offer a "Disable virtual
-  camera" that calls `OSSystemExtensionRequest.deactivationRequest`.
-  Design in M4.
+- **Uninstall flow.** Resolved in M4 (2026-05-04). The Settings
+  toggle calls `OSSystemExtensionRequest.deactivationRequest` on
+  flip-off and tears down the host capture pipeline. Surfaces in
+  System Settings → Login Items & Extensions for true uninstall.
+- **In-session toggle off → on quirk.** Surfaced and partially
+  resolved in M4 (2026-05-04). `OSSystemExtensionRequest.deactivationRequest`
+  doesn't actually stop the running extension process — it
+  queues `[terminated waiting to uninstall on reboot]` while the
+  extension stays alive and visible to AVCapture clients. Toggle
+  back on in the same host process can't get fresh CMIO state for
+  the device (the host's CMIO context already saw the device as
+  "going away") so the pipeline produces a black feed. Detected
+  via the activator's `deactivatedThisSession` flag; toggle-on
+  routes to `.requiresRelaunch` and the Settings UI surfaces a
+  "Restart AV Pain Reliever" button that quits + relaunches the
+  host (fresh process → fresh CMIO context → device found
+  immediately, same path that works on every cold launch). Not
+  pretty, but mac OS doesn't expose a userspace API to tear down
+  an extension and re-attach in the same process.
 - **Sparkle + extension replacement edge cases.** Specifically the
   "user has Zoom open with the virtual camera active when v0.2.1
   installs" case. Investigate in M6.
@@ -2840,6 +2864,64 @@ extension re-emits last cached frame at 30 fps to source
     ▼
 Zoom keeps seeing 30 fps — no freeze, no drop
 ```
+
+### M4 — Settings UI + opt-in toggle (SHIPPED 2026-05-04)
+
+The Camera Extension is now opt-in via a real Settings toggle
+instead of the env-var-only path used in M1–M3. Default off, so
+fresh installs see no system extension activity until the user
+turns it on. The env var (`AVPR_ACTIVATE_VIRTUAL_CAMERA=1`) stays
+as a debug affordance — it forces enable on launch regardless of
+the persisted setting and shows a "Debug override" badge in the
+Settings UI so the user understands why the toggle is greyed out.
+
+Architecture:
+
+- **`SettingsStore.virtualCameraEnabled`** — persisted `Bool`,
+  default false. Same `UserDefaults` pattern as the other
+  toggles. New unit test covers the default + persistence.
+
+- **`VirtualCameraActivator` refactor** — was a static one-shot
+  in M1; now an `ObservableObject` with a state machine:
+
+  ```
+  .off ──enable()──▶ .activating ──didFinishWithResult──▶ .on
+   ▲ ▲                   │
+   │ │                   ├─requestNeedsUserApproval──▶ .needsApproval
+   │ │                   └─didFailWithError──────────▶ .failed
+   │ └────disable()─────┐
+   │                    │
+   ┴────────────────────┘
+       (deactivatedThisSession=true)
+                ↓
+       enable() → .requiresRelaunch
+   ```
+
+  `enable()` and `disable()` are both idempotent and log every
+  transition for debugging. `relaunch()` quits + reopens the
+  host bundle via `/usr/bin/open <path>` so the fresh process
+  picks up the persisted toggle and gets a clean CMIO context.
+
+- **AppDelegate wiring** — owns the activator (was static).
+  Subscribes to `settings.$virtualCameraEnabled` via Combine;
+  toggle changes route through `applyVirtualCameraToggle`. The
+  activator is itself the `VirtualCameraSourceController`
+  plumbed into `ProfileApplier` — silently no-ops when off
+  (returns `.ok` without doing anything), forwards to the
+  running `CameraCaptureSession` when on. No engine rebuild
+  needed on toggle flip.
+
+- **Settings UI — Camera tab** — third tab alongside General
+  and Profiles. Shows the toggle, a live status row (colored
+  dot + label that mirrors the activator state), and a
+  contextual button: "Open Login Items & Extensions" when in
+  `.needsApproval` / `.failed`, "Restart AV Pain Reliever" when
+  in `.requiresRelaunch`. Footer hint adapts to the state
+  (e.g. "Pick 'AV Pain Reliever' in Zoom" when on, "macOS holds
+  the virtual camera in a stale state…" when restart is
+  required). Footer rendered as a `Text` row inside the section
+  body per the project memory's macOS-14 `Form(.grouped)`
+  footer-slot convention.
 
 ### M2 lessons (gotchas the architecture or first attempts hit)
 

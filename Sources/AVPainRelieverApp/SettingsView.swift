@@ -9,12 +9,14 @@ import AVPainReliever
 enum SettingsTab: Hashable {
     case general
     case profiles
+    case camera
 }
 
-/// The Settings scene has two tabs: General (toggles + slider) and
-/// Profiles (list with edit/delete). Deliberately *no* mention of
-/// Hammerspoon, OBS, or any other third-party tool — the app must read
-/// as its own product.
+/// The Settings scene has three tabs: General (toggles + slider),
+/// Profiles (list with edit/delete), and Camera (virtual camera
+/// install/enable + status). Deliberately *no* mention of
+/// Hammerspoon, OBS, or any other third-party tool — the app must
+/// read as its own product.
 ///
 /// Hosted inside SwiftUI's dedicated `Settings { ... }` scene rather
 /// than a generic `Window` scene so the TabView gets the System-
@@ -38,9 +40,146 @@ struct SettingsView: View {
                     Label("Profiles", systemImage: "list.bullet.rectangle")
                 }
                 .tag(SettingsTab.profiles)
+
+            CameraSettingsTab(
+                settings: settings,
+                activator: delegate.virtualCameraActivator
+            )
+                .tabItem {
+                    Label("Camera", systemImage: "camera")
+                }
+                .tag(SettingsTab.camera)
         }
         .frame(width: 480, height: 380)
         .centeredOnScreen()
+    }
+}
+
+/// Camera tab — opt-in toggle for the virtual camera that lets
+/// Zoom / Slack / Teams pick up the active profile's source camera
+/// (those apps ignore the system's `userPreferredCamera`).
+/// Installing requires user approval through System Settings, so
+/// the section explains what's about to happen and surfaces a
+/// status row that mirrors the activator's state machine.
+private struct CameraSettingsTab: View {
+    @ObservedObject var settings: SettingsStore
+    @ObservedObject var activator: VirtualCameraActivator
+
+    var body: some View {
+        Form {
+            Section {
+                Toggle(
+                    "Enable AV Pain Reliever as a virtual camera",
+                    isOn: $settings.virtualCameraEnabled
+                )
+                .disabled(activator.isEnvOverride)
+
+                statusRow
+
+                if case .requiresRelaunch = activator.state {
+                    Button("Restart AV Pain Reliever") {
+                        activator.relaunch()
+                    }
+                    .controlSize(.small)
+                } else if showsApprovalAffordance {
+                    Button("Open Login Items & Extensions") {
+                        openExtensionsSettings()
+                    }
+                    .controlSize(.small)
+                }
+
+                // Form footer hint rendered as the last row in the
+                // section body — `footer:` is constrained on
+                // macOS 14, locked convention per project memory.
+                Text(explanationText)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            } header: {
+                Label("Virtual camera", systemImage: "camera.metering.center.weighted")
+            }
+        }
+        .formStyle(.grouped)
+        .padding(8)
+    }
+
+    /// Live status row — colored dot + human-readable label that
+    /// repaints on every activator state transition.
+    private var statusRow: some View {
+        HStack(spacing: 8) {
+            Circle()
+                .fill(statusColor)
+                .frame(width: 8, height: 8)
+            Text(statusLabel)
+                .font(.callout)
+            Spacer()
+            if activator.isEnvOverride {
+                Text("Debug override")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(Color.orange, in: Capsule())
+            }
+        }
+        .padding(.vertical, 2)
+    }
+
+    private var statusColor: Color {
+        switch activator.state {
+        case .on: return .green
+        case .activating, .needsApproval: return .orange
+        case .failed, .requiresRelaunch: return .red
+        case .off: return .secondary
+        }
+    }
+
+    private var statusLabel: String {
+        switch activator.state {
+        case .off: return "Off"
+        case .activating: return "Activating…"
+        case .needsApproval: return "Approval needed"
+        case .on: return "Active"
+        case .failed(let msg): return "Failed: \(msg)"
+        case .requiresRelaunch: return "Restart required"
+        }
+    }
+
+    private var showsApprovalAffordance: Bool {
+        switch activator.state {
+        case .needsApproval, .failed: return true
+        default: return false
+        }
+    }
+
+    private var explanationText: String {
+        if activator.isEnvOverride {
+            return "The AVPR_ACTIVATE_VIRTUAL_CAMERA debug override is active for this launch. The toggle is locked until you relaunch without it."
+        }
+        switch activator.state {
+        case .off:
+            return "When on, Zoom, Slack, Teams, and other apps that have their own camera picker can choose 'AV Pain Reliever' to follow the active profile's source camera."
+        case .activating:
+            return "Submitting the activation request to macOS. If a system prompt appears, approve it in System Settings."
+        case .needsApproval:
+            return "macOS is waiting for you to approve the Camera Extension. Open System Settings → General → Login Items & Extensions → Camera Extensions."
+        case .on:
+            return "Pick 'AV Pain Reliever' in Zoom, Slack, or any app's camera picker. The active profile's source camera flows through it."
+        case .failed:
+            return "Activation didn't complete. Open System Settings → General → Login Items & Extensions to check the extension's state, then toggle this off and on to retry."
+        case .requiresRelaunch:
+            return "macOS holds the virtual camera in a stale state after toggling off and back on inside one session. Restart AV Pain Reliever to re-enable it cleanly."
+        }
+    }
+
+    private func openExtensionsSettings() {
+        // Apple's documented x-apple URL for the extensions page.
+        // Falls back to the general System Settings app on older
+        // macOS versions where the deep link isn't recognized —
+        // still gets the user one click closer than nothing.
+        let url = URL(string: "x-apple.systempreferences:com.apple.LoginItems-Settings.extension")
+            ?? URL(string: "x-apple.systempreferences:")!
+        NSWorkspace.shared.open(url)
     }
 }
 
