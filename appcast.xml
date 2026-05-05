@@ -227,5 +227,19 @@
                        type="application/octet-stream"
                        sparkle:edSignature="30P8OLgkYLakiTCaxqHscahX2VNxLB7xwVFPEptznRYXRz4ulTSWSYJMqHqffraBl6MGwsHWlJRYx3Aozw+DDg==" length="2846395" />
         </item>
+        <item>
+            <title>Version 0.1.15</title>
+            <description><![CDATA[
+<h2>What's new</h2>
+<p>Quick fix. Some USB capture cards — looking at you, the cheap HDMI-to-USB ones — expose their serial number through one IOKit key but not the other. AV Pain Reliever was only checking one of those keys, so if your profile fingerprint pinned a specific serial for a card like that, we'd silently miss the match and fall back to your laptop profile every time. Worked great for everything except the cards that mattered. Patched. Now we check both keys, the serial comes through, your fingerprint matches when you dock, the right profile applies. <strong>Money.</strong></p>
+]]></description>
+            <pubDate>Tue, 05 May 2026 01:43:03 +0000</pubDate>
+            <sparkle:version>0.1.15</sparkle:version>
+            <sparkle:shortVersionString>0.1.15</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/superic/av-pain-reliever/releases/download/v0.1.15/AVPainReliever.app.zip"
+                       type="application/octet-stream"
+                       sparkle:edSignature="mf/FUTrvFzxSv6pzR+psRFyBH5JNedgZbdwc1z7YVexFsIgQM4yl5DaJi9pe/Bb35muFYsz12lSqRxIRexLCCg==" length="2658142" />
+        </item>
     </channel>
 </rss>
