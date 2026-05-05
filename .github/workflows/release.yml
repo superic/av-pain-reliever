@@ -2,7 +2,10 @@
 #
 # Trigger: push of a tag matching v*.*.* (e.g. v0.1.0). Steps:
 #   1. Build a universal-binary, Developer-ID-signed, hardened-runtime
-#      AVPainReliever.app via scripts/make-app.sh.
+#      AVPainReliever.app via the right build script for the tag:
+#        - v0.0.0-* / v0.1.* → scripts/make-app.sh (no virtual camera)
+#        - v0.2.* and later  → scripts/make-app-with-virtual-camera.sh
+#          (includes embedded CMIO Camera Extension)
 #   2. Notarize via notarytool (--wait), then staple the ticket.
 #   3. EdDSA-sign the .app.zip with Sparkle's sign_update.
 #   4. Create a draft GitHub Release with auto-generated notes and the
@@ -11,13 +14,17 @@
 #      installs see the update.
 #
 # Required GitHub Secrets — see docs/RELEASING.md for setup instructions:
-#   MACOS_CERTIFICATE          base64 of the Developer ID Application .p12
-#   MACOS_CERTIFICATE_PASSWORD .p12 password
-#   MACOS_KEYCHAIN_PASSWORD    random — for the temp keychain Actions creates
-#   APPLE_ID                   developer Apple ID email
-#   APPLE_ID_PASSWORD          app-specific password for notarytool
-#   APPLE_TEAM_ID              10-char Team ID
-#   SPARKLE_PRIVATE_KEY        EdDSA private key from generate_keys -x (raw, base64-decoded contents)
+#   MACOS_CERTIFICATE             base64 of the Developer ID Application .p12
+#   MACOS_CERTIFICATE_PASSWORD    .p12 password
+#   MACOS_KEYCHAIN_PASSWORD       random — for the temp keychain Actions creates
+#   MACOS_PROVISIONING_PROFILE    base64 of AVPainReliever.provisionprofile
+#                                 (only needed for v0.2.x+ — the system
+#                                 extension activation requires it; v0.1.x
+#                                 builds never see this step)
+#   APPLE_ID                      developer Apple ID email
+#   APPLE_ID_PASSWORD             app-specific password for notarytool
+#   APPLE_TEAM_ID                 10-char Team ID
+#   SPARKLE_PRIVATE_KEY           EdDSA private key from generate_keys -x (raw, base64-decoded contents)
 #
 # Each step that depends on a secret early-exits with a warning when
 # the secret is empty. That makes a v0.0.0-dryrun tag possible without
@@ -54,6 +61,43 @@ jobs:
 
       - name: Compute version number
         run: echo "VERSION_NUM=${VERSION_TAG#v}" >> "$GITHUB_ENV"
+
+      - name: Pick build script for this tag
+        # v0.1.x stays on the no-virtual-camera build to keep the
+        # existing release line shipping unblocked while v0.2.x is
+        # built from feature/virtual-camera. Anything matching v0.2.*
+        # or later (including v1.x) gets the virtual-camera build.
+        run: |
+          set -euo pipefail
+          case "$VERSION_TAG" in
+              v0.0.0-*|v0.1.*)
+                  BUILD_SCRIPT=scripts/make-app.sh
+                  ;;
+              *)
+                  BUILD_SCRIPT=scripts/make-app-with-virtual-camera.sh
+                  ;;
+          esac
+          echo "BUILD_SCRIPT=$BUILD_SCRIPT" >> "$GITHUB_ENV"
+          echo "Selected build script: $BUILD_SCRIPT"
+
+      - name: Decode provisioning profile
+        # Only required for builds that embed the Camera Extension.
+        # Skipped silently for v0.1.x tags (the no-virtual-camera path)
+        # so its release pipeline stays a no-op for this step.
+        env:
+          PROFILE_BASE64: ${{ secrets.MACOS_PROVISIONING_PROFILE }}
+        run: |
+          set -euo pipefail
+          if [[ "$BUILD_SCRIPT" != "scripts/make-app-with-virtual-camera.sh" ]]; then
+              echo "Skipping — v0.1.x build doesn't embed an extension"
+              exit 0
+          fi
+          if [[ -z "${PROFILE_BASE64:-}" ]]; then
+              echo "::warning::MACOS_PROVISIONING_PROFILE secret is empty — signed v0.2.x+ build will fail without it"
+              exit 0
+          fi
+          echo -n "$PROFILE_BASE64" | base64 --decode -o Resources/AVPainReliever.provisionprofile
+          echo "Wrote Resources/AVPainReliever.provisionprofile ($(stat -f%z Resources/AVPainReliever.provisionprofile) bytes)"
 
       - name: Select Xcode
         uses: maxim-lobanov/setup-xcode@v1
@@ -109,8 +153,11 @@ jobs:
         run: |
           set -euo pipefail
           # MAC_CERT_NAME is set by the keychain step when secrets
-          # were available; otherwise unset → make-app.sh ad-hoc signs.
-          scripts/make-app.sh
+          # were available; otherwise unset → script ad-hoc signs.
+          # BUILD_SCRIPT was picked by the earlier step based on the
+          # tag prefix (v0.1.x → make-app.sh, v0.2.x+ →
+          # make-app-with-virtual-camera.sh).
+          "$BUILD_SCRIPT"
 
       - name: Notarize and staple
         env:

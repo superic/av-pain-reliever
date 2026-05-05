@@ -2471,15 +2471,23 @@ the extension can't capture"):
    re-enable quirk). `AVPR_ACTIVATE_VIRTUAL_CAMERA=1` kept as a
    debug override that locks the toggle for the launch and shows
    a "Debug override" badge.
-5. **M5 — Release readiness review.** No separate Apple entitlement
-   request needed (system-extension.install is auto-granted with
-   Developer Program); App Group registration was the surprise gate
-   and that's already done. Sparkle integration verified for the
-   extension upgrade path (v0.2.0 → v0.2.1 must replace the
-   extension cleanly). README + Settings copy explaining the
-   feature.
+5. **M5 — Release readiness.** SHIPPED 2026-05-04. Release
+   workflow now picks the right build script per tag (v0.1.x →
+   make-app.sh, v0.2.x+ → make-app-with-virtual-camera.sh) so
+   the v0.1.x release line stays unblocked. New
+   `MACOS_PROVISIONING_PROFILE` GitHub Secret carries the
+   profile that the extension needs for activation outside
+   developer mode. README has a "Virtual camera" section
+   explaining the feature install-first; Settings UI's Camera
+   tab is the discovery path. Sparkle/extension upgrade-replace
+   verification is documented as an end-to-end test plan to be
+   run with the v0.2.0 → v0.2.0.1 cycle in M6 — can't be
+   shippable-verified until at least one v0.2.x release exists
+   on the appcast.
 6. **M6 — Tag v0.2.0.** Notarized release build, appcast update,
-   GitHub release.
+   GitHub release. First real-world Sparkle upgrade-replace test
+   happens here (cut v0.2.0, install fresh; cut v0.2.0.1 with a
+   trivial change; verify Sparkle replaces cleanly).
 
 ### Deferred / open items
 
@@ -2922,6 +2930,159 @@ Architecture:
   required). Footer rendered as a `Text` row inside the section
   body per the project memory's macOS-14 `Form(.grouped)`
   footer-slot convention.
+
+### M5 — release readiness (SHIPPED 2026-05-04)
+
+Three sub-tasks, all landed:
+
+1. **README — virtual camera section.** New "Virtual camera
+   (optional)" section between "Using the app" and "Privacy".
+   Install-first, scannable, executive aesthetic preserved
+   (per the README-audience memory). Calls out that Zoom /
+   Slack / Teams ignore the system default and tells the user
+   the four steps to enable it.
+
+2. **CI release workflow updates.**
+   `.github/workflows/release.yml` now picks the build script
+   from the tag prefix: `v0.0.0-*` and `v0.1.*` keep using
+   `scripts/make-app.sh`; everything else (`v0.2.*` and later)
+   uses `scripts/make-app-with-virtual-camera.sh`. New
+   `MACOS_PROVISIONING_PROFILE` GitHub Secret holds the
+   base64-encoded provisioning profile; decoded into
+   `Resources/AVPainReliever.provisionprofile` only for v0.2.x+
+   runs (skipped silently on v0.1.x to keep that pipeline a
+   no-op). `docs/RELEASING.md` updated to reflect the new
+   secret + the script-selection logic.
+
+3. **Sparkle / extension upgrade-replace verification —
+   recipe documented; execution in M6.** Can't be properly
+   verified until at least one v0.2.x release exists on the
+   appcast and there's an installed Sparkle-capable client to
+   upgrade FROM. The recipe lives in this section's "Upgrade-
+   replace test plan" subsection below; M6 runs it for real.
+
+### M5 — Sparkle upgrade-replace test plan (run during M6)
+
+The macOS quirk we hit during M3/M4 dev iteration was: rebuilding
+the extension binary marks the previous version
+`[terminated waiting to uninstall on reboot]`, and CMIO stops
+exposing the device until reboot or a Settings toggle off/on
+cycle. **This test plan validates that Sparkle's normal upgrade
+flow doesn't reproduce that quirk for end users**, because
+Sparkle quits the running host before swapping the bundle (fresh
+process for the new version, clean CMIO context).
+
+Pre-requisites:
+- v0.2.0 already released and live on the appcast.
+- A Mac with v0.2.0 installed via Sparkle (not via dev build)
+  and the virtual camera toggle ON for at least one launch (so
+  the extension is `[activated enabled]` in `systemextensionsctl
+  list`).
+
+Test steps:
+1. On the local dev machine, bump the source to a v0.2.0.1 patch
+   (e.g. trivial README typo or release-notes copy edit).
+2. `git tag v0.2.0.1 && git push --tags` — CI workflow runs.
+3. Verify the workflow used `make-app-with-virtual-camera.sh` and
+   notarization succeeded for both the host AND the embedded
+   extension bundle.
+4. Verify the workflow appended a new `<item>` to `appcast.xml`
+   on `main` with the v0.2.0.1 enclosure URL + EdDSA signature.
+5. On the test Mac (running v0.2.0): About → Check for Updates.
+   Sparkle should detect v0.2.0.1, prompt, download, quit,
+   replace the bundle, relaunch.
+6. Verify on the test Mac after Sparkle's relaunch:
+   - `systemextensionsctl list` — old v0.2.0 entry should
+     transition cleanly to v0.2.0.1; the previous version may
+     show as `[terminated waiting to uninstall on reboot]` for
+     a moment (expected) but the new version should be
+     `[activated enabled]`.
+   - `system_profiler SPCameraDataType` — AV Pain Reliever
+     entry still present.
+   - Open Photo Booth → AV Pain Reliever → live frames flowing
+     (no black screen).
+   - Settings → Camera → status row shows "Active".
+7. If step 6 shows black frames, that's the same-process CMIO
+   stale-handle bug from M4's known issues; click the
+   `Restart AV Pain Reliever` affordance in Settings → Camera
+   (which already exists) to recover. If we see this, file a
+   follow-up to investigate whether Sparkle's pre-upgrade quit
+   is reaching the activator's deactivation path cleanly.
+
+Failure modes worth watching for:
+- Apple's notary service rejecting the embedded extension bundle
+  for any reason (would surface in the workflow's "Notarize and
+  staple" step).
+- Sparkle's downloader / installer not preserving the embedded
+  `Library/SystemExtensions/...` directory (the extension would
+  be missing from the new bundle; would surface as the
+  activation request failing on the test Mac's first launch
+  after upgrade).
+
+### v0.2.0 release notes (draft, ready to copy)
+
+Paste this into the GitHub Release body when pre-creating the v0.2.0
+draft release (per `docs/RELEASING.md`'s curated-notes flow). The CI
+workflow renders it through GitHub's `/markdown` API and pipes the
+HTML into the appcast `<description>`, so what you write here is
+exactly what shows up in Sparkle's "What's New" panel for upgrading
+v0.1.x users.
+
+```markdown
+## What's new
+
+OK here's the deal. v0.2.0 is the big one. **AV Pain Reliever is now
+a virtual camera.** That's right — the same app that's been quietly
+swapping your audio defaults all this time can now also be the camera
+that Zoom, Slack, Teams, and any other video app picks up. One
+camera in their picker. One name. **AV Pain Reliever.** It streams
+whatever real camera the active profile names — your built-in webcam
+at the laptop, the HDMI capture at the home office, your iPhone via
+Continuity at the conference room — whatever you've configured. The
+profile changes, the picture follows. Money.
+
+Here's what this fixes: Zoom, Slack, and Teams keep their *own*
+camera selection that ignores the system default. So back in v0.1.x
+when you docked at a new location, your microphone and speakers
+would change, but Zoom would just sit there showing your laptop
+webcam like nothing happened. That's amateur hour. With v0.2.0, you
+pick "AV Pain Reliever" in Zoom once and you're done. Forever.
+
+It's **off by default** — installing a virtual camera is a real thing
+and we're not turning it on without your permission, that's not how
+we do business. Open **Settings → Camera** and flip the toggle.
+macOS will ask you to approve the extension once (System Settings →
+Login Items & Extensions → Camera Extensions). After that, you're in.
+
+A few technical things, briefly, because if you're reading this far
+you probably care:
+
+- **Hold-last-frame** during the swap. When you change profiles, the
+  new camera takes a beat to warm up — about half a second. Instead
+  of flashing black at your Zoom call, the virtual camera holds the
+  last frame from the old camera until the new one's delivering
+  frames. You see a soft pause; nobody on the call sees a glitch.
+- **Format conversion** for any camera. Built-in webcams ship BGRA,
+  USB capture cards ship YUV at 1080p, every device has its quirks.
+  We accept whatever the camera natively delivers and convert to
+  1280×720 BGRA on the fly, hardware-accelerated where possible.
+  Means your weird HDMI capture card just works.
+- **Profile-driven everywhere.** The same Add Profile wizard that
+  picks your audio defaults now also picks the camera the virtual
+  camera streams. No new config to learn — it's the same `camera =`
+  field you've already been using. v0.1.x configs upgrade clean.
+
+One known thing: if you toggle the virtual camera off and then back
+on inside the same launch, macOS holds the extension in a stale
+state and the feed goes black. The Settings UI catches this and
+gives you a **Restart AV Pain Reliever** button that handles it. One
+click, fresh process, you're back. Edge case — most folks turn it
+on once and leave it. Not a deal-breaker.
+
+That's the update. Virtual camera, profile-driven, hold-last-frame,
+universal format support. v0.1.x will keep getting patch releases
+in parallel for anyone who doesn't need any of this. **Money.**
+```
 
 ### M2 lessons (gotchas the architecture or first attempts hit)
 
