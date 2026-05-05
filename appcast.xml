@@ -241,5 +241,52 @@
                        type="application/octet-stream"
                        sparkle:edSignature="mf/FUTrvFzxSv6pzR+psRFyBH5JNedgZbdwc1z7YVexFsIgQM4yl5DaJi9pe/Bb35muFYsz12lSqRxIRexLCCg==" length="2658142" />
         </item>
+        <item>
+            <title>Version 0.2.0.2</title>
+            <description><![CDATA[
+<h2>What's new</h2>
+<p>Same fix as v0.1.15 — that USB serial-number gotcha where some capture cards only expose one of the two IOKit keys (the raw <code class="notranslate">kUSBSerialNumberString</code> instead of the friendly <code class="notranslate">"USB Serial Number"</code>). Now we read both. If your dock has one of those quirky cards in the fingerprint and the engine was mysteriously falling back to your laptop profile every relaunch, this is the fix. Dock, launch, the right profile applies. <strong>Money.</strong></p>
+]]></description>
+            <pubDate>Tue, 05 May 2026 01:45:26 +0000</pubDate>
+            <sparkle:channel>experimental</sparkle:channel>
+            <sparkle:version>0.2.0.2</sparkle:version>
+            <sparkle:shortVersionString>0.2.0.2</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/superic/av-pain-reliever/releases/download/v0.2.0.2/AVPainReliever.app.zip"
+                       type="application/octet-stream"
+                       sparkle:edSignature="eIFNIR+aFNIsfcRm80yb9KTpexIS8vUvLn4huq8epLMSIfoBKhaV/zwjHaxpQAkv8/0XfkllwMCn73nCL3+7DQ==" length="2846656" />
+        </item>
+        <item>
+            <title>Version 0.2.0.3</title>
+            <description><![CDATA[
+<h2>What's new</h2>
+<p>UX cleanup. Before this, if you were running the experimental v0.2.x with the "Receive experimental updates" toggle off, clicking Check for Updates would tell you "you're up to date" and report v0.1.15 as the newest available — even though you're running v0.2.0, which is <em>higher</em>. Confusing. Technically Sparkle was filtering the appcast to stable-only because no channels were allowlisted, but nobody reads it that way.</p>
+<p>Now the dialog explains the actual situation. Click Check for Updates on an experimental build with the toggle off, you get a tailored alert with three buttons: <strong>Enable Experimental Updates</strong> (flips the switch and runs the check fresh, this time seeing experimental items), <strong>Check Stable Anyway</strong> (the old behavior, for the rare case you want to confirm what stable says), or <strong>Cancel</strong>. One click to actually be on the experimental track instead of squinting at a contradictory dialog. <strong>Money.</strong></p>
+]]></description>
+            <pubDate>Tue, 05 May 2026 01:52:41 +0000</pubDate>
+            <sparkle:channel>experimental</sparkle:channel>
+            <sparkle:version>0.2.0.3</sparkle:version>
+            <sparkle:shortVersionString>0.2.0.3</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/superic/av-pain-reliever/releases/download/v0.2.0.3/AVPainReliever.app.zip"
+                       type="application/octet-stream"
+                       sparkle:edSignature="zuK1h/K/gaQLQfJ1ZHg+Wf92dtTUEV5nJLnIoB+hQgQG64L5faaGvjtK70mCUWziBfjs4ZuYO4DODr+bWao1BA==" length="2851766" />
+        </item>
+        <item>
+            <title>Version 0.1.16</title>
+            <description><![CDATA[
+<h2>What's new</h2>
+<p>Wizard refinements. Two of them, one release.</p>
+<p>The device list in Add Profile is sorted properly now. Location-defining gear — mics, speakers, cameras, capture cards, your dock, displays — floats to the top. Travel peripherals — keyboards, mice, phones, AirPods — sink to the bottom with their existing <strong>Suggested: untick</strong> pill. No more squinting past Apple Magic Keyboard to find Yeti Stereo Microphone.</p>
+<p>Also: if you untick every device in the list, the wizard now tells you what that means. Zero devices = fallback profile = matches whenever no other profile does (typically your laptop, undocked). Before, it just showed the generic "uncheck the peripherals" caption regardless of state. Now it flips to a labeled hint the second you clear the selection — so if you didn't mean to ship a fallback, the wizard catches you. <strong>Money.</strong></p>
+]]></description>
+            <pubDate>Tue, 05 May 2026 02:29:33 +0000</pubDate>
+            <sparkle:version>0.1.16</sparkle:version>
+            <sparkle:shortVersionString>0.1.16</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/superic/av-pain-reliever/releases/download/v0.1.16/AVPainReliever.app.zip"
+                       type="application/octet-stream"
+                       sparkle:edSignature="Z45qmGIrxE4+0a689I4ZbM6B7BrLpSNEb1jjPj1U7mVNu1dxReNi+pGwxlDlz2TUSbJIZ61c2GTKHyhM5xe1Dg==" length="2667562" />
+        </item>
     </channel>
 </rss>

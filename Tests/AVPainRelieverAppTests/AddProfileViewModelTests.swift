@@ -328,6 +328,78 @@ struct AddProfileViewModelTests {
         let loaded = try ConfigLoader().loadProfiles(from: url)
         #expect(Set(loaded.map(\.name)) == ["home-studio"])
     }
+
+    @Test("device list sorts non-portable items above portable ones")
+    func deviceListPriorityTier() {
+        let watcher = FakeWatcher()
+        // Mix of portable and non-portable devices, deliberately
+        // out of order so the sort has work to do regardless of
+        // the watcher's own ordering.
+        watcher.named = [
+            NamedUSBDevice(
+                device: USBDevice(vendorID: 0x05ac, productID: 0x0265),
+                name: "Magic Trackpad"
+            ), // portable
+            NamedUSBDevice(
+                device: USBDevice(vendorID: 0x2188, productID: 0x6533),
+                name: "CalDigit Thunderbolt 3 Audio"
+            ), // non-portable
+            NamedUSBDevice(
+                device: USBDevice(vendorID: 0x05ac, productID: 0x024f),
+                name: "Keychron K3"
+            ), // portable
+            NamedUSBDevice(
+                device: USBDevice(vendorID: 0x1e4e, productID: 0x701f),
+                name: "HDMI to U3 capture"
+            ), // non-portable
+        ]
+        let vm = AddProfileViewModel(
+            watcher: watcher,
+            audioController: FakeAudio(devices: []),
+            cameraController: FakeCamera(cameras: []),
+            configURL: URL(fileURLWithPath: "/tmp/tier.toml"),
+            editing: nil,
+            onSaved: {}
+        )
+        let names = vm.attachedDevices.map(\.name)
+        #expect(names == [
+            "CalDigit Thunderbolt 3 Audio",  // non-portable, alphabetical
+            "HDMI to U3 capture",             // non-portable, alphabetical
+            "Keychron K3",                    // portable, alphabetical
+            "Magic Trackpad",                 // portable, alphabetical
+        ])
+    }
+
+    @Test("willMatchAnywhere is true when no devices are ticked")
+    func willMatchAnywhereOnEmptySelection() {
+        let url = URL(fileURLWithPath: "/tmp/wma.toml")
+        let watcher = FakeWatcher()
+        // Watcher returns one attached device so the selection is
+        // non-default — the auto-tick logic in refresh() picks it up,
+        // exercising both states of the property.
+        watcher.named = [
+            NamedUSBDevice(
+                device: USBDevice(vendorID: 0x2188, productID: 0x6533),
+                name: "CalDigit"
+            )
+        ]
+        let vm = AddProfileViewModel(
+            watcher: watcher,
+            audioController: FakeAudio(devices: []),
+            cameraController: FakeCamera(cameras: []),
+            configURL: url,
+            editing: nil,
+            onSaved: {}
+        )
+        // With one auto-ticked device, willMatchAnywhere is false.
+        #expect(vm.selectedDeviceIDs.isEmpty == false)
+        #expect(vm.willMatchAnywhere == false)
+
+        // Untick everything. Now this profile is the implicit
+        // fallback at save time — the wizard hint covers this state.
+        vm.selectedDeviceIDs.removeAll()
+        #expect(vm.willMatchAnywhere == true)
+    }
 }
 
 // MARK: - Test fakes
