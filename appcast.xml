@@ -197,5 +197,49 @@
                        type="application/octet-stream"
                        sparkle:edSignature="VQMbQ90x5GU+KbspCyr+Iw8cL/yGKNtfBicFvtQOwDItV+MX+Lwi4HDYCr7eKtZdgosma8BDBfuljbJnmd2eAA==" length="2836820" />
         </item>
+        <item>
+            <title>Version 0.1.14</title>
+            <description><![CDATA[
+<h2>What's new</h2>
+<p>Listen, here's the deal. v0.2.0 shipped yesterday with the virtual camera — Zoom, Slack, Teams, the whole crew finally following your profile. Big release. But here's the thing: a virtual camera is a <strong>system extension</strong>, which means macOS asks for approval, the in-Settings toggle has a known quirk, and frankly we're not ready to push that on every user as the default upgrade. That's not how we do business.</p>
+<p>So v0.1.14 brings you a switch. <strong>Settings → General → Updates → "Receive experimental updates."</strong> Off by default — you keep getting the steady stream of v0.1.x patches like nothing happened. Flip it on, and you're now on the early-access track: v0.2.0's virtual camera shows up as your next upgrade, you go through the system-extension dance, you're streaming whatever camera the active profile names into Zoom. <strong>Money.</strong> Flip it back off, you're back on the stable line. No commitments. Pick your speed.</p>
+]]></description>
+            <pubDate>Tue, 05 May 2026 01:21:23 +0000</pubDate>
+            <sparkle:version>0.1.14</sparkle:version>
+            <sparkle:shortVersionString>0.1.14</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/superic/av-pain-reliever/releases/download/v0.1.14/AVPainReliever.app.zip"
+                       type="application/octet-stream"
+                       sparkle:edSignature="MbaJEdQd89dcF4tLWidzeusPgxCQokKhlOE2y17nClRiXeGvceibwlW1S8qSic28s22RsFi3jWFQhzoDEaSaAg==" length="2657977" />
+        </item>
+        <item>
+            <title>Version 0.2.0.1</title>
+            <description><![CDATA[
+<h2>What's new</h2>
+<p>Quick patch. v0.1.14 just shipped the "Receive experimental updates" toggle that lets v0.1.x users opt into v0.2.x — but if you're already on v0.2.0, you didn't have that toggle yet. Catch-22. v0.2.0.1 fixes it: <strong>Settings → General → Updates</strong> now has the same toggle you saw in v0.1.14, defaulting <strong>off</strong>. Flip it on if you want future v0.2.x patches to roll in automatically; leave it off and you stay on v0.2.0.1 until something stable enough hits the main line. Pick your speed. <strong>Money.</strong></p>
+]]></description>
+            <pubDate>Tue, 05 May 2026 01:31:45 +0000</pubDate>
+            <sparkle:channel>experimental</sparkle:channel>
+            <sparkle:version>0.2.0.1</sparkle:version>
+            <sparkle:shortVersionString>0.2.0.1</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/superic/av-pain-reliever/releases/download/v0.2.0.1/AVPainReliever.app.zip"
+                       type="application/octet-stream"
+                       sparkle:edSignature="30P8OLgkYLakiTCaxqHscahX2VNxLB7xwVFPEptznRYXRz4ulTSWSYJMqHqffraBl6MGwsHWlJRYx3Aozw+DDg==" length="2846395" />
+        </item>
+        <item>
+            <title>Version 0.1.15</title>
+            <description><![CDATA[
+<h2>What's new</h2>
+<p>Quick fix. Some USB capture cards — looking at you, the cheap HDMI-to-USB ones — expose their serial number through one IOKit key but not the other. AV Pain Reliever was only checking one of those keys, so if your profile fingerprint pinned a specific serial for a card like that, we'd silently miss the match and fall back to your laptop profile every time. Worked great for everything except the cards that mattered. Patched. Now we check both keys, the serial comes through, your fingerprint matches when you dock, the right profile applies. <strong>Money.</strong></p>
+]]></description>
+            <pubDate>Tue, 05 May 2026 01:43:03 +0000</pubDate>
+            <sparkle:version>0.1.15</sparkle:version>
+            <sparkle:shortVersionString>0.1.15</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/superic/av-pain-reliever/releases/download/v0.1.15/AVPainReliever.app.zip"
+                       type="application/octet-stream"
+                       sparkle:edSignature="mf/FUTrvFzxSv6pzR+psRFyBH5JNedgZbdwc1z7YVexFsIgQM4yl5DaJi9pe/Bb35muFYsz12lSqRxIRexLCCg==" length="2658142" />
+        </item>
     </channel>
 </rss>

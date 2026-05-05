@@ -275,16 +275,24 @@ public final class IOKitUSBWatcher: USBWatcher {
     }
 
     private static func serialNumber(_ entry: io_object_t) -> String? {
-        guard let raw = IORegistryEntryCreateCFProperty(
-            entry, "USB Serial Number" as CFString, kCFAllocatorDefault, 0
-        ) else {
-            return nil
+        // Try the friendly "USB Serial Number" key first — many
+        // devices expose it as a mirror of the underlying
+        // `kUSBSerialNumberString`. Some devices (e.g., the
+        // 0x1e4e:0x701f HDMI-to-USB capture cards we ship in the
+        // home-office profile) only expose the raw key, so we have
+        // to fall back. Without the fallback, fingerprints with a
+        // pinned serial silently fail to match those devices and
+        // the engine resolves to the implicit-fallback profile
+        // instead of the configured one.
+        for key in ["USB Serial Number", "kUSBSerialNumberString"] {
+            guard let raw = IORegistryEntryCreateCFProperty(
+                entry, key as CFString, kCFAllocatorDefault, 0
+            ) else { continue }
+            guard let serial = raw.takeRetainedValue() as? String,
+                  !serial.isEmpty else { continue }
+            return serial
         }
-        guard let serial = raw.takeRetainedValue() as? String,
-              !serial.isEmpty else {
-            return nil
-        }
-        return serial
+        return nil
     }
 
     private static func productName(_ entry: io_object_t) -> String? {
