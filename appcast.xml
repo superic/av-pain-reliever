@@ -212,5 +212,20 @@
                        type="application/octet-stream"
                        sparkle:edSignature="MbaJEdQd89dcF4tLWidzeusPgxCQokKhlOE2y17nClRiXeGvceibwlW1S8qSic28s22RsFi3jWFQhzoDEaSaAg==" length="2657977" />
         </item>
+        <item>
+            <title>Version 0.2.0.1</title>
+            <description><![CDATA[
+<h2>What's new</h2>
+<p>Quick patch. v0.1.14 just shipped the "Receive experimental updates" toggle that lets v0.1.x users opt into v0.2.x — but if you're already on v0.2.0, you didn't have that toggle yet. Catch-22. v0.2.0.1 fixes it: <strong>Settings → General → Updates</strong> now has the same toggle you saw in v0.1.14, defaulting <strong>off</strong>. Flip it on if you want future v0.2.x patches to roll in automatically; leave it off and you stay on v0.2.0.1 until something stable enough hits the main line. Pick your speed. <strong>Money.</strong></p>
+]]></description>
+            <pubDate>Tue, 05 May 2026 01:31:45 +0000</pubDate>
+            <sparkle:channel>experimental</sparkle:channel>
+            <sparkle:version>0.2.0.1</sparkle:version>
+            <sparkle:shortVersionString>0.2.0.1</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/superic/av-pain-reliever/releases/download/v0.2.0.1/AVPainReliever.app.zip"
+                       type="application/octet-stream"
+                       sparkle:edSignature="30P8OLgkYLakiTCaxqHscahX2VNxLB7xwVFPEptznRYXRz4ulTSWSYJMqHqffraBl6MGwsHWlJRYx3Aozw+DDg==" length="2846395" />
+        </item>
     </channel>
 </rss>
