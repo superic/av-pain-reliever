@@ -288,5 +288,22 @@
                        type="application/octet-stream"
                        sparkle:edSignature="Z45qmGIrxE4+0a689I4ZbM6B7BrLpSNEb1jjPj1U7mVNu1dxReNi+pGwxlDlz2TUSbJIZ61c2GTKHyhM5xe1Dg==" length="2667562" />
         </item>
+        <item>
+            <title>Version 0.2.0.4</title>
+            <description><![CDATA[
+<h2>What's new</h2>
+<p>Brings the wizard refinements from v0.1.16 over to the experimental track. Two improvements you'll feel the next time you click Add Profile:</p>
+<p>The device list is sorted properly now. Mics, speakers, cameras, capture cards, your dock, displays — anything that defines a location — float to the top. Travel peripherals (keyboards, mice, phones, AirPods) sink to the bottom with their existing <strong>Suggested: untick</strong> pill. The hardware that defines your dock is right where you'd look first.</p>
+<p>And if you untick everything in the list, the wizard now tells you what that means: zero devices = fallback profile, matches whenever no other profile does (typically your laptop, undocked). The caption flips to a labeled hint the second you clear the selection — so if you didn't mean to ship a fallback, you'll catch it before saving. <strong>Money.</strong></p>
+]]></description>
+            <pubDate>Tue, 05 May 2026 02:32:41 +0000</pubDate>
+            <sparkle:channel>experimental</sparkle:channel>
+            <sparkle:version>0.2.0.4</sparkle:version>
+            <sparkle:shortVersionString>0.2.0.4</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/superic/av-pain-reliever/releases/download/v0.2.0.4/AVPainReliever.app.zip"
+                       type="application/octet-stream"
+                       sparkle:edSignature="h79z8tpDEQYSUM+mc0mCvgiRHC5dZbiGje7V8r1A0UH+7PK0YYrWJXw9fRY0MX5fT1jfFzK8116TjoN4gvNYAA==" length="2862355" />
+        </item>
     </channel>
 </rss>
