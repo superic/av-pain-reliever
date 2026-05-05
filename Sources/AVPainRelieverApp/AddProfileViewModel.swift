@@ -31,7 +31,25 @@ struct PendingCollision: Identifiable, Equatable {
 final class AddProfileViewModel: ObservableObject {
     // MARK: - Form state
 
-    @Published var name: String = ""
+    @Published var name: String = "" {
+        didSet {
+            // Any user edit to the name field clears the
+            // auto-suggest flag — the value is no longer the
+            // suggestion, so the "Suggested" caption must drop.
+            // Guard against the trivial set-to-self case (refresh()
+            // re-running the same suggestion).
+            if name != oldValue && nameWasAutoSuggested {
+                nameWasAutoSuggested = false
+            }
+        }
+    }
+    /// True when the current `name` value was filled in by
+    /// `ProfileIcon.suggestedName(forDeviceNames:)` rather than typed
+    /// by the user. Drives a small "Suggested." caption in the wizard
+    /// so the auto-fill behavior is discoverable instead of looking
+    /// like the wizard guessed the user's mind. Reset by `name`'s
+    /// `didSet` the moment the user edits the field.
+    @Published private(set) var nameWasAutoSuggested: Bool = false
     @Published var audioInput: String? = nil
     @Published var audioOutput: String? = nil
     @Published var camera: String? = nil
@@ -223,6 +241,11 @@ final class AddProfileViewModel: ObservableObject {
             let deviceNames = liveSnapshot.compactMap { $0.name }
             if let suggested = ProfileIcon.suggestedName(forDeviceNames: deviceNames) {
                 name = PrettyName.format(suggested)
+                // Set AFTER the assignment — `name`'s didSet clears
+                // the flag, so we have to re-set true here for the
+                // wizard to know the value came from us, not the
+                // user.
+                nameWasAutoSuggested = true
             }
         }
     }
@@ -235,30 +258,39 @@ final class AddProfileViewModel: ObservableObject {
         audioDevices.filter(\.supportsOutput)
     }
 
-    /// Two-tier sort for the wizard's live device list. Top tier
-    /// holds devices that aren't flagged by `DevicePortability` —
-    /// mics, speakers, cameras, docks, hubs, capture cards, displays
-    /// — i.e. the hardware that defines a location. Bottom tier
-    /// holds the portable peripherals the wizard already suggests
-    /// unticking (keyboards, mice, phones, headphones, watches).
+    /// Three-tier sort for the wizard's live device list.
+    ///
+    /// - **Top: priority** — devices flagged by
+    ///   `DevicePortability.priorityCategory` (mics, speakers,
+    ///   cameras, capture cards, audio interfaces, displays). The
+    ///   hardware most likely to define a location.
+    /// - **Middle: neutral** — anything we don't classify either way
+    ///   (docks, hubs, card readers, control surfaces, brand-named
+    ///   peripherals our keyword lists don't catch).
+    /// - **Bottom: portable** — devices flagged by
+    ///   `DevicePortability.portabilityCategory` (keyboards, mice,
+    ///   phones, headphones, watches). Same predicate that powers
+    ///   the row's "Suggested: untick" pill, so the visual signal
+    ///   and the spatial signal agree.
+    ///
     /// Within each tier, items sort alphabetically by `displayName`
     /// so the order is stable across re-renders.
-    ///
-    /// Using the same predicate the row's "Suggested: untick" pill
-    /// uses keeps the visual signal (pill) and the spatial signal
-    /// (row position) in agreement — single source of truth in
-    /// `DevicePortability`.
     private static func sortedByTier(_ devices: [NamedUSBDevice])
         -> [NamedUSBDevice]
     {
-        devices.sorted { lhs, rhs in
-            let lhsPortable = DevicePortability
-                .portabilityCategory(deviceName: lhs.name) != nil
-            let rhsPortable = DevicePortability
-                .portabilityCategory(deviceName: rhs.name) != nil
-            if lhsPortable != rhsPortable {
-                return !lhsPortable
+        func tier(of device: NamedUSBDevice) -> Int {
+            if DevicePortability.priorityCategory(deviceName: device.name) != nil {
+                return 0
             }
+            if DevicePortability.portabilityCategory(deviceName: device.name) != nil {
+                return 2
+            }
+            return 1
+        }
+        return devices.sorted { lhs, rhs in
+            let lhsTier = tier(of: lhs)
+            let rhsTier = tier(of: rhs)
+            if lhsTier != rhsTier { return lhsTier < rhsTier }
             return lhs.displayName < rhs.displayName
         }
     }
