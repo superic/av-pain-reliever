@@ -1,5 +1,6 @@
 import Foundation
 import AppKit
+import AVFoundation
 import SwiftUI
 import Combine
 import AVPainReliever
@@ -193,6 +194,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         // foreground for windows. Generated at runtime so a palette
         // tweak doesn't need a regenerated `.icns` asset.
         NSApp.applicationIconImage = AppIcon.image
+        // Pre-grant camera TCC for the host process. Without this,
+        // `AVCaptureDevice.DiscoverySession` from inside the wizard
+        // hides the embedded Camera Extension even though Photo
+        // Booth and other approved apps see it. Idempotent — once
+        // the user has accepted, subsequent launches return
+        // immediately without re-prompting.
+        if AVCaptureDevice.authorizationStatus(for: .video) == .notDetermined {
+            AVCaptureDevice.requestAccess(for: .video) { _ in }
+        }
         // V2: enable the virtual camera if (a) the user previously
         // turned the Settings toggle on, OR (b) the
         // `AVPR_ACTIVATE_VIRTUAL_CAMERA=1` debug override is set.

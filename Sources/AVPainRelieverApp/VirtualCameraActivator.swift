@@ -1,5 +1,6 @@
 import Foundation
 import AppKit
+import AVFoundation
 import SystemExtensions
 import AVPainReliever
 import os.log
@@ -208,6 +209,49 @@ final class VirtualCameraActivator: NSObject, ObservableObject,
         return captureSession.setSource(named: named)
     }
 
+    // MARK: - Host-process visibility check
+
+    /// After activation flips to `.on`, AVFoundation in the host
+    /// process sometimes doesn't see the newly-published CMIO
+    /// device — the discovery cache was warmed before the extension
+    /// registered, and stays stale until a fresh process reads CMIO
+    /// for the first time. Other apps (Photo Booth, FaceTime) see
+    /// the device fine; only this host is blind to it. Detected by
+    /// running `AVCaptureDevice.DiscoverySession` and looking for
+    /// our extension's UID. If absent, escalate to
+    /// `.requiresRelaunch` so Settings can offer the same Restart
+    /// affordance the disable→enable path uses.
+    private func scheduleHostVisibilityCheck() {
+        // ~1.5 s is enough for CMIO to publish after activation on
+        // every machine I've measured. Too short and a healthy
+        // first-activation gets misclassified; longer adds dead time
+        // before the wizard's camera list reflects reality.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
+            guard let self, self.state == .on else { return }
+            if Self.hostCanSeeVirtualCamera() {
+                logger.info("Visibility check: host sees the virtual camera in DiscoverySession")
+                return
+            }
+            logger.error("Visibility check: host process can't see its own Camera Extension — escalating to .requiresRelaunch")
+            self.stopCapturePipeline()
+            self.state = .requiresRelaunch
+        }
+    }
+
+    private static func hostCanSeeVirtualCamera() -> Bool {
+        let session = AVCaptureDevice.DiscoverySession(
+            deviceTypes: [
+                .builtInWideAngleCamera,
+                .external,
+                .continuityCamera,
+                .deskViewCamera,
+            ],
+            mediaType: .video,
+            position: .unspecified
+        )
+        return session.devices.contains { $0.uniqueID == Self.virtualCameraUID }
+    }
+
     // MARK: - OSSystemExtensionRequestDelegate
 
     func request(
@@ -245,7 +289,10 @@ final class VirtualCameraActivator: NSObject, ObservableObject,
                 // by current state: if we were already heading off
                 // (disable() set state=.off), leave it. Otherwise
                 // this is a successful activation → .on.
-                if self.state != .off { self.state = .on }
+                if self.state != .off {
+                    self.state = .on
+                    self.scheduleHostVisibilityCheck()
+                }
             case .willCompleteAfterReboot:
                 // Rare path — extension upgrade queued for next
                 // reboot. Mark as failed so the user knows the new

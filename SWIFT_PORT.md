@@ -3147,6 +3147,50 @@ in parallel for anyone who doesn't need any of this. **Money.**
    the reboot was supposed to clean up. Reboot first, then
    install.
 
+### Wizard camera-picker discovery (2026-05-04)
+
+User report: after activating the virtual camera, "AV Pain
+Reliever" showed up in Photo Booth but not in the Add/Edit
+Profile wizard's camera picker. Three independent gotchas
+overlapping; fix had to address each:
+
+1. **Camera TCC for the host process.** `AVCaptureDevice.DiscoverySession`
+   in a host that's never been granted camera permission
+   silently hides `.external` devices including the host's
+   own embedded Camera Extension. `CameraCaptureSession` only
+   asks when the sink pipeline starts, which leaves the
+   wizard blind on toggle-on-but-never-opened-Add states.
+   Fix: `AppDelegate.applicationDidFinishLaunching` now
+   pre-grants on `.notDetermined` so TCC settles before any
+   wizard opens. Idempotent — `AVCaptureDevice.requestAccess`
+   no-ops once authorized.
+2. **Wizard reads the camera list once, at init.**
+   `AddProfileViewModel.refresh()` runs from the initializer
+   and from the manual Refresh button — nothing observes
+   `VirtualCameraActivator.state`. A wizard opened during
+   `.activating` / `.needsApproval` froze without the virtual
+   camera. Fix: `WizardForm` now `.onReceive`s
+   `delegate.virtualCameraActivator.$state` and triggers
+   `viewModel.refresh()` on `.on`.
+3. **Host process can't always see its own Camera Extension.**
+   Even with TCC and a fresh refresh, AVFoundation's
+   in-process discovery cache stays stale on first
+   activation in some launches. Photo Booth (separate
+   process) sees it; the host doesn't until relaunch.
+   Same family as the existing disable→re-enable
+   `requiresRelaunch` quirk. Fix:
+   `VirtualCameraActivator.scheduleHostVisibilityCheck()`
+   runs ~1.5 s after state flips to `.on`, runs a fresh
+   `DiscoverySession`, looks for the extension by
+   `virtualCameraUID`. If absent, escalates to
+   `.requiresRelaunch` and stops the capture pipeline so
+   the existing Settings "Restart" affordance handles it.
+
+Lesson: a CMIO Camera Extension being live in the OS-level
+graph does not guarantee the host that activated it can see
+it. Always test the picker from inside the host, not just
+Photo Booth.
+
 ---
 
 ## How to use this document
