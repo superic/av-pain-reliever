@@ -241,5 +241,20 @@
                        type="application/octet-stream"
                        sparkle:edSignature="mf/FUTrvFzxSv6pzR+psRFyBH5JNedgZbdwc1z7YVexFsIgQM4yl5DaJi9pe/Bb35muFYsz12lSqRxIRexLCCg==" length="2658142" />
         </item>
+        <item>
+            <title>Version 0.2.0.2</title>
+            <description><![CDATA[
+<h2>What's new</h2>
+<p>Same fix as v0.1.15 — that USB serial-number gotcha where some capture cards only expose one of the two IOKit keys (the raw <code class="notranslate">kUSBSerialNumberString</code> instead of the friendly <code class="notranslate">"USB Serial Number"</code>). Now we read both. If your dock has one of those quirky cards in the fingerprint and the engine was mysteriously falling back to your laptop profile every relaunch, this is the fix. Dock, launch, the right profile applies. <strong>Money.</strong></p>
+]]></description>
+            <pubDate>Tue, 05 May 2026 01:45:26 +0000</pubDate>
+            <sparkle:channel>experimental</sparkle:channel>
+            <sparkle:version>0.2.0.2</sparkle:version>
+            <sparkle:shortVersionString>0.2.0.2</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/superic/av-pain-reliever/releases/download/v0.2.0.2/AVPainReliever.app.zip"
+                       type="application/octet-stream"
+                       sparkle:edSignature="eIFNIR+aFNIsfcRm80yb9KTpexIS8vUvLn4huq8epLMSIfoBKhaV/zwjHaxpQAkv8/0XfkllwMCn73nCL3+7DQ==" length="2846656" />
+        </item>
     </channel>
 </rss>
