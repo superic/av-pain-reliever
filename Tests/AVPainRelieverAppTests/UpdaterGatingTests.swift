@@ -68,4 +68,45 @@ struct UpdaterGatingTests {
         // they must update both places. This guard catches the drift.
         #expect(Updater.publicKeyPlaceholder == "__SPARKLE_PUBLIC_KEY__")
     }
+
+    // MARK: - Experimental version classifier
+    //
+    // Mirrors the workflow's tag-prefix dispatch:
+    // v0.0.x / v0.1.x → stable, anything else → experimental.
+
+    @Test("0.1.x versions are stable")
+    func zeroOneIsStable() {
+        #expect(Updater.isExperimentalVersion("0.1.0") == false)
+        #expect(Updater.isExperimentalVersion("0.1.15") == false)
+    }
+
+    @Test("0.2.x versions are experimental")
+    func zeroTwoIsExperimental() {
+        #expect(Updater.isExperimentalVersion("0.2.0") == true)
+        #expect(Updater.isExperimentalVersion("0.2.0.2") == true)
+    }
+
+    @Test("0.0.x dryrun versions are stable")
+    func zeroZeroIsStable() {
+        #expect(Updater.isExperimentalVersion("0.0.0-dryrun") == false)
+    }
+
+    @Test("1.x and beyond is experimental until graduated")
+    func futureMajorVersionsAreExperimental() {
+        #expect(Updater.isExperimentalVersion("1.0.0") == true)
+        #expect(Updater.isExperimentalVersion("2.5.7") == true)
+    }
+
+    @Test("malformed version strings classify as stable (defensive)")
+    func malformedVersionsAreStable() {
+        #expect(Updater.isExperimentalVersion("") == false)
+        #expect(Updater.isExperimentalVersion("garbage") == false)
+        #expect(Updater.isExperimentalVersion("0") == false)
+    }
+
+    @Test("iter-suffixed dev versions match their numeric prefix")
+    func iterSuffixedVersionsParse() {
+        #expect(Updater.isExperimentalVersion("0.2.0-iter-m3") == true)
+        #expect(Updater.isExperimentalVersion("0.1.14-rc1") == false)
+    }
 }
