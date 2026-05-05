@@ -373,5 +373,22 @@
                        type="application/octet-stream"
                        sparkle:edSignature="0xjLGkMURkbrNewNRi8kA2I3eyb2A5gUQ80sPVXgmZHn3tU6j58ivbS5Kicjkr1/WxZ17x5YBfEmrQnB5kLjCA==" length="2875876" />
         </item>
+        <item>
+            <title>Version 0.2.0.7</title>
+            <description><![CDATA[
+<h2>What's new</h2>
+<p>Two big quality-of-life wins on the virtual camera.</p>
+<p>The green camera light used to stay on the whole time the app was open. Just… lit. Like someone was watching. Not anymore — capture only fires up when something's actually reading the virtual camera. Zoom call ends? Light's off in 30 seconds. Idle for an hour? Light's been off for fifty-nine and a half. The way it should be.</p>
+<p>The other thing: the profile camera picker no longer lets you pick "AV Pain Reliever" from the list. Why would you? It's the OUTPUT. The thing Zoom is pointed at. Your profile names the REAL camera — the BRIO, the FaceTime HD, the capture card — and AV Pain Reliever routes it through. Plus, when the virtual camera is on, macOS's system camera preference now also points at AV Pain Reliever, so FaceTime and Safari follow the same routing as Zoom. One source of truth. Money.</p>
+]]></description>
+            <pubDate>Tue, 05 May 2026 05:21:10 +0000</pubDate>
+            <sparkle:channel>experimental</sparkle:channel>
+            <sparkle:version>0.2.0.7</sparkle:version>
+            <sparkle:shortVersionString>0.2.0.7</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/superic/av-pain-reliever/releases/download/v0.2.0.7/AVPainReliever.app.zip"
+                       type="application/octet-stream"
+                       sparkle:edSignature="m7jtbJuI+hxukBFMqBAjyV0j6MNtl4jFxfTBoLjmpI5/HR+gz2QyXwvOEy+2GHiEBS31T6KWMtAbQJ1zQnDzDQ==" length="2896646" />
+        </item>
     </channel>
 </rss>
