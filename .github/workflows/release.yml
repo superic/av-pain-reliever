@@ -44,7 +44,22 @@ permissions:
 
 jobs:
   release:
-    runs-on: macos-14
+    # Self-hosted runner on the developer's Mac. Two reasons:
+    #   1. Toolchain parity — uses the developer's installed Xcode
+    #      (currently 26.4.1) so CI-shipped builds render identically
+    #      to local dev builds. The earlier macos-14 GitHub-hosted
+    #      runner pinned us to Xcode 16.x / SDK 15.2, which compiled
+    #      SwiftUI .bordered buttons against an older API path — the
+    #      runtime then drew the chunkier, white-fill style on every
+    #      shipped release while local dev builds got the newer flat
+    #      grey-fill rendering.
+    #   2. Queue time — GitHub-hosted macos-26-arm64 runners had 30+
+    #      min queue times during peak hours. Self-hosted starts in
+    #      seconds.
+    # Security: this repo's Actions settings are configured to require
+    # approval for fork PRs from all external contributors, so a fork
+    # can't push code that auto-executes on the dev's Mac.
+    runs-on: [self-hosted, macos-arm64, xcode-26-4-1]
     timeout-minutes: 45  # notarization can take 10+ minutes on a cold Team ID
 
     env:
@@ -99,19 +114,22 @@ jobs:
           echo -n "$PROFILE_BASE64" | base64 --decode -o Resources/AVPainReliever.provisionprofile
           echo "Wrote Resources/AVPainReliever.provisionprofile ($(stat -f%z Resources/AVPainReliever.provisionprofile) bytes)"
 
-      - name: Select Xcode
-        uses: maxim-lobanov/setup-xcode@v1
-        with:
-          xcode-version: latest-stable
+      # No Select Xcode step on self-hosted: the runner uses whichever
+      # Xcode is at /Applications/Xcode.app on the dev's Mac (currently
+      # 26.4.1). When the dev upgrades local Xcode, CI follows
+      # automatically, which is the lockstep behavior we want.
 
       - name: Reset SPM artifact cache
-        # The macos-14 runner sometimes carries a primed
+        # GitHub-hosted runner edge case: a primed
         # ~/Library/Caches/org.swift.swiftpm/artifacts directory (or
-        # an aborted prior download leaves a partial in place); SPM's
-        # binary-target downloader then fails on Sparkle's zip with
-        # "already exists in file system" because its move-into-place
-        # step isn't overwrite-safe. Wiping the cache here forces a
-        # clean fetch every time. Cheap (~3 MB redownload).
+        # an aborted prior download) leaves a partial that breaks
+        # SPM's binary-target downloader on Sparkle's zip with
+        # "already exists in file system" — its move-into-place step
+        # isn't overwrite-safe. Skipped on self-hosted because (a) the
+        # cache state is owned by the dev across all their Swift work
+        # and we don't want CI wiping it on every release, and (b) the
+        # original failure mode hasn't been observed locally.
+        if: runner.environment == 'github-hosted'
         run: rm -rf ~/Library/Caches/org.swift.swiftpm
 
       - name: Resolve SPM dependencies

@@ -23,17 +23,23 @@ permissions:
 
 jobs:
   test:
-    runs-on: macos-14
+    # Self-hosted runner on the developer's Mac. Mirrors release.yml's
+    # runner choice so test results reflect the same toolchain that
+    # ships builds — otherwise a passing test CI signal can mask a
+    # toolchain incompatibility that release.yml would surface only
+    # after a tag push. Security: Actions settings require approval
+    # for fork PRs from all external contributors, so a fork can't
+    # push code that auto-executes on the dev's Mac.
+    runs-on: [self-hosted, macos-arm64, xcode-26-4-1]
     timeout-minutes: 15
 
     steps:
       - name: Checkout
         uses: actions/checkout@v6
 
-      - name: Select Xcode
-        uses: maxim-lobanov/setup-xcode@v1
-        with:
-          xcode-version: latest-stable
+      # No Select Xcode step on self-hosted — the runner uses
+      # whichever Xcode is at /Applications/Xcode.app on the dev's
+      # Mac (currently 26.4.1). When local Xcode bumps, CI follows.
 
       - name: Cache SPM artifacts
         uses: actions/cache@v5
