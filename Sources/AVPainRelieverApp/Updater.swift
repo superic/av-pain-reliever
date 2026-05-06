@@ -1,5 +1,6 @@
 import Foundation
 import AppKit
+import Combine
 import Sparkle
 import OSLog
 
@@ -64,6 +65,8 @@ final class Updater {
     /// strong one here so the channel-allowlist callback survives.
     private let channelDelegate: ChannelGatingDelegate
 
+    private var cancellables: Set<AnyCancellable> = []
+
     init(settings: SettingsStore) {
         // `startingUpdater: true` kicks off the scheduled-check loop
         // immediately. The delegate's `allowedChannels(for:)` hook is
@@ -82,6 +85,23 @@ final class Updater {
         let feedDescription = controller.updater.feedURL?.absoluteString ?? "nil"
         Self.logger.info("Sparkle updater started; feed=\(feedDescription, privacy: .public)")
         installWindowTitleObserver()
+        // The delegate's `allowedChannels` is re-queried on every
+        // check, but Sparkle caches its parsed/filtered appcast result
+        // for a window between checks. A user who flips the
+        // experimental-updates toggle and immediately clicks "Check
+        // for Updates…" can hit the stale cache and see "you're up
+        // to date" until they toggle off-then-on (which evidently
+        // forces Sparkle to invalidate). Force a fresh background
+        // check on every toggle change so the new allowlist takes
+        // effect right away — silent if no update found, standard
+        // prompt if one is.
+        settings.$experimentalUpdates
+            .removeDuplicates()
+            .dropFirst()
+            .sink { [weak self] _ in
+                self?.controller.updater.checkForUpdatesInBackground()
+            }
+            .store(in: &cancellables)
     }
 
     /// Sparkle's update alert XIB doesn't set a window title, so its
