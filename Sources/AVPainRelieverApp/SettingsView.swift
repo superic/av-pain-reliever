@@ -310,17 +310,21 @@ private struct GeneralSettingsTab: View {
 
 /// Small helper to render the version string consistently across
 /// About, Settings, and any future window that needs it. Falls back
-/// to "dev build" when the binary isn't bundled (the SPM build
+/// to "Dev build" when the binary isn't bundled (the SPM build
 /// path).
+///
+/// Format: matches Apple's standard About-panel phrasing
+/// ("Version X.Y.Z"). Drops the app name (the title above the
+/// version line already shows it) and drops the parenthesized
+/// build number (we set CFBundleVersion == CFBundleShortVersionString,
+/// so showing both was redundant).
 enum VersionInfo {
     static var short: String {
         let info = Bundle.main.infoDictionary
         let shortVersion = info?["CFBundleShortVersionString"] as? String
-        let build = info?["CFBundleVersion"] as? String
-        switch (shortVersion, build) {
-        case let (s?, b?): return "AV Pain Reliever \(s) (\(b))"
-        case let (s?, nil): return "AV Pain Reliever \(s)"
-        default: return "AV Pain Reliever — dev build"
+        switch shortVersion {
+        case let v?: return "Version \(v)"
+        default:     return "Dev build"
         }
     }
 }
