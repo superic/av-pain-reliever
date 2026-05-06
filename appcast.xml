@@ -461,5 +461,23 @@
                        type="application/octet-stream"
                        sparkle:edSignature="Rjvs719j/DjZpbzoLJNiNWVQRR8Fw7KXO73ih8qcYeurdQYFa0/1LG4IsXHwnDQtcWKjc9qN8MUhR1F/5zZTCw==" length="2971989" />
         </item>
+        <item>
+            <title>Version 0.2.0.12</title>
+            <description><![CDATA[
+<h2>What's new</h2>
+<p>Rendering fix. Buttons throughout the app got slightly cleaner — flatter, more native. Same intent, more polish.</p>
+<p>What actually happened: every release until this one got compiled on GitHub's CI with an older Xcode that drew SwiftUI buttons one way; the dev's Mac has a newer Xcode that drew them the other way. The dev kept seeing the new look on his screen and accidentally shipping the old look to everyone else. Same source code, two different runtime paths into SwiftUI. Apple keeps both alive forever for backward compatibility, so the SDK at compile time picks which one your binary calls.</p>
+<p>Now the build pipeline runs on the dev's actual Mac, with the actual Xcode he develops with. What lands in your /Applications is now the same look he sees on his own screen. Same toolchain, same SwiftUI runtime path, every time.</p>
+<p>Money.</p>
+]]></description>
+            <pubDate>Wed, 06 May 2026 04:20:42 +0000</pubDate>
+            <sparkle:channel>experimental</sparkle:channel>
+            <sparkle:version>0.2.0.12</sparkle:version>
+            <sparkle:shortVersionString>0.2.0.12</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/superic/av-pain-reliever/releases/download/v0.2.0.12/AVPainReliever.app.zip"
+                       type="application/octet-stream"
+                       sparkle:edSignature="2qhrCsmz1XQqm5Sf6Alsp2HG31Ajrhzp20etC0MTihlSAb6r2rEMi/UBttFHKBpRKiXwgB7fx7z1xlgXwACtBw==" length="3070823" />
+        </item>
     </channel>
 </rss>
