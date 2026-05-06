@@ -360,6 +360,24 @@ struct EngineTests {
         #expect(observed == ["home-office", "home-office"])
     }
 
+    @Test("onDevicesEvaluated fires with the attached device set on every evaluate")
+    func onDevicesEvaluatedFiresWithAttachedSet() {
+        let h = makeHarness()
+        h.watcher.devices = [Self.caldigit, Self.lgCamera]
+        var observed: [Set<USBDevice>] = []
+        h.engine.onDevicesEvaluated = { observed.append($0) }
+
+        h.engine.start() // initial evaluate
+        h.watcher.devices = [Self.caldigit] // simulate unplug
+        h.watcher.triggerChange()
+        h.clock.advance(by: 1.5)
+
+        #expect(observed == [
+            [Self.caldigit, Self.lgCamera],
+            [Self.caldigit],
+        ])
+    }
+
     @Test("engine reflects current state when restarted after a state change")
     func restartAfterStop() {
         let h = makeHarness()

@@ -59,6 +59,13 @@ public final class Engine {
     /// (that's a known location, not a new one).
     public var onUnknownLocation: ((Set<USBDevice>) -> Void)?
 
+    /// Fires on every successful evaluate-and-apply pass with the full
+    /// set of currently-attached USB devices, regardless of which
+    /// profile resolved or whether it changed. Used by the host's
+    /// stats tracking to maintain a "unique devices ever seen" set
+    /// without spinning up a second `USBWatcher` instance.
+    public var onDevicesEvaluated: ((Set<USBDevice>) -> Void)?
+
     public init(
         watcher: USBWatcher,
         resolver: ProfileResolver,
@@ -147,6 +154,7 @@ public final class Engine {
 
     private func evaluateAndApply() {
         let attached = watcher.currentDevices()
+        onDevicesEvaluated?(attached)
         guard let profile = resolver.resolve(attached: attached) else {
             logger.warn("no profile matched the current USB state — skipping apply")
             return

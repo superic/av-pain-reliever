@@ -1,5 +1,6 @@
 import Foundation
 import Combine
+import AVPainReliever
 
 /// User-tunable behavior toggles. Persisted to `UserDefaults` under the
 /// app's domain so settings survive relaunches without us writing
@@ -21,6 +22,16 @@ final class SettingsStore: ObservableObject {
         static let launchAtLogin = "launchAtLogin"
         static let virtualCameraEnabled = "virtualCameraEnabled"
         static let experimentalUpdates = "experimentalUpdates"
+        static let statsTrackingEnabled = "statsTrackingEnabled"
+        static let statsStartDate = "statsStartDate"
+        static let perProfileCounts = "perProfileCounts"
+        static let lastSwitchSlug = "lastSwitchSlug"
+        static let lastSwitchDate = "lastSwitchDate"
+        static let manualOverrideCount = "manualOverrideCount"
+        static let currentStreakDays = "currentStreakDays"
+        static let longestStreakDays = "longestStreakDays"
+        static let activeDaysCount = "activeDaysCount"
+        static let uniqueDeviceFingerprints = "uniqueDeviceFingerprints"
     }
 
     /// Toast on profile change?  Default on — the at-a-glance signal
@@ -111,6 +122,114 @@ final class SettingsStore: ObservableObject {
         didSet { defaults.set(experimentalUpdates, forKey: Key.experimentalUpdates) }
     }
 
+    /// Master gate for usage-stats tracking. **Default: off.** With
+    /// this false, every `record*` / `increment*` method early-returns
+    /// — no fields update, no `UserDefaults` writes happen, no menu
+    /// counters advance. Existing values stay frozen and visible (the
+    /// user can flip the toggle off after some history without losing
+    /// what was already collected). Surfaced in Settings → Advanced.
+    @Published var statsTrackingEnabled: Bool {
+        didSet {
+            defaults.set(statsTrackingEnabled, forKey: Key.statsTrackingEnabled)
+            // Stamp the start date the *first* time the user opts in.
+            // Off → on → off → on must NOT reset it; the user's
+            // intent is "I started keeping notes a while back" and
+            // the streak / activeDays math relies on a stable origin.
+            if statsTrackingEnabled, statsStartDate == nil {
+                statsStartDate = Date()
+            }
+        }
+    }
+
+    /// Captured the first time the user enables `statsTrackingEnabled`.
+    /// Drives the "Tracking since N days ago" line in Advanced.
+    @Published var statsStartDate: Date? {
+        didSet { defaults.set(statsStartDate, forKey: Key.statsStartDate) }
+    }
+
+    /// Count of how many times each profile (by slug) has been
+    /// applied since tracking was enabled. Powers the "most-used
+    /// location" highlight + the per-profile rankings.
+    @Published var perProfileCounts: [String: Int] {
+        didSet { defaults.set(perProfileCounts, forKey: Key.perProfileCounts) }
+    }
+
+    /// Slug of the most recently applied profile (set alongside
+    /// `lastSwitchDate`). Renders as "Last switched 2h ago to Home
+    /// Office" in Advanced.
+    @Published var lastSwitchSlug: String? {
+        didSet { defaults.set(lastSwitchSlug, forKey: Key.lastSwitchSlug) }
+    }
+
+    /// Wall-clock time of the most recent recorded switch. Used to
+    /// drive the relative-time rendering AND the streak / activeDays
+    /// day-bucket math.
+    @Published var lastSwitchDate: Date? {
+        didSet { defaults.set(lastSwitchDate, forKey: Key.lastSwitchDate) }
+    }
+
+    /// How many times the user has forced a profile from the menu's
+    /// "Switch to …" submenu (vs. the resolver auto-picking one in
+    /// response to a USB event). A high count is a soft signal that
+    /// the user's profiles aren't quite matching reality and might
+    /// want adjustment.
+    @Published var manualOverrideCount: Int {
+        didSet { defaults.set(manualOverrideCount, forKey: Key.manualOverrideCount) }
+    }
+
+    /// Consecutive calendar days with at least one recorded switch,
+    /// counting today (or the day of the most recent switch).
+    @Published var currentStreakDays: Int {
+        didSet { defaults.set(currentStreakDays, forKey: Key.currentStreakDays) }
+    }
+
+    /// All-time maximum value `currentStreakDays` has reached. Never
+    /// decreases except via `resetStats()`.
+    @Published var longestStreakDays: Int {
+        didSet { defaults.set(longestStreakDays, forKey: Key.longestStreakDays) }
+    }
+
+    /// Total count of distinct calendar days on which at least one
+    /// switch was recorded. Diverges from `currentStreakDays` once
+    /// any gap appears — a 50-active-day user with an interrupted
+    /// streak still has activeDays = 50 even if the current streak
+    /// is back to 1.
+    @Published var activeDaysCount: Int {
+        didSet { defaults.set(activeDaysCount, forKey: Key.activeDaysCount) }
+    }
+
+    /// Backing storage for the unique-device set. Each entry is the
+    /// `(vendorID, productID)` pair as `"<vid>:<pid>"` lowercase hex.
+    /// `[String]` so it round-trips cleanly through UserDefaults
+    /// without custom encoding. Surfaced as
+    /// `uniqueDevicesSeenCount` for the UI.
+    @Published var uniqueDeviceFingerprints: [String] {
+        didSet { defaults.set(uniqueDeviceFingerprints, forKey: Key.uniqueDeviceFingerprints) }
+    }
+
+    /// Convenience for the Advanced view — the count is what the UI
+    /// actually wants. Computed so it tracks the array without an
+    /// extra published field.
+    var uniqueDevicesSeenCount: Int { uniqueDeviceFingerprints.count }
+
+    /// True iff there's user-meaningful stats data (counters
+    /// non-zero, dictionaries / arrays non-empty, a last-switch
+    /// recorded). Drives both the Reset Stats section's visibility
+    /// AND the on-disable "also reset?" prompt.
+    ///
+    /// `statsStartDate` is intentionally NOT counted here — it's
+    /// internal bookkeeping (set on first opt-in, re-stamped on
+    /// reset) and a fresh opt-in / opt-out cycle leaves it set
+    /// without any data the user would recognize as "stats."
+    var hasRecordedStats: Bool {
+        profileSwitchCount > 0
+            || !perProfileCounts.isEmpty
+            || lastSwitchSlug != nil
+            || manualOverrideCount > 0
+            || activeDaysCount > 0
+            || !uniqueDeviceFingerprints.isEmpty
+    }
+
     private let defaults: UserDefaults
 
     init(defaults: UserDefaults = .standard) {
@@ -129,9 +248,118 @@ final class SettingsStore: ObservableObject {
         self.launchAtLogin = (defaults.object(forKey: Key.launchAtLogin) as? Bool) ?? false
         self.virtualCameraEnabled = (defaults.object(forKey: Key.virtualCameraEnabled) as? Bool) ?? false
         self.experimentalUpdates = (defaults.object(forKey: Key.experimentalUpdates) as? Bool) ?? false
+        // Stats tracking ships off by default for privacy. Every
+        // record / increment method early-returns when this is false.
+        self.statsTrackingEnabled = (defaults.object(forKey: Key.statsTrackingEnabled) as? Bool) ?? false
+        self.statsStartDate = defaults.object(forKey: Key.statsStartDate) as? Date
+        self.perProfileCounts = (defaults.object(forKey: Key.perProfileCounts) as? [String: Int]) ?? [:]
+        self.lastSwitchSlug = defaults.object(forKey: Key.lastSwitchSlug) as? String
+        self.lastSwitchDate = defaults.object(forKey: Key.lastSwitchDate) as? Date
+        self.manualOverrideCount = (defaults.object(forKey: Key.manualOverrideCount) as? Int) ?? 0
+        self.currentStreakDays = (defaults.object(forKey: Key.currentStreakDays) as? Int) ?? 0
+        self.longestStreakDays = (defaults.object(forKey: Key.longestStreakDays) as? Int) ?? 0
+        self.activeDaysCount = (defaults.object(forKey: Key.activeDaysCount) as? Int) ?? 0
+        self.uniqueDeviceFingerprints = (defaults.object(forKey: Key.uniqueDeviceFingerprints) as? [String]) ?? []
     }
 
+    /// Bump the lifetime switch counter that drives the easter-egg
+    /// menu line. Gated by `statsTrackingEnabled` — when off, the
+    /// counter freezes at its current value (typically 0 on a fresh
+    /// install).
     func incrementSwitchCount() {
+        guard statsTrackingEnabled else { return }
         profileSwitchCount += 1
+    }
+
+    /// Bump the count of menu-driven manual overrides. Gated.
+    func incrementManualOverrideCount() {
+        guard statsTrackingEnabled else { return }
+        manualOverrideCount += 1
+    }
+
+    /// Record one applied profile. Updates per-profile counts,
+    /// last-switched fields, and the daily streak / activeDays math.
+    /// Gated by `statsTrackingEnabled`.
+    ///
+    /// Streak rule, evaluated against `lastSwitchDate`'s calendar day
+    /// (in the user's local timezone):
+    ///
+    /// - same day → no streak/activeDays change (just refresh
+    ///   `lastSwitchDate` so the relative-time UI stays current)
+    /// - exactly one day later → `currentStreakDays += 1`,
+    ///   `activeDaysCount += 1`
+    /// - older or never → `currentStreakDays = 1`,
+    ///   `activeDaysCount += 1`
+    ///
+    /// `longestStreakDays` is `max(longestStreakDays, currentStreakDays)`
+    /// after each update.
+    func recordSwitch(toSlug slug: String, at date: Date = Date()) {
+        guard statsTrackingEnabled else { return }
+        perProfileCounts[slug, default: 0] += 1
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: date)
+        if let last = lastSwitchDate {
+            let lastDay = calendar.startOfDay(for: last)
+            let delta = calendar.dateComponents([.day], from: lastDay, to: today).day ?? 0
+            if delta == 0 {
+                // Same calendar day — no streak change.
+            } else if delta == 1 {
+                currentStreakDays += 1
+                activeDaysCount += 1
+            } else {
+                currentStreakDays = 1
+                activeDaysCount += 1
+            }
+        } else {
+            currentStreakDays = 1
+            activeDaysCount = 1
+        }
+        if currentStreakDays > longestStreakDays {
+            longestStreakDays = currentStreakDays
+        }
+        lastSwitchSlug = slug
+        lastSwitchDate = date
+    }
+
+    /// Insert any never-seen `(vendorID, productID)` fingerprints into
+    /// the unique-devices set. Gated. Writes back to UserDefaults
+    /// only when the set actually grew, so a typical USB-quiet stretch
+    /// doesn't touch defaults at all.
+    func recordDevicesSeen(_ devices: Set<USBDevice>) {
+        guard statsTrackingEnabled else { return }
+        let existing = Set(uniqueDeviceFingerprints)
+        var grown = existing
+        for device in devices {
+            grown.insert(Self.fingerprint(for: device))
+        }
+        if grown.count != existing.count {
+            uniqueDeviceFingerprints = grown.sorted()
+        }
+    }
+
+    /// Wipe every stats counter / dictionary / last-switched field.
+    /// Does NOT touch `statsTrackingEnabled` — that's a separate
+    /// privacy choice. If tracking is currently on, `statsStartDate`
+    /// is reset to "now" so future records have a fresh origin; if
+    /// tracking is off, it's set to nil (it'll re-stamp on next
+    /// opt-in). Wired to the Advanced tab's "Reset stats…" button.
+    func resetStats() {
+        profileSwitchCount = 0
+        perProfileCounts = [:]
+        lastSwitchSlug = nil
+        lastSwitchDate = nil
+        manualOverrideCount = 0
+        currentStreakDays = 0
+        longestStreakDays = 0
+        activeDaysCount = 0
+        uniqueDeviceFingerprints = []
+        statsStartDate = statsTrackingEnabled ? Date() : nil
+    }
+
+    /// Stable string fingerprint for a USB device — `"<vid>:<pid>"`
+    /// in lowercase 4-char hex. Used as the entry value in
+    /// `uniqueDeviceFingerprints`.
+    static func fingerprint(for device: USBDevice) -> String {
+        String(format: "%04x:%04x", device.vendorID, device.productID)
     }
 }

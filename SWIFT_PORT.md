@@ -3391,6 +3391,61 @@ has to live OUTSIDE the pipeline — otherwise it's lost on
 every restart and the pipeline restarts with system defaults
 that may not match the active profile.
 
+### Local stats screen + privacy-first opt-in (2026-05-05)
+
+User wanted a "fun nerdy stats" surface — counts of profile
+switches, per-profile activations, streaks, unique USB
+devices recognized. Discussed and ruled out anything
+duration-based (camera-on time, frames piped, meeting
+length) as too close to "tracking my work."
+
+Shipped under a new **Stats** Settings tab. Originally
+planned as "Advanced" with stats inside, but the menu bar
+already exposes an Advanced submenu — two surfaces with the
+same name read as a UI bug. Renamed to "Stats" to match
+the actual content; future advanced/diagnostic settings can
+get their own home if and when they show up.
+
+Privacy stance: tracking is **off by default**. Every
+recording method on `SettingsStore` (`incrementSwitchCount`,
+`incrementManualOverrideCount`, `recordSwitch`,
+`recordDevicesSeen`) early-returns when
+`statsTrackingEnabled == false`. No `UserDefaults` writes
+happen until the user explicitly opts in. Existing values
+freeze (don't reset) when the user later disables — a
+separate Reset Stats button wipes everything on demand.
+
+Stat list (Balanced bundle):
+
+- Total auto-switches (existing `profileSwitchCount`,
+  surfaced)
+- Per-profile activation counts → most-used location
+  highlight + ranked list
+- Tracking-since date (stamped on first opt-in, NOT on
+  app first-launch, so the "47 days strong" number is
+  honest about what's actually been recorded)
+- Last switched (relative time + profile slug)
+- Manual overrides (count of menu-driven `applyManually`
+  calls)
+- Current streak / Longest streak / Active days
+- Unique USB devices recognized (count only, hashed as
+  `"<vid>:<pid>"`)
+
+Engine plumbing: new `Engine.onDevicesEvaluated:
+((Set<USBDevice>) -> Void)?` callback, fires inside
+`evaluateAndApply` after the watcher poll, regardless of
+profile change. Lets `AppDelegate` feed the unique-devices
+set without spinning up its own watcher.
+
+Lesson: privacy-first defaults are easy to bolt on with a
+single gate flag, but only if you push the gate into the
+domain object (`SettingsStore`) instead of every caller.
+Putting `guard statsTrackingEnabled else { return }` at the
+top of each `record*` method means callers in `AppDelegate`
+don't carry the conditional, and the easter-egg menu line
+("Switched N times…") naturally freezes on opt-out without
+any view-level changes.
+
 - **When we ship a Phase 1 fix or feature**, ask: does this teach us
   something about the Swift port? If yes, add to "Lessons learned."
 - **When the user gives feedback or hits a bug**, ask: should this be
