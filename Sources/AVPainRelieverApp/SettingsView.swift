@@ -13,11 +13,30 @@ enum SettingsTab: Hashable {
     case stats
 }
 
-/// The Settings scene has three tabs: General (toggles + slider),
-/// Profiles (list with edit/delete), and Camera (virtual camera
-/// install/enable + status). Deliberately *no* mention of
-/// Hammerspoon, OBS, or any other third-party tool — the app must
-/// read as its own product.
+private extension View {
+    /// Shared chrome for every Settings tab body — `.formStyle(.grouped)`
+    /// + 8 pt padding around the Form's rounded card. Apply to the
+    /// `Form` at the root of each tab's body so the gray section
+    /// cards line up consistently against the window edges. Camera,
+    /// General, and Stats use this; Profiles has its own layout
+    /// (no Form) and stays bespoke for now.
+    ///
+    /// One place to change the convention. If we ever want to bump
+    /// the padding to 12 or swap to a different formStyle, edit
+    /// here and every tab follows.
+    func settingsTabContent() -> some View {
+        self
+            .formStyle(.grouped)
+            .padding(8)
+    }
+}
+
+/// The Settings scene has four tabs: General (toggles + slider),
+/// Profiles (list with edit/delete), Camera (virtual camera
+/// install/enable + status), and Stats (opt-in local usage
+/// counters). Deliberately *no* mention of Hammerspoon, OBS, or
+/// any other third-party tool — the app must read as its own
+/// product.
 ///
 /// Hosted inside SwiftUI's dedicated `Settings { ... }` scene rather
 /// than a generic `Window` scene so the TabView gets the System-
@@ -106,8 +125,7 @@ private struct CameraSettingsTab: View {
                 Label("Virtual camera", systemImage: "camera.metering.center.weighted")
             }
         }
-        .formStyle(.grouped)
-        .padding(8)
+        .settingsTabContent()
     }
 
     /// Live status row — colored dot + human-readable label that
@@ -268,8 +286,7 @@ private struct GeneralSettingsTab: View {
                 Label("Updates", systemImage: "arrow.down.circle")
             }
         }
-        .formStyle(.grouped)
-        .padding(8)
+        .settingsTabContent()
     }
 }
 
@@ -507,7 +524,7 @@ private struct StatsSettingsTab: View {
                 }
             }
         }
-        .formStyle(.grouped)
+        .settingsTabContent()
         .alert(
             "Reset all usage stats?",
             isPresented: $resetConfirmationVisible
