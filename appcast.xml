@@ -424,5 +424,24 @@
                        type="application/octet-stream"
                        sparkle:edSignature="gQ86Rsc8j+iJVdqe99Pc/L9M9+m76HqCTKdnm6za0p0Cr3MTyRLqczGzddN1wTUo9hWvNRZ9GJWw1SyY8gjPBg==" length="2964687" />
         </item>
+        <item>
+            <title>Version 0.2.0.10</title>
+            <description><![CDATA[
+<h2>What's new</h2>
+<p>Polish drop. No new features — pure surface work. The kind of release where you open Settings, look around, and your shoulders drop a quarter-inch.</p>
+<p>The <strong>wizard footer</strong>. Cancel used to be a button-with-an-X, Save was a button-with-a-plus. Apple's Cancel buttons have never had icons, never will. Ours shouldn't either. Fixed. Both are clean text now, the way every native sheet on macOS is.</p>
+<p>The <strong>Profiles tab</strong>. The "Add Profile" button at the bottom isn't a big blue chunk anymore — it's a quiet bordered "Add Profile…" with an ellipsis, the way System Settings actually does it. The pencil and trash on each profile row lost their bordered chips. Just icons, no chrome, rows can breathe. Looks like Mail. Looks like Reminders.</p>
+<p>The <strong>"Restart required"</strong> state on the Camera tab used to put a tiny grey button next to a big orange dot — the dot yelling, the button whispering. Now they match. And the <strong>Reset stats</strong> button on the Stats tab is finally a full-width red row inside its grouped section, the way Apple ID does Sign Out. Red text, full row, no ambiguity about which button is the dangerous one.</p>
+<p>Money.</p>
+]]></description>
+            <pubDate>Wed, 06 May 2026 02:39:54 +0000</pubDate>
+            <sparkle:channel>experimental</sparkle:channel>
+            <sparkle:version>0.2.0.10</sparkle:version>
+            <sparkle:shortVersionString>0.2.0.10</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/superic/av-pain-reliever/releases/download/v0.2.0.10/AVPainReliever.app.zip"
+                       type="application/octet-stream"
+                       sparkle:edSignature="Y7vjGFDypph2iZgPD1thE6+r+/EiXZLGw2rkFqwuDpE5TNoD0qEFdSjp3iy1eAeJm/1WVeE8dTTYZkTim/zqBA==" length="2967509" />
+        </item>
     </channel>
 </rss>
