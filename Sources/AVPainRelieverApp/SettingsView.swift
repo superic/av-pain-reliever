@@ -10,7 +10,7 @@ enum SettingsTab: Hashable {
     case general
     case profiles
     case camera
-    case advanced
+    case stats
 }
 
 /// The Settings scene has three tabs: General (toggles + slider),
@@ -51,11 +51,11 @@ struct SettingsView: View {
                 }
                 .tag(SettingsTab.camera)
 
-            AdvancedSettingsTab(settings: settings, delegate: delegate)
+            StatsSettingsTab(settings: settings, delegate: delegate)
                 .tabItem {
-                    Label("Advanced", systemImage: "slider.horizontal.3")
+                    Label("Stats", systemImage: "chart.bar.fill")
                 }
-                .tag(SettingsTab.advanced)
+                .tag(SettingsTab.stats)
         }
         .frame(width: 480, height: 380)
         .centeredOnScreen()
@@ -467,13 +467,14 @@ private struct ProfileRow: View {
     }
 }
 
-/// Advanced tab — currently houses the local stats screen behind an
-/// opt-in toggle. Future home for diagnostic/dev settings (logs,
-/// reset state, etc.). Stats tracking ships off; the Stats section
-/// collapses to just the toggle + helper text on a fresh install,
-/// avoiding "what is this stuff?" friction before the user has
-/// chosen to keep notes.
-private struct AdvancedSettingsTab: View {
+/// Stats tab — local usage tracking behind an opt-in toggle. Ships
+/// off; the Tracking section collapses to just the toggle + helper
+/// text on a fresh install, avoiding "what is this stuff?" friction
+/// before the user has chosen to keep notes. Renamed from "Advanced"
+/// to avoid colliding with the menu bar's existing Advanced submenu
+/// — and the tab only houses stats today, so the on-the-nose name
+/// reads better.
+private struct StatsSettingsTab: View {
     @ObservedObject var settings: SettingsStore
     @ObservedObject var delegate: AppDelegate
     @State private var resetConfirmationVisible = false
@@ -491,7 +492,7 @@ private struct AdvancedSettingsTab: View {
                     statsRows
                 }
             } header: {
-                Label("Stats", systemImage: "chart.bar.fill")
+                Label("Tracking", systemImage: "switch.2")
             }
 
             if hasAnyStatsValue {

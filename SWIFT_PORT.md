@@ -3399,9 +3399,12 @@ devices recognized. Discussed and ruled out anything
 duration-based (camera-on time, frames piped, meeting
 length) as too close to "tracking my work."
 
-Shipped under a new **Advanced** Settings tab as the first
-of what'll likely become a small home for diagnostic /
-power-user settings.
+Shipped under a new **Stats** Settings tab. Originally
+planned as "Advanced" with stats inside, but the menu bar
+already exposes an Advanced submenu — two surfaces with the
+same name read as a UI bug. Renamed to "Stats" to match
+the actual content; future advanced/diagnostic settings can
+get their own home if and when they show up.
 
 Privacy stance: tracking is **off by default**. Every
 recording method on `SettingsStore` (`incrementSwitchCount`,
