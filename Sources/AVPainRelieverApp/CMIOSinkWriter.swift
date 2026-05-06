@@ -455,7 +455,7 @@ final class CMIOSinkWriter {
             mElement: CMIOObjectPropertyElement(kCMIOObjectPropertyElementMain)
         )
         var direction: UInt32 = 0
-        var size = UInt32(MemoryLayout<UInt32>.size)
+        let size = UInt32(MemoryLayout<UInt32>.size)
         var used: UInt32 = 0
         let status = CMIOObjectGetPropertyData(
             streamID, &address, 0, nil, size, &used, &direction
