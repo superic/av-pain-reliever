@@ -495,6 +495,11 @@ private struct StatsSettingsTab: View {
     @ObservedObject var settings: SettingsStore
     @ObservedObject var delegate: AppDelegate
     @State private var resetConfirmationVisible = false
+    /// Driven by an `.onChange` on the tracking toggle. Fires when
+    /// the user disables tracking AND there's data to wipe — gives
+    /// them a one-click "also reset?" affordance instead of forcing
+    /// them to remember the separate Reset button.
+    @State private var disableResetPromptVisible = false
 
     var body: some View {
         Form {
@@ -535,6 +540,28 @@ private struct StatsSettingsTab: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("This wipes every counter and date on this screen. Your profiles and other settings are untouched.")
+        }
+        // Surface the "also reset?" question at the moment the user
+        // cares most: right after they flipped tracking off. Apple's
+        // pattern for similar privacy-toggle disables (iCloud Photos,
+        // Find My, Screen Time). Skipped when there's nothing worth
+        // wiping — a fresh user toggling off → on again shouldn't
+        // get a meaningless prompt.
+        .alert(
+            "Stop tracking usage stats?",
+            isPresented: $disableResetPromptVisible
+        ) {
+            Button("Reset Stats", role: .destructive) {
+                settings.resetStats()
+            }
+            Button("Keep Stats", role: .cancel) {}
+        } message: {
+            Text("Tracking is off. Your existing counters and dates can stay in case you turn it back on later, or be wiped now.")
+        }
+        .onChange(of: settings.statsTrackingEnabled) { _, newValue in
+            if !newValue && hasAnyStatsValue {
+                disableResetPromptVisible = true
+            }
         }
     }
 
