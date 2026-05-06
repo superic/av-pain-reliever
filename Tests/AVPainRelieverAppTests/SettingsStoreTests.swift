@@ -274,6 +274,55 @@ struct SettingsStoreTests {
         #expect((store.statsStartDate ?? .distantPast) >= (stampBeforeReset ?? .distantPast))
     }
 
+    @Test("hasRecordedStats reflects user-meaningful data, not bookkeeping")
+    func hasRecordedStatsIgnoresStartDate() {
+        let store = SettingsStore(defaults: makeSuite())
+        // Fresh store: nothing.
+        #expect(store.hasRecordedStats == false)
+
+        // Pure opt-in stamps statsStartDate but doesn't count as
+        // recorded data. Off → on → off should NOT trigger the
+        // disable-reset prompt for a user who never actually used
+        // the feature.
+        store.statsTrackingEnabled = true
+        #expect(store.statsStartDate != nil)
+        #expect(store.hasRecordedStats == false)
+
+        // Toggling off doesn't change the picture.
+        store.statsTrackingEnabled = false
+        #expect(store.hasRecordedStats == false)
+    }
+
+    @Test("post-reset state is not considered recorded data")
+    func hasRecordedStatsAfterReset() {
+        let store = SettingsStore(defaults: makeSuite())
+        store.statsTrackingEnabled = true
+        store.recordSwitch(toSlug: "home-office")
+        #expect(store.hasRecordedStats == true)
+
+        store.resetStats()
+        // resetStats stamps statsStartDate to "now" while tracking
+        // is on, but every counter / collection is back to zero.
+        // The disable-reset prompt MUST not fire just because the
+        // start date is set.
+        #expect(store.hasRecordedStats == false)
+    }
+
+    @Test("recordSwitch and recordDevicesSeen both flip hasRecordedStats true")
+    func hasRecordedStatsTrueOnRealActivity() {
+        let store = SettingsStore(defaults: makeSuite())
+        store.statsTrackingEnabled = true
+
+        store.recordSwitch(toSlug: "home-office")
+        #expect(store.hasRecordedStats == true)
+
+        store.resetStats()
+        #expect(store.hasRecordedStats == false)
+
+        store.recordDevicesSeen([USBDevice(vendorID: 0x2188, productID: 0x6533)])
+        #expect(store.hasRecordedStats == true)
+    }
+
     @Test("stats fields persist across reloads")
     func statsFieldsRoundTrip() {
         let defaults = makeSuite()

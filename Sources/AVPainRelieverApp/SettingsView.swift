@@ -517,7 +517,7 @@ private struct StatsSettingsTab: View {
                 Label("Tracking", systemImage: "switch.2")
             }
 
-            if hasAnyStatsValue {
+            if settings.hasRecordedStats {
                 Section {
                     Button(role: .destructive) {
                         resetConfirmationVisible = true
@@ -559,23 +559,10 @@ private struct StatsSettingsTab: View {
             Text("Tracking is off. Your existing counters and dates can stay in case you turn it back on later, or be wiped now.")
         }
         .onChange(of: settings.statsTrackingEnabled) { _, newValue in
-            if !newValue && hasAnyStatsValue {
+            if !newValue && settings.hasRecordedStats {
                 disableResetPromptVisible = true
             }
         }
-    }
-
-    /// True iff any stats value is non-zero / non-empty. Used to show
-    /// the Reset section even when tracking is off, so a user who
-    /// disables tracking after collecting some history can still wipe.
-    private var hasAnyStatsValue: Bool {
-        settings.profileSwitchCount > 0
-            || !settings.perProfileCounts.isEmpty
-            || settings.lastSwitchSlug != nil
-            || settings.manualOverrideCount > 0
-            || settings.activeDaysCount > 0
-            || !settings.uniqueDeviceFingerprints.isEmpty
-            || settings.statsStartDate != nil
     }
 
     @ViewBuilder

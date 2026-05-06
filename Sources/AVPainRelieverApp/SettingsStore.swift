@@ -212,6 +212,24 @@ final class SettingsStore: ObservableObject {
     /// extra published field.
     var uniqueDevicesSeenCount: Int { uniqueDeviceFingerprints.count }
 
+    /// True iff there's user-meaningful stats data (counters
+    /// non-zero, dictionaries / arrays non-empty, a last-switch
+    /// recorded). Drives both the Reset Stats section's visibility
+    /// AND the on-disable "also reset?" prompt.
+    ///
+    /// `statsStartDate` is intentionally NOT counted here — it's
+    /// internal bookkeeping (set on first opt-in, re-stamped on
+    /// reset) and a fresh opt-in / opt-out cycle leaves it set
+    /// without any data the user would recognize as "stats."
+    var hasRecordedStats: Bool {
+        profileSwitchCount > 0
+            || !perProfileCounts.isEmpty
+            || lastSwitchSlug != nil
+            || manualOverrideCount > 0
+            || activeDaysCount > 0
+            || !uniqueDeviceFingerprints.isEmpty
+    }
+
     private let defaults: UserDefaults
 
     init(defaults: UserDefaults = .standard) {
