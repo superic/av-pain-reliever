@@ -3607,6 +3607,140 @@ something on iOS. macOS needs `.safeAreaInset(edge: .bottom) +
 
 PR: TBD, shipped in v0.2.0.11.
 
+### CI toolchain pin via self-hosted runner (2026-05-05, v0.2.0.12)
+
+This was supposed to be a sanity-check release for the bottom-bar
+fix. Instead it became the answer to a much older mystery the user
+had been calling out for months: **the buttons in the shipped app
+look subtly different from the buttons in the dev build.**
+
+Story arc:
+
+1. **The complaint resurfaced** during v0.2.0.11 verification. The
+   user A/B'd two screenshots of the Add Profile sheet's Cancel +
+   Save Profile buttons. One had taller buttons with white-fill
+   chrome; the other had flatter, grey-fill chrome. The user
+   preferred the flatter look.
+2. **First wrong hypothesis:** I assumed Sparkle had landed an
+   incomplete update (Info.plist new, Mach-O old). Verified via
+   `cmp` and `shasum` — both bundles' executables differed but were
+   source-equivalent on string content (`Add Profile…`, `Open Login
+   Items & Extensions…`, etc. all present in both with the same
+   counts). Source-equivalent, byte-different.
+3. **Second wrong hypothesis:** LaunchServices was launching the
+   wrong bundle (two .apps with the same bundle ID on disk —
+   `/Applications/AVPainReliever.app` and
+   `dist/AVPainReliever.app` from a recent local build). `ps`
+   confirmed the running process was actually `dist/`, not
+   `/Applications/`. So the user's "two screenshots from two
+   builds" was actually "two screenshots, both from dist/" — and
+   the chunkier "white-fill" rendering was actually from an
+   earlier session of `/Applications` that the user had captured
+   but mis-labeled. This was a real LaunchServices ambiguity bug
+   to know about, but not the rendering cause.
+4. **Third hypothesis (the right one):** check the build
+   configuration of the CI binary vs the local binary. Both built
+   `swift build -c release`, both signed with the same Developer ID,
+   identical Info.plist. But:
+
+   ```
+   $ otool -l /Applications/AVPainReliever.app/Contents/MacOS/AVPainRelieverApp \
+       | grep -A 5 LC_BUILD_VERSION
+   platform 1
+       minos 14.0
+         sdk 15.2     ← CI was building against Sequoia SDK
+   $ otool -l dist/AVPainReliever.app/Contents/MacOS/AVPainRelieverApp \
+       | grep -A 5 LC_BUILD_VERSION
+   platform 1
+       minos 14.0
+         sdk 26.4     ← Local was building against macOS 26 SDK
+   ```
+
+   Verified with `gh run view --log` on the v0.2.0.11 release
+   workflow: CI's `Select Xcode` step picked **Xcode 16.2.0** when
+   `xcode-version: latest-stable` resolved on the `macos-14` runner.
+   Local Xcode is 26.4.1.
+
+The mechanism is well-documented but easy to miss: **macOS keeps
+old SwiftUI rendering paths alive for backward compatibility, and
+the SDK at compile time picks which path the binary calls into.**
+Same Swift source, two different SDKs at compile, two different
+runtime renderings. The shipped app rendered with macOS 15-era
+SwiftUI; the dev build rendered with macOS 26-era SwiftUI; they
+visibly diverged on `.bordered` chrome thickness even on the same
+host machine.
+
+**Initial fix attempt:** bump CI runner to `macos-26-arm64` (which
+carries Xcode 26.x) and pin `xcode-version: '26.4.1'` explicitly.
+This worked toolchain-wise, but the runner queue time spiked to
+30+ minutes — Apple Silicon `macos-26-arm64` runners are scarce in
+GitHub's free pool. Aborted; needed a different solution.
+
+**Final fix:** self-hosted runner installed on the user's Mac as a
+LaunchAgent (`~/actions-runner/`). The runner uses whichever Xcode
+is at `/Applications/Xcode.app` (currently 26.4.1), so toolchain
+parity is automatic — when local Xcode bumps, CI follows. Queue
+time drops from "30+ minute spike risk" to "starts in seconds."
+Setup details + security model in
+[docs/SELF_HOSTED_RUNNER.md](docs/SELF_HOSTED_RUNNER.md).
+
+Security mitigation for self-hosted on a public repo: configured
+the Actions setting `fork-pr-contributor-approval =
+all_external_contributors`, so every external contributor's
+workflow run requires explicit maintainer approval before it can
+execute on the runner. Combined with GitHub's design that secrets
+are never passed to fork-PR workflows, this means a malicious fork
+can neither auto-execute on the dev's Mac nor read the signing
+cert / Sparkle private key even if approval is granted.
+
+**New convention introduced this release: pre-publish binary
+verification.** Before flipping the v0.2.0.12 draft release to
+published, downloaded the CI artifact, built the same tag locally,
+and `cmp`'d the two Mach-Os. Result: 3,520 byte delta (down from
+~209 KB on v0.2.0.11), all attributable to notarization-ticket
+embedding. Same SDK, same renderings paths, byte-equivalent code.
+Only then published. This step is now standard for every release —
+see [docs/RELEASING.md](docs/RELEASING.md) "Pre-publish binary
+verification."
+
+Lessons:
+
+1. **"Same source, different binary, different rendering" is a real
+   thing.** When debugging visual divergence between two builds,
+   check the SDK target via `otool -l ... | grep LC_BUILD_VERSION`
+   before assuming code is different. Apple's backward-compat SDK
+   pinning means the byte difference can be entirely in which
+   SwiftUI runtime API path the compiler emitted calls to.
+2. **`latest-stable` is not stable across runners.** The maxim-
+   lobanov/setup-xcode action's `latest-stable` resolves to the
+   newest Xcode pre-installed on the runner image, which depends
+   on the runner OS version. macos-14 → Xcode 16.x; macos-26-arm64
+   → Xcode 26.x default (26.2 not 26.4.1). For repeatable builds,
+   pin explicitly OR use a self-hosted runner.
+3. **LaunchServices ambiguity with duplicate bundle IDs is its own
+   gotcha.** Two `.app` bundles with the same bundle ID confuse
+   `open` — the path argument isn't always honored. For dev-vs-
+   shipped comparison, `ps aux | grep AVPainReliever` is the
+   ground truth for which executable is running.
+4. **Sparkle replaces the bundle on disk but doesn't kill the
+   running process.** Always `pkill -f AVPainRelieverApp && open
+   /Applications/AVPainReliever.app` after a Sparkle-delivered
+   update to actually pick up the new code, otherwise the running
+   process is the old one. Bit us at the start of this debugging
+   session.
+
+Files touched:
+- `.github/workflows/release.yml` — runs-on swap, removed Select
+  Xcode step, made SPM cache reset GitHub-hosted-only
+- `.github/workflows/test.yml` — same
+- `docs/SELF_HOSTED_RUNNER.md` — new setup + security guide
+- `docs/RELEASING.md` — added pre-publish verification convention,
+  post-mortem entry for v0.2.0.12
+
+PR: [#31](https://github.com/superic/av-pain-reliever/pull/31)
+(workflow changes), shipped in v0.2.0.12. Doc updates in a follow-
+up PR.
+
 - **When we ship a Phase 1 fix or feature**, ask: does this teach us
   something about the Swift port? If yes, add to "Lessons learned."
 - **When the user gives feedback or hits a bug**, ask: should this be
