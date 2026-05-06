@@ -3446,6 +3446,87 @@ don't carry the conditional, and the easter-egg menu line
 ("Switched N times…") naturally freezes on opt-out without
 any view-level changes.
 
+### Button styling pass for macOS HIG alignment (2026-05-05)
+
+Sweep across every standalone Button in the app to retire the
+"indie SwiftUI app" tells and read as a native macOS settings
+utility. Triggered by a side-by-side review of all four Settings
+tabs + the Add/Edit Profile sheet — the buttons worked but
+collectively read as off-pattern next to System Settings.
+
+Rules applied (now also documented in
+[plans/look-at-all-of-rustling-beacon.md](.claude/plans/look-at-all-of-rustling-beacon.md)):
+
+1. No SF Symbol prefix on text Buttons. Apple's own dialog/sheet
+   footers are text-only — Cancel never has an xmark, Save never
+   has a plus or pencil. Exceptions: menu bar items (icon aids
+   scanning), state indicators (spinner during save, ✓ on
+   success), and toolbar buttons.
+2. `.borderedProminent` is reserved for the *one* default action
+   of a sheet/dialog (the one bound to Return). Using it on
+   list-footer "Add" buttons competes visually with sheet
+   primaries.
+3. Row-action buttons in lists are borderless icon-only.
+   Always-visible bordered chips look heavy next to row text.
+4. Visual weight matches urgency. Restart-required state now
+   pairs with a borderedProminent button instead of a muted
+   `.small` default.
+5. Ellipsis (`…`) on buttons that open further UI — sheets,
+   alerts, system panes.
+6. Destructive triggers inside grouped Form sections render as
+   full-width red rows (`.foregroundStyle(.red)` +
+   `.frame(maxWidth: .infinity, alignment: .leading)` +
+   `.buttonStyle(.plain)`). Matches Apple ID → Sign Out and Game
+   Center → Reset Recommendations. The bare `.role(.destructive)`
+   on a `.bordered` button is a visual no-op on macOS (it only
+   paints red on `.borderedProminent` and inside alerts/menus),
+   so destructive intent has to come from `.foregroundStyle`.
+
+Per-button changes:
+
+- **Add Profile sheet footer** — drop xmark from Cancel and
+  plus/pencil from Save/Update Profile (idle state). Spinner +
+  ✓ Saved state indicators preserved.
+- **Profiles tab footer Add button** — drop borderedProminent +
+  plus icon, plain bordered "Add Profile…".
+- **Profiles empty-state Add button** — drop plus icon, add
+  ellipsis. BorderedProminent + large kept; this *is* the only
+  meaningful action in an empty state.
+- **`IconButton` helper** — `.bordered` → `.borderless`. One
+  change applies to every pencil/trash row button across the
+  Profiles list. Doc comment updated.
+- **Camera tab Restart button** — promote to borderedProminent
+  at default size when restart is required.
+- **Camera tab Open Login Items button** — drop `.small`, add
+  ellipsis (deep-links to System Settings).
+- **Stats tab Reset button** — full-width red row inside the
+  grouped section.
+- **Add Profile USB fingerprint header** — text "Refresh" →
+  borderless `arrow.clockwise` icon with tooltip. Matches Mail /
+  App Store / System Settings refresh idiom. Considered binding
+  ⌘R but the menu bar already owns it for "Re-evaluate Now" —
+  two ⌘R bindings while the wizard is frontmost is asking for
+  surprises, so left as click-only.
+
+Untouched on purpose: AboutView (already correct — Sparkle-style
+default + large Check for Updates), WelcomeView (already correct
+— borderedProminent + large Add Your First Location), App.swift
+menu bar (NSMenuItem entries SHOULD have icons; the rule only
+applies to standalone Buttons).
+
+Lesson: macOS's button vocabulary is narrower than iOS's. On
+macOS, `.role(.destructive)` is semantic-only on bordered
+buttons — if you want red, you have to paint it. And SwiftUI's
+default Button-in-a-grouped-Section-row layout produces a small
+chip floating in a grouped chrome box that doesn't match any
+native pattern; the fix is to expand the label with
+`.frame(maxWidth: .infinity)` + `.contentShape(Rectangle())`
+and switch to `.buttonStyle(.plain)` so the whole row becomes
+the tappable surface.
+
+PR: [#28](https://github.com/superic/av-pain-reliever/pull/28),
+shipped in v0.2.0.10.
+
 - **When we ship a Phase 1 fix or feature**, ask: does this teach us
   something about the Swift port? If yes, add to "Lessons learned."
 - **When the user gives feedback or hits a bug**, ask: should this be
