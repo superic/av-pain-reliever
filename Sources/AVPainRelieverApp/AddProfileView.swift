@@ -182,17 +182,21 @@ struct AddProfileView: View {
                 .animation(.easeInOut(duration: 0.18), value: viewModel.didSave)
             }
         }
-        .padding(20)
+        // The wizard is a regular Window scene; it doesn't get the
+        // extra container padding SwiftUI's `Settings { ... }` scene
+        // wraps tab content in. Equal window width alone (480pt)
+        // wasn't enough — the wizard's gray Form cards still landed
+        // visibly tighter to the window edges than the matching
+        // Settings cards. Bump horizontal explicitly to compensate;
+        // vertical stays at 20pt so Cancel / Save buttons keep
+        // their existing distance from the bottom edge.
+        .padding(.horizontal, 36)
+        .padding(.vertical, 20)
         // Fixed dialog size — pairs with the dialog chrome (no
         // resize/minimize/zoom) configured at the window scene. The
         // Form itself scrolls internally if the device list overflows
-        // on a fingerprint-heavy location.
-        //
-        // Width matches the Settings window (480pt) so the gray Form
-        // section cards inside the wizard land at the same visual
-        // proportions as Settings' equivalents — same window width
-        // → same effective card inset → cards read as the same
-        // family without per-surface padding tweaks.
+        // on a fingerprint-heavy location. Width matches the Settings
+        // window so the wizard reads as the same family.
         .frame(width: 480, height: 600)
         // Window scene's static title is "Add Profile"; override it
         // dynamically so the title bar tracks Add vs Edit mode.
