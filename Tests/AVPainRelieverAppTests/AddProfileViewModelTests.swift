@@ -329,26 +329,45 @@ struct AddProfileViewModelTests {
         #expect(Set(loaded.map(\.name)) == ["home-studio"])
     }
 
-    @Test("device list sorts non-portable items above portable ones")
-    func deviceListTwoTierSort() {
+    @Test("device list sorts important → named → portable → unnamed, alphabetical within each tier")
+    func deviceListTierSort() {
         let watcher = FakeWatcher()
         watcher.named = [
-            NamedUSBDevice(
-                device: USBDevice(vendorID: 0x05ac, productID: 0x0265),
-                name: "Magic Trackpad"
-            ), // portable
+            // Important
             NamedUSBDevice(
                 device: USBDevice(vendorID: 0x2188, productID: 0x6533),
                 name: "CalDigit Thunderbolt 3 Audio"
-            ), // non-portable
-            NamedUSBDevice(
-                device: USBDevice(vendorID: 0x05ac, productID: 0x024f),
-                name: "Magic Keyboard"
-            ), // portable
+            ),
             NamedUSBDevice(
                 device: USBDevice(vendorID: 0x1e4e, productID: 0x701f),
                 name: "HDMI to U3 capture"
-            ), // non-portable
+            ),
+            // Other named, non-portable
+            NamedUSBDevice(
+                device: USBDevice(vendorID: 0x2188, productID: 0x0747),
+                name: "CalDigit — Card Reader",
+                vendorName: nil
+            ),
+            // Portable
+            NamedUSBDevice(
+                device: USBDevice(vendorID: 0x05ac, productID: 0x024f),
+                name: "Magic Keyboard"
+            ),
+            NamedUSBDevice(
+                device: USBDevice(vendorID: 0x05ac, productID: 0x0265),
+                name: "Magic Trackpad"
+            ),
+            // Unnamed
+            NamedUSBDevice(
+                device: USBDevice(vendorID: 0x043e, productID: 0x9a71),
+                name: nil,
+                vendorName: nil
+            ),
+            NamedUSBDevice(
+                device: USBDevice(vendorID: 0x043e, productID: 0x9a73),
+                name: nil,
+                vendorName: nil
+            ),
         ]
         let vm = AddProfileViewModel(
             watcher: watcher,
@@ -358,16 +377,19 @@ struct AddProfileViewModelTests {
             editing: nil,
             onSaved: {}
         )
-        let names = vm.attachedDevices.map(\.name)
-        // Non-portable items above portable, alphabetical within
-        // each tier. Important devices are signaled via the green
-        // "Important" pill in the row UI (see DevicePortability
-        // tests), not by floating to a separate tier.
-        #expect(names == [
-            "CalDigit Thunderbolt 3 Audio",  // non-portable, alphabetical
-            "HDMI to U3 capture",            // non-portable, alphabetical
-            "Magic Keyboard",                // portable, alphabetical
-            "Magic Trackpad",                // portable, alphabetical
+        let displayNames = vm.attachedDevices.map(\.displayName)
+        #expect(displayNames == [
+            // Tier 0: Important, alphabetical
+            "CalDigit Thunderbolt 3 Audio",
+            "HDMI to U3 capture",
+            // Tier 1: Other named, non-portable
+            "CalDigit — Card Reader",
+            // Tier 2: Portable
+            "Magic Keyboard",
+            "Magic Trackpad",
+            // Tier 3: Unnamed
+            "(unnamed device)",
+            "(unnamed device)",
         ])
     }
 
