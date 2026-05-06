@@ -13,24 +13,6 @@ enum SettingsTab: Hashable {
     case stats
 }
 
-private extension View {
-    /// Shared chrome for every Settings tab body — `.formStyle(.grouped)`
-    /// + 8 pt padding around the Form's rounded card. Apply to the
-    /// `Form` at the root of each tab's body so the gray section
-    /// cards line up consistently against the window edges. Camera,
-    /// General, and Stats use this; Profiles has its own layout
-    /// (no Form) and stays bespoke for now.
-    ///
-    /// One place to change the convention. If we ever want to bump
-    /// the padding to 12 or swap to a different formStyle, edit
-    /// here and every tab follows.
-    func settingsTabContent() -> some View {
-        self
-            .formStyle(.grouped)
-            .padding(8)
-    }
-}
-
 /// The Settings scene has four tabs: General (toggles + slider),
 /// Profiles (list with edit/delete), Camera (virtual camera
 /// install/enable + status), and Stats (opt-in local usage
@@ -125,7 +107,7 @@ private struct CameraSettingsTab: View {
                 Label("Virtual camera", systemImage: "camera.metering.center.weighted")
             }
         }
-        .settingsTabContent()
+        .groupedFormChrome()
     }
 
     /// Live status row — colored dot + human-readable label that
@@ -286,7 +268,7 @@ private struct GeneralSettingsTab: View {
                 Label("Updates", systemImage: "arrow.down.circle")
             }
         }
-        .settingsTabContent()
+        .groupedFormChrome()
     }
 }
 
@@ -529,7 +511,7 @@ private struct StatsSettingsTab: View {
                 }
             }
         }
-        .settingsTabContent()
+        .groupedFormChrome()
         .alert(
             "Reset all usage stats?",
             isPresented: $resetConfirmationVisible

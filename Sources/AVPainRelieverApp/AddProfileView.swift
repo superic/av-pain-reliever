@@ -123,7 +123,7 @@ struct AddProfileView: View {
                     sectionHeader("Camera", symbol: Theme.Symbol.cameraSection)
                 }
             }
-            .formStyle(.grouped)
+            .groupedFormChrome()
 
             if let error = viewModel.lastError {
                 HStack(alignment: .top, spacing: 8) {
@@ -142,6 +142,11 @@ struct AddProfileView: View {
                         .strokeBorder(Theme.Color.error.opacity(0.35), lineWidth: 1)
                 )
                 .transition(.opacity.combined(with: .move(edge: .top)))
+                // Error banner sits OUTSIDE the Form, so give it the
+                // same horizontal margin from the window edge that
+                // the buttons row gets — keeps it visually parallel
+                // to the action buttons rather than touching edges.
+                .padding(.horizontal, 20)
             }
 
             HStack {
@@ -181,13 +186,25 @@ struct AddProfileView: View {
                 .keyboardShortcut(.defaultAction)
                 .animation(.easeInOut(duration: 0.18), value: viewModel.didSave)
             }
+            // Buttons row sits OUTSIDE the Form, so give it explicit
+            // horizontal margin so Cancel / Save don't touch the
+            // window edges.
+            .padding(.horizontal, 20)
+            .padding(.bottom, 16)
         }
-        .padding(20)
+        // No outer horizontal padding on the VStack — the Form fills
+        // the window edge-to-edge (with .groupedFormChrome's 8pt
+        // breathing room baked in), exactly matching how a Settings
+        // tab renders. The error banner and buttons row carry their
+        // own per-element horizontal padding above so they don't
+        // touch the window edges.
+        .padding(.top, 8)
         // Fixed dialog size — pairs with the dialog chrome (no
         // resize/minimize/zoom) configured at the window scene. The
         // Form itself scrolls internally if the device list overflows
-        // on a fingerprint-heavy location.
-        .frame(width: 520, height: 600)
+        // on a fingerprint-heavy location. Width matches the Settings
+        // window so the wizard reads as the same family.
+        .frame(width: 480, height: 600)
         // Window scene's static title is "Add Profile"; override it
         // dynamically so the title bar tracks Add vs Edit mode.
         .navigationTitle(viewModel.editingExisting ? "Edit Profile" : "Add Profile")
