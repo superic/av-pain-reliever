@@ -13,6 +13,23 @@ extension View {
     /// chrome (background, frame, etc.), edit it here and every
     /// caller follows. The Profiles Settings tab is intentionally
     /// bespoke (no Form, different layout) and doesn't use this.
+    ///
+    /// **Don't wrap the Form in a container that adds horizontal
+    /// padding.** e.g. avoid:
+    ///
+    ///     VStack {
+    ///         Form { ... }.groupedFormChrome()
+    ///     }.padding(.horizontal, 20)  // ← wrong
+    ///
+    /// The point of this modifier is to let the Form fill its
+    /// container edge-to-edge so it lines up with how a Settings
+    /// tab renders inside SwiftUI's `Settings { ... }` scene.
+    /// Outer horizontal padding on the container narrows the
+    /// gray cards beyond Settings' visual; this exact bug was
+    /// fixed in the wizard layout. If sibling elements (buttons
+    /// row, error banner, etc.) need their own margin from the
+    /// window edge, pad each one individually with
+    /// `.padding(.horizontal, …)` — see `AddProfileView.body`.
     func groupedFormChrome() -> some View {
         self
             .formStyle(.grouped)
