@@ -296,7 +296,7 @@ private struct GeneralSettingsTab: View {
 
             Section {
                 Toggle("Receive experimental updates", isOn: $settings.experimentalUpdates)
-                Text("Opt in to early-access builds. Experimental releases include unfinished features (the virtual camera in v0.2.x) and may be less stable than the regular release line. Off by default.")
+                Text("Opt in to early-access builds. Experimental releases may include unfinished features and be less stable than the regular release line. Off by default.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
