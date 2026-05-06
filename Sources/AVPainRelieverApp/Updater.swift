@@ -99,7 +99,7 @@ final class Updater {
             .removeDuplicates()
             .dropFirst()
             .sink { [weak self] _ in
-                self?.controller.checkForUpdatesInBackground()
+                self?.controller.updater.checkForUpdatesInBackground()
             }
             .store(in: &cancellables)
     }
