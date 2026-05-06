@@ -93,8 +93,11 @@ struct AddProfileView: View {
                     HStack {
                         sectionHeader("USB fingerprint", symbol: Theme.Symbol.usbSection)
                         Spacer()
-                        Button("Refresh", action: viewModel.refresh)
-                            .controlSize(.small)
+                        Button(action: viewModel.refresh) {
+                            Image(systemName: "arrow.clockwise")
+                        }
+                        .buttonStyle(.borderless)
+                        .help("Rescan attached USB devices")
                     }
                 }
 
@@ -151,10 +154,8 @@ struct AddProfileView: View {
 
             HStack {
                 Spacer()
-                Button(action: dismiss) {
-                    Label("Cancel", systemImage: "xmark")
-                }
-                .keyboardShortcut(.cancelAction)
+                Button("Cancel", action: dismiss)
+                    .keyboardShortcut(.cancelAction)
                 Button(action: { viewModel.save() }) {
                     HStack(spacing: 6) {
                         if viewModel.didSave {
@@ -170,13 +171,6 @@ struct AddProfileView: View {
                                 .tint(.white)
                             Text("Saving…")
                         } else {
-                            // Idle state: pencil for edit (matches the
-                            // Settings → Profiles row's Edit button),
-                            // plus for add (matches the menu's
-                            // "Add Profile…" item icon). Keeps the
-                            // wizard's commit action visually paired
-                            // with whichever entry point launched it.
-                            Image(systemName: viewModel.editingExisting ? "pencil" : "plus")
                             Text(viewModel.editingExisting ? "Update Profile" : "Save Profile")
                         }
                     }

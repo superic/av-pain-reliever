@@ -1,19 +1,19 @@
 import SwiftUI
 
-/// Bordered icon-only button with a fixed icon-frame so multiple
+/// Borderless icon-only button with a fixed icon-frame so multiple
 /// IconButtons rendered side-by-side end up at identical heights
 /// regardless of which SF Symbol each one carries.
 ///
 /// Why this exists as a standalone view: SF Symbols of different
 /// designs (e.g. `pencil` vs `trash`) have intrinsically different
-/// glyph bounds at the same `.font(...)` size. A `.bordered` button
-/// auto-sizes to its content + chrome padding, so a row of plain
-/// `Button { Label(...) }` instances ends up with mismatched
+/// glyph bounds at the same `.font(...)` size. Even with `.borderless`
+/// chrome, the hit-target auto-sizes to content padding, so a row of
+/// plain `Button { Label(...) }` instances ends up with mismatched
 /// dimensions when the icons differ in metric. Pinning the inner
 /// `Image` to a fixed 18×20 frame — larger than either glyph's
 /// intrinsic content — neutralises the difference: each icon
 /// renders centred inside the same-size box, so each button's
-/// auto-sized chrome lands at the same dimensions too.
+/// hit-target lands at the same dimensions too.
 ///
 /// Accessibility: VoiceOver reads `accessibilityLabel`. A `.help(...)`
 /// tooltip surfaces the same string to sighted users hovering over
@@ -51,7 +51,7 @@ struct IconButton: View {
                     .frame(width: 18, height: 20)
             }
         }
-        .buttonStyle(.bordered)
+        .buttonStyle(.borderless)
         .labelStyle(.iconOnly)
         .help(accessibilityLabel)
     }
