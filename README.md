@@ -70,7 +70,7 @@ The virtual camera fixes that. Once turned on, **AV Pain Reliever** appears as a
 To enable:
 
 1. Open **Settings… → Camera**.
-2. Toggle **Enable AV Pain Reliever as a virtual camera**.
+2. Toggle **Enable virtual camera**.
 3. Approve in **System Settings → General → Login Items & Extensions** when prompted (one-time setup).
 4. In Zoom / Slack / Teams, pick **AV Pain Reliever** as your camera.
 
