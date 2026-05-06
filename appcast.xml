@@ -496,5 +496,23 @@
                        type="application/octet-stream"
                        sparkle:edSignature="ogoj6EAbHsaE3nzfXp6yikaIeYeUC3xNwEEPkzk+ACKcZqszyqIL5rQxgkZERtS37lPcGOa8P0NINa7/OmB5AQ==" length="3089876" />
         </item>
+        <item>
+            <title>Version 0.2.0.14</title>
+            <description><![CDATA[
+<h2>What's new</h2>
+<p>About-window polish.</p>
+<p>The version line under the big bold app name used to repeat the app name AND show the build number twice — <em>"AV Pain Reliever 0.2.0.13 (0.2.0.13)"</em>, like the dialog wasn't sure you'd believe what app you were looking at. Cleaned up. Now it just says <em>"Version 0.2.0.13"</em>, same as Apple's own About panel. One line, one piece of information.</p>
+<p>There's also a new fortune slip floating in the middle of the About window. Cream-colored paper, italic serif text, slight tilt, soft drop shadow — looks like the slip you'd find inside a fortune cookie. Inside, one of fifty oracular pronouncements from a brilliant oracle who has nothing to do with audio or cameras and just wants to tell you something true about being a person. <em>"What you have configured will configure you back."</em> That one. Or one of forty-nine others. Different each time you open the window.</p>
+<p>Plus a small copyright line at the bottom with a link to the source on GitHub for the truly curious.</p>
+<p>Money.</p>
+]]></description>
+            <pubDate>Wed, 06 May 2026 07:33:38 +0000</pubDate>
+            <sparkle:version>0.2.0.14</sparkle:version>
+            <sparkle:shortVersionString>0.2.0.14</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/superic/av-pain-reliever/releases/download/v0.2.0.14/AVPainReliever.app.zip"
+                       type="application/octet-stream"
+                       sparkle:edSignature="9yXpwXHICICkhNxXhjsj5FKefhAfFR1OytFwPanmnt+PLvRX+qqHFTIslayb1jo93Vp0nT7zQSOie2o0hp79Bw==" length="3107325" />
+        </item>
     </channel>
 </rss>
