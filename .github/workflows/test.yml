@@ -42,6 +42,19 @@ jobs:
       # Mac (currently 26.4.1). When local Xcode bumps, CI follows.
 
       - name: Cache SPM artifacts
+        # Skipped on self-hosted because (a) the runner has natural
+        # disk persistence — `.build` and `~/Library/Caches/org.swift.swiftpm`
+        # survive between jobs without remote-cache help, and (b) the
+        # cache key only includes `runner.os`, which is "macOS" for
+        # both github-hosted and self-hosted macOS runners. Restoring
+        # a cache built by an earlier github-hosted run onto the
+        # self-hosted Mac poisons `.build` with paths embedded under
+        # `/Users/runner/work/...` (the github-hosted workspace),
+        # causing SPM's binary-target downloader to fail looking for
+        # Sparkle's XCFramework Info.plist at a path that doesn't
+        # exist on the self-hosted Mac. Burned us once on 2026-05-06;
+        # the conditional gate prevents a second incident.
+        if: runner.environment == 'github-hosted'
         uses: actions/cache@v5
         with:
           path: |
