@@ -236,7 +236,7 @@ final class AddProfileViewModel: ObservableObject {
         // pushed to the very bottom by name so the active hardware
         // stays grouped at the top.
         attachedDevices = Self.sortedByTier(liveSnapshot)
-            + disconnected.sorted { $0.displayName < $1.displayName }
+            + Self.sortedByTier(disconnected)
         disconnectedDeviceIDs = disconnectedIDs
 
         // Default selection: only the headline hardware classified
@@ -337,29 +337,49 @@ final class AddProfileViewModel: ObservableObject {
     /// watches). Within each tier, items sort alphabetically by
     /// `displayName` so the order is stable across re-renders.
     ///
-    /// Important devices (mics, cameras, capture cards, dedicated
-    /// audio interfaces) get a green **Important** pill in the
-    /// row UI rather than being lifted to a separate tier — earlier
-    /// experimentation showed that for sophisticated docks almost
-    /// every device qualifies as "important," which collapsed the
-    /// tier and gave no visible benefit over alphabetical. The pill
-    /// gives the same signal without disturbing the row order.
-    /// Single source of truth for both pills:
+    /// Four-tier sort, alphabetical within each tier:
+    /// 1. Important (mic / video / speaker / audio per
+    ///    `DevicePortability.importantCategory`) — top, easiest to
+    ///    scan when picking fingerprint candidates.
+    /// 2. Other named, non-portable.
+    /// 3. Portable named (keyboards, mice, phones — likely to
+    ///    travel with the user, not great fingerprint candidates).
+    /// 4. Unnamed (vendor + product both nil — usually internal
+    ///    hub legs of multi-function devices, low signal value)
+    ///    — bottom.
+    ///
+    /// Important wins over portable when the rare overlap appears
+    /// (e.g. a "Mic Mouse"), so the pill's strongest signal is
+    /// always at the top of the list.
+    ///
+    /// Single source of truth for both classifications:
     /// `DevicePortability.importantCategory` /
     /// `DevicePortability.portabilityCategory`.
     private static func sortedByTier(_ devices: [NamedUSBDevice])
         -> [NamedUSBDevice]
     {
         devices.sorted { lhs, rhs in
-            let lhsPortable = DevicePortability
-                .portabilityCategory(deviceName: lhs.name) != nil
-            let rhsPortable = DevicePortability
-                .portabilityCategory(deviceName: rhs.name) != nil
-            if lhsPortable != rhsPortable {
-                return !lhsPortable
+            let lhsTier = tier(for: lhs)
+            let rhsTier = tier(for: rhs)
+            if lhsTier != rhsTier {
+                return lhsTier < rhsTier
             }
             return lhs.displayName < rhs.displayName
         }
+    }
+
+    /// Lower number = higher in the list.
+    private static func tier(for device: NamedUSBDevice) -> Int {
+        if DevicePortability.importantCategory(deviceName: device.name) != nil {
+            return 0
+        }
+        if device.name == nil && device.vendorName == nil {
+            return 3
+        }
+        if DevicePortability.portabilityCategory(deviceName: device.name) != nil {
+            return 2
+        }
+        return 1
     }
 
     // MARK: - Name handling

@@ -52,15 +52,23 @@ struct DevicePortabilityTests {
     // explicitly excluded so the pill stays visually distinct on
     // sophisticated docks.
 
-    @Test("standalone mics, cameras, capture cards, and audio interfaces are flagged")
+    @Test("standalone mics, video sources, speakers, and audio gear are flagged with the right pill label")
     func importantHeadlineHardware() {
-        #expect(DevicePortability.importantCategory(deviceName: "Yeti Stereo Microphone") == "microphone")
-        #expect(DevicePortability.importantCategory(deviceName: "Shure MV7 podcast mic") == "microphone")
-        #expect(DevicePortability.importantCategory(deviceName: "FaceTime HD Camera") == "camera")
-        #expect(DevicePortability.importantCategory(deviceName: "Logitech webcam") == "camera")
-        #expect(DevicePortability.importantCategory(deviceName: "HDMI to U3 capture") == "capture card")
-        #expect(DevicePortability.importantCategory(deviceName: "CalDigit Thunderbolt 3 Audio") == "audio interface")
-        #expect(DevicePortability.importantCategory(deviceName: "External DAC") == "audio interface")
+        // Mics
+        #expect(DevicePortability.importantCategory(deviceName: "Yeti Stereo Microphone") == "mic")
+        #expect(DevicePortability.importantCategory(deviceName: "Shure MV7 podcast mic") == "mic")
+        // Video — cameras AND capture cards both show "video" so the
+        // pill vocabulary stays tight (capture cards aren't really
+        // cameras but they're video sources from the user's POV).
+        #expect(DevicePortability.importantCategory(deviceName: "FaceTime HD Camera") == "video")
+        #expect(DevicePortability.importantCategory(deviceName: "Logitech webcam") == "video")
+        #expect(DevicePortability.importantCategory(deviceName: "HDMI to U3 capture") == "video")
+        // Speakers
+        #expect(DevicePortability.importantCategory(deviceName: "Audioengine A2+ Speakers") == "speaker")
+        // Catch-all "audio" — dedicated audio gear that isn't
+        // obviously a mic/speaker.
+        #expect(DevicePortability.importantCategory(deviceName: "CalDigit Thunderbolt 3 Audio") == "audio")
+        #expect(DevicePortability.importantCategory(deviceName: "External DAC") == "audio")
     }
 
     @Test("display sub-components are NOT flagged as Important")

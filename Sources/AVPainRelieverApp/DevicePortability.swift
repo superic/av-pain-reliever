@@ -110,24 +110,25 @@ enum DevicePortability {
         if name.contains("display") || name.contains("ultrafine") {
             return nil
         }
-        if name.contains("microphone") || name.contains("podcast") {
-            return "microphone"
+        if name.contains("microphone") || name.contains("mic") || name.contains("podcast") {
+            return "mic"
         }
-        if name.contains("camera") || name.contains("webcam") {
-            return "camera"
-        }
-        if name.contains("capture") {
-            return "capture card"
+        // "video" intentionally covers cameras, webcams, AND HDMI
+        // capture cards. Capture cards aren't really cameras but
+        // they ARE video sources from the user's perspective; one
+        // unified label keeps the pill vocabulary tight.
+        if name.contains("camera") || name.contains("webcam") || name.contains("capture") {
+            return "video"
         }
         if name.contains("speaker") {
             return "speaker"
         }
-        // "audio" without a display/ultrafine prefix is reliable
-        // shorthand for a dedicated audio interface (CalDigit
-        // Thunderbolt 3 Audio, RME, Apollo, etc.). The earlier
-        // exclusion drops display-audio sub-components.
+        // Catch-all for dedicated audio gear that isn't obviously a
+        // mic or speaker — audio interfaces (CalDigit Thunderbolt
+        // 3 Audio, RME, Apollo), DACs, etc. The display/ultrafine
+        // exclusion above keeps display-audio sub-components out.
         if name.contains("audio") || name.contains("dac") {
-            return "audio interface"
+            return "audio"
         }
         return nil
     }
