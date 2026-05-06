@@ -88,12 +88,11 @@ private struct CameraSettingsTab: View {
                     Button("Restart AV Pain Reliever") {
                         activator.relaunch()
                     }
-                    .controlSize(.small)
+                    .buttonStyle(.borderedProminent)
                 } else if showsApprovalAffordance {
-                    Button("Open Login Items & Extensions") {
+                    Button("Open Login Items & Extensions…") {
                         openExtensionsSettings()
                     }
-                    .controlSize(.small)
                 }
 
                 // Form footer hint rendered as the last row in the
@@ -318,14 +317,11 @@ private struct ProfilesSettingsTab: View {
             Divider()
 
             HStack {
-                Button {
+                Button("Add Profile…") {
                     delegate.beginAddingProfile()
                     openWindow(id: addProfileWindowID)
                     NSApp.activate(ignoringOtherApps: true)
-                } label: {
-                    Label("Add Profile", systemImage: "plus")
                 }
-                .buttonStyle(.borderedProminent)
                 Spacer()
                 Text("\(delegate.availableProfiles.count) profile\(delegate.availableProfiles.count == 1 ? "" : "s")")
                     .font(.caption)
@@ -362,7 +358,7 @@ private struct ProfilesSettingsTab: View {
                 openWindow(id: addProfileWindowID)
                 NSApp.activate(ignoringOtherApps: true)
             } label: {
-                Label("Add Profile", systemImage: "plus")
+                Text("Add Profile…")
                     .padding(.horizontal, 12)
                     .padding(.vertical, 2)
             }
@@ -505,7 +501,11 @@ private struct StatsSettingsTab: View {
                         resetConfirmationVisible = true
                     } label: {
                         Text("Reset stats…")
+                            .foregroundStyle(.red)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .contentShape(Rectangle())
                     }
+                    .buttonStyle(.plain)
                 } header: {
                     Label("Reset", systemImage: "arrow.counterclockwise")
                 }
