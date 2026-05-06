@@ -237,6 +237,31 @@ git push origin :refs/tags/v0.0.0-dryrun
 gh release delete v0.0.0-dryrun --yes --cleanup-tag
 ```
 
+### Stable vs experimental tags
+
+The release workflow picks the Sparkle channel from the tag name:
+
+- `vX.Y.Z` (e.g. `v0.2.0.13`, `v0.3.0`) → **stable channel.** Every
+  install on the regular update line picks it up.
+- `vX.Y.Z-experimental.N` (e.g. `v0.2.1.0-experimental.1`) →
+  **experimental channel.** Only installs that have flipped
+  Settings → General → Updates → "Receive experimental updates"
+  on will see it as available.
+
+Stable is the default. Use experimental for builds that introduce
+risky or unfinished features and need real-world testing on a
+self-selected subset of users before promotion. To "graduate" an
+experimental track to stable, ship the next release without the
+suffix and (if desired) edit `appcast.xml` to drop the
+`<sparkle:channel>experimental</sparkle:channel>` line from the
+already-shipped item you want to retroactively expose to the stable
+channel.
+
+This rule was inverted in 2026-05 — earlier, v0.2.x defaulted to
+experimental during the virtual-camera development track. After the
+camera shipped, defaults flipped to "stable unless explicitly
+opted out." See SWIFT_PORT.md for the graduation event.
+
 ---
 
 ## Regenerating the app icon

@@ -3741,6 +3741,84 @@ PR: [#31](https://github.com/superic/av-pain-reliever/pull/31)
 (workflow changes), shipped in v0.2.0.12. Doc updates in a follow-
 up PR.
 
+### v0.2.x graduates from experimental to stable (2026-05-05)
+
+The virtual-camera development track has been on the experimental
+Sparkle channel since v0.2.0 (2026-05-04). Decision today: graduate
+it. The work was driven by three things converging:
+
+1. **Apple-side gates are clear.** A round of research (Apple
+   Developer Forums + Halle Winkler's CMIO blog series, see the
+   memory `project_virtual_camera_v2.md`) confirmed that
+   distributing a CMIO Camera Extension via Developer ID outside
+   the Mac App Store needs only the entitlements we already declare
+   (`system-extension.install`, `application-groups`,
+   `device.camera`). No additional Apple email request needed. The
+   12 successful notarizations of v0.2.0 → v0.2.0.12 are empirical
+   proof.
+2. **The feature has been exercised end-to-end.** Capture from
+   FaceTime HD + HDMI capture cards, hold-last-frame during
+   profile switches, format negotiation, self-source feedback loop
+   guard, and the macOS-extension-deactivation `.requiresRelaunch`
+   workaround all shipped and survived real use.
+3. **Keeping v0.2.x experimental indefinitely is wrong** — the
+   experimental channel exists for risky feature development, not
+   as a permanent home for shipped features. Sitting on it
+   permanently contradicts the channel's purpose and confuses
+   future graduations.
+
+What the graduation actually changes:
+
+- **`release.yml` channel rule inverted.** Was: "v0.1.x stable,
+  everything else experimental." Now: stable by default; explicit
+  `-experimental` (or `-experimental.N`) tag suffix opts in. Future
+  `v0.2.0.13`, `v0.3.0`, `v1.0.0` etc. ship stable automatically.
+  Future risky-feature builds use a tag like
+  `v0.2.1.0-experimental.1`. Convention is more future-proof
+  (no workflow edit needed when major version bumps) and matches
+  how most apps work (stable is the default; experimental is the
+  intentional opt-in).
+- **`appcast.xml` v0.2.0.12 retagged stable.** Single XML edit
+  drops the `<sparkle:channel>experimental</sparkle:channel>` line
+  from v0.2.0.12 only. Previous experimental items (v0.2.0.2 →
+  v0.2.0.11) keep their tags — historical accuracy preserved; they
+  WERE experimental at the time. Stable-channel users (currently
+  nobody beyond the dev) will see v0.2.0.12 on their next Sparkle
+  check; no need to wait for a new release.
+- **Settings → General → "Receive experimental updates" toggle
+  stays.** Per the dev's intent, the experimental capability is
+  preserved for future risky-feature work — the toggle, the
+  `ChannelGatingDelegate`, the `experimentalUpdates` setting, and
+  the "you're running an experimental version" nudge alert all
+  remain in place. Help text under the toggle was genericized
+  ahead of this PR (PR #34) so it doesn't name v0.2.x specifically
+  and stays accurate as the experimental queue empties / refills.
+- **`docs/RELEASING.md` documents the new tag convention** in a
+  new "Stable vs experimental tags" section, including the
+  `vX.Y.Z` vs `vX.Y.Z-experimental.N` rule and graduation
+  procedure ("ship next release without the suffix; optionally
+  retag specific appcast items").
+
+What graduation explicitly does NOT do:
+
+- No new release tag was cut. The dev is currently the only user;
+  no need for a ceremonial graduation release. The next normal
+  release (whenever something ships next) will be the first
+  workflow-default-stable release.
+- No code-level change to extension activation, the host's CMIO
+  pipeline, or the virtual camera surfaces in Settings. The
+  feature itself is unchanged — only its Sparkle channel
+  classification changed.
+
+Lesson: experimental release channels are scaffolding, not a
+permanent home. When the feature they were built around graduates,
+the channel needs to be reset back to "empty waiting room" for the
+next risky thing — keep the mechanism, retire the specific
+classification.
+
+PR: TBD (this commit), shipped without a tag. Next release inherits
+the new behavior automatically.
+
 - **When we ship a Phase 1 fix or feature**, ask: does this teach us
   something about the Swift port? If yes, add to "Lessons learned."
 - **When the user gives feedback or hits a bug**, ask: should this be

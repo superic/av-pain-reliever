@@ -260,15 +260,21 @@ jobs:
               echo "APPCAST_ITEM_FILE=" >> "$GITHUB_ENV"
               exit 0
           fi
-          # v0.2.x+ ships through the experimental Sparkle channel —
-          # only installs that have allowlisted "experimental" (via
-          # the Settings → General → Updates → Receive experimental
-          # updates toggle) see these items as available upgrades.
-          # v0.1.x stays on the empty/stable channel so every install
-          # picks them up automatically.
+          # Stable by default. To opt a release into the experimental
+          # Sparkle channel, append `-experimental` (or
+          # `-experimental.N`) to the tag — e.g. `v0.2.1.0-experimental.1`.
+          # Only installs that have allowlisted "experimental" via
+          # Settings → General → Updates → "Receive experimental
+          # updates" see those items.
+          #
+          # Earlier rule was the inverse (v0.2.x defaulted to
+          # experimental during the virtual-camera development track).
+          # That track graduated to stable in 2026-05; the new default
+          # matches how most apps work and is future-proof for major
+          # version bumps without workflow edits.
           case "$VERSION_TAG" in
-              v0.0.0-*|v0.1.*) export CHANNEL= ;;
-              *) export CHANNEL=experimental ;;
+              *-experimental*) export CHANNEL=experimental ;;
+              *)               export CHANNEL= ;;
           esac
           echo "Appcast channel: ${CHANNEL:-<stable>}"
           ITEM_FILE="$RUNNER_TEMP/appcast-item.xml"
