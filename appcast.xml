@@ -471,7 +471,6 @@
 <p>Money.</p>
 ]]></description>
             <pubDate>Wed, 06 May 2026 04:20:42 +0000</pubDate>
-            <sparkle:channel>experimental</sparkle:channel>
             <sparkle:version>0.2.0.12</sparkle:version>
             <sparkle:shortVersionString>0.2.0.12</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
