@@ -478,5 +478,23 @@
                        type="application/octet-stream"
                        sparkle:edSignature="2qhrCsmz1XQqm5Sf6Alsp2HG31Ajrhzp20etC0MTihlSAb6r2rEMi/UBttFHKBpRKiXwgB7fx7z1xlgXwACtBw==" length="3070823" />
         </item>
+        <item>
+            <title>Version 0.2.0.13</title>
+            <description><![CDATA[
+<h2>What's new</h2>
+<p>Polish drop — three separate UI wins on one release.</p>
+<p><strong>Profiles tab got a real makeover.</strong> That row of devices per profile used to be a single inline blob — icon, name, bullet, icon, name, bullet — that wrapped however it felt like, sometimes splitting a microphone icon from its label across two lines. Now each device gets its own row, icons aligned in a column on the left, mic and speaker and camera and connected-stuff stacked clean. Reads like a real Mac app instead of a wall of text with icon islands.</p>
+<p><strong>Native alerts everywhere.</strong> The "Delete profile?" confirmation used to render with the app's pill icon stamped in the corner — old AppKit pattern, doesn't match the rest of the system. Gone. Now it's the same flat sheet you see for "Reset stats?" and every other macOS confirmation. <strong>And</strong> there's a new "Turn off the virtual camera?" prompt that pops up before you accidentally disable Zoom and Slack and Teams' source of truth. Cancel snaps the toggle right back without ever entering the broken half-state macOS gets into when you toggle the camera extension off in the same session.</p>
+<p><strong>The USB icon swap.</strong> The old <code class="notranslate">cable.connector</code> glyph reads as a stick figure at small sizes — really, look at it next to a microphone glyph, it's a guy. Replaced everywhere with <code class="notranslate">externaldrive.connected.to.line.below</code>, which is unambiguously "thing plugged into your computer." Plus a copy pass that drops the app from naming itself in places where it was talking to itself in the third person. Cleaner everywhere.</p>
+<p>Money.</p>
+]]></description>
+            <pubDate>Wed, 06 May 2026 06:34:09 +0000</pubDate>
+            <sparkle:version>0.2.0.13</sparkle:version>
+            <sparkle:shortVersionString>0.2.0.13</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/superic/av-pain-reliever/releases/download/v0.2.0.13/AVPainReliever.app.zip"
+                       type="application/octet-stream"
+                       sparkle:edSignature="ogoj6EAbHsaE3nzfXp6yikaIeYeUC3xNwEEPkzk+ACKcZqszyqIL5rQxgkZERtS37lPcGOa8P0NINa7/OmB5AQ==" length="3089876" />
+        </item>
     </channel>
 </rss>
