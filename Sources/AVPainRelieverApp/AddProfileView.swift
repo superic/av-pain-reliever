@@ -388,7 +388,7 @@ struct AddProfileView: View {
     @ViewBuilder
     private var cameraSectionHelperText: some View {
         if viewModel.virtualCameraEnabled {
-            Text("AV Pain Reliever's virtual camera will use this as its source. Set Zoom, Slack, and Teams to “AV Pain Reliever” once — they'll follow your profile automatically.")
+            Text("Virtual camera will use this as its source. Set Zoom, Slack, and Teams to “AV Pain Reliever” once — they'll follow your profile automatically.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity, alignment: .leading)

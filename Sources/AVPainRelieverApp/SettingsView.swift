@@ -72,13 +72,21 @@ struct SettingsView: View {
 private struct CameraSettingsTab: View {
     @ObservedObject var settings: SettingsStore
     @ObservedObject var activator: VirtualCameraActivator
+    // Intercept-before-apply: when the user toggles OFF, hold the
+    // confirmation up before flipping the underlying setting.
+    // Rolling back a deactivation after the fact would push the
+    // activator into .requiresRelaunch (macOS doesn't actually stop
+    // the extension on `deactivationRequest`, so a re-enable in the
+    // same session can't recover cleanly). Confirm-first avoids
+    // ever entering that bad state on a misclick.
+    @State private var pendingVirtualCameraDisable = false
 
     var body: some View {
         Form {
             Section {
                 Toggle(
-                    "Enable AV Pain Reliever as a virtual camera",
-                    isOn: $settings.virtualCameraEnabled
+                    "Enable virtual camera",
+                    isOn: virtualCameraToggleBinding
                 )
                 .disabled(activator.isEnvOverride)
 
@@ -107,6 +115,35 @@ private struct CameraSettingsTab: View {
             }
         }
         .groupedFormChrome()
+        .alert(
+            "Turn off the virtual camera?",
+            isPresented: $pendingVirtualCameraDisable
+        ) {
+            Button("Cancel", role: .cancel) {}
+            Button("Turn Off") {
+                settings.virtualCameraEnabled = false
+            }
+        } message: {
+            Text("Zoom, Slack, Teams, and other apps with their own camera picker will stop following your profile changes. They'll stay on whichever camera you last selected inside each app. You can turn this back on later.")
+        }
+    }
+
+    /// Custom binding for the toggle that intercepts the off
+    /// transition. Reads pass through to `settings.virtualCameraEnabled`.
+    /// Writes that flip ON apply directly. Writes that flip OFF
+    /// raise the confirm-disable alert without touching the setting
+    /// — the alert's "Turn Off" action does the actual write.
+    private var virtualCameraToggleBinding: Binding<Bool> {
+        Binding(
+            get: { settings.virtualCameraEnabled },
+            set: { newValue in
+                if !newValue && settings.virtualCameraEnabled {
+                    pendingVirtualCameraDisable = true
+                } else {
+                    settings.virtualCameraEnabled = newValue
+                }
+            }
+        )
     }
 
     /// Live status row — colored dot + human-readable label that
@@ -174,7 +211,7 @@ private struct CameraSettingsTab: View {
         case .failed:
             return "Activation didn't complete. Open System Settings → General → Login Items & Extensions to check the extension's state, then toggle this off and on to retry."
         case .requiresRelaunch:
-            return "macOS holds the virtual camera in a stale state after toggling off and back on inside one session. Restart AV Pain Reliever to re-enable it cleanly."
+            return "macOS holds the virtual camera in a stale state after toggling off and back on inside one session. Restart the app to re-enable it cleanly."
         }
     }
 
@@ -254,7 +291,7 @@ private struct GeneralSettingsTab: View {
                 }
                 .padding(.vertical, 4)
             } header: {
-                Label("Detection", systemImage: "cable.connector")
+                Label("Detection", systemImage: Theme.Symbol.usbSection)
             }
 
             Section {
@@ -291,6 +328,10 @@ enum VersionInfo {
 private struct ProfilesSettingsTab: View {
     @ObservedObject var delegate: AppDelegate
     @Environment(\.openWindow) private var openWindow
+    // Native SwiftUI .alert() for delete confirmation — matches the
+    // Stats tab's "Reset stats?" pattern. Was an NSAlert on
+    // AppDelegate that always rendered with the app icon badge.
+    @State private var profilePendingDeletion: Profile?
 
     var body: some View {
         Group {
@@ -307,12 +348,30 @@ private struct ProfilesSettingsTab: View {
                                 openWindow(id: addProfileWindowID)
                                 NSApp.activate(ignoringOtherApps: true)
                             },
-                            onDelete: { delegate.requestDelete(profile) }
+                            onDelete: { profilePendingDeletion = profile }
                         )
                     }
                 }
                 .listStyle(.inset)
             }
+        }
+        .alert(
+            "Delete “\(PrettyName.format(profilePendingDeletion?.name ?? ""))”?",
+            isPresented: Binding(
+                get: { profilePendingDeletion != nil },
+                set: { if !$0 { profilePendingDeletion = nil } }
+            ),
+            presenting: profilePendingDeletion
+        ) { profile in
+            // Cancel first → bound to .cancelAction (Return key) → safe
+            // accidental press. Delete second, .destructive → red text
+            // and requires a deliberate click.
+            Button("Cancel", role: .cancel) {}
+            Button("Delete", role: .destructive) {
+                delegate.deleteProfile(profile)
+            }
+        } message: { _ in
+            Text("This profile won't switch your audio + camera defaults when its USB devices are attached. You can always recapture it later.")
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             // Native macOS bottom-bar pattern (Mail sidebar, Reminders,
@@ -362,7 +421,7 @@ private struct ProfilesSettingsTab: View {
             VStack(spacing: 4) {
                 Text("Set up your first location")
                     .font(.title3.weight(.semibold))
-                Text("Plug in your dock or peripherals, then capture them as a profile. AV Pain Reliever will switch your audio + camera defaults whenever you dock there again.")
+                Text("Plug in your dock or peripherals, then capture them as a profile. Your audio + camera defaults will switch automatically when you dock there again.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
@@ -393,7 +452,7 @@ private struct ProfileRow: View {
     let onDelete: () -> Void
 
     var body: some View {
-        HStack(spacing: 10) {
+        HStack(alignment: .top, spacing: 10) {
             // Leading icon mirrors the Switch To submenu: profile's
             // user-picked icon when set, slug-driven auto-mapper
             // fallback when not.
@@ -404,7 +463,8 @@ private struct ProfileRow: View {
                 .font(.title3)
                 .foregroundStyle(isActive ? .primary : .secondary)
                 .frame(width: 28)
-            VStack(alignment: .leading, spacing: 2) {
+                .padding(.top, 2)
+            VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 6) {
                     Text(PrettyName.format(profile.name))
                         .font(.body.weight(.medium))
@@ -417,11 +477,23 @@ private struct ProfileRow: View {
                             .background(Color.green, in: Capsule())
                     }
                 }
-                if let summary = summaryText {
-                    summary
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(2)
+                // Vertical device list — each device on its own row
+                // with an icon-aligned column. Apple's pattern in
+                // System Settings → Bluetooth / Network / Internet
+                // Accounts. Replaces the earlier inline
+                // "icon + name • icon + name • …" caption that wrapped
+                // unpredictably when device names were long, splitting
+                // an SF Symbol from its label across lines.
+                ForEach(deviceRows) { row in
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        Image(systemName: row.icon)
+                            .frame(width: 14, alignment: .center)
+                        Text(row.label)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                    }
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
                 }
             }
             Spacer()
@@ -443,38 +515,39 @@ private struct ProfileRow: View {
                 action: onDelete
             )
         }
-        .padding(.vertical, 4)
+        .padding(.vertical, 6)
     }
 
-    /// Caption-line under each profile name. Renders inline SF Symbols
-    /// (mic / speaker / camera) instead of the emoji prefixes the
-    /// earlier draft used — emoji at caption size read as cheap and
-    /// clash with the otherwise-monochrome SF Symbol vocabulary used
-    /// throughout the menu and wizard. `Text + Text(Image:)`
-    /// concatenation keeps it a single flowing line that wraps and
-    /// respects `.lineLimit(2)` cleanly.
-    private var summaryText: Text? {
-        var parts: [Text] = []
+    /// One row in the per-profile device summary list.
+    private struct DeviceRow: Identifiable {
+        let icon: String
+        let label: String
+        var id: String { "\(icon)|\(label)" }
+    }
+
+    /// Devices to surface under the profile name, in display order:
+    /// microphone, speaker, camera, then USB fingerprint summary.
+    /// USB row uses `Theme.Symbol.usbSection` for both the count case
+    /// and the "always matches when undocked" case — the differentiator
+    /// is the label, not the glyph.
+    private var deviceRows: [DeviceRow] {
+        var rows: [DeviceRow] = []
         if let mic = profile.audioInput {
-            parts.append(Text(Image(systemName: "mic")) + Text(" \(mic)"))
+            rows.append(DeviceRow(icon: "mic", label: mic))
         }
         if let out = profile.audioOutput {
-            parts.append(Text(Image(systemName: "speaker.wave.2")) + Text(" \(out)"))
+            rows.append(DeviceRow(icon: "speaker.wave.2", label: out))
         }
         if let cam = profile.camera {
-            parts.append(Text(Image(systemName: "camera")) + Text(" \(cam)"))
+            rows.append(DeviceRow(icon: "camera", label: cam))
         }
         if profile.fingerprint.isEmpty {
-            parts.append(Text("Always matches when undocked"))
+            rows.append(DeviceRow(icon: Theme.Symbol.usbSection, label: "Always matches when undocked"))
         } else {
             let count = profile.fingerprint.count
-            parts.append(Text("\(count) USB device\(count == 1 ? "" : "s")"))
+            rows.append(DeviceRow(icon: Theme.Symbol.usbSection, label: "\(count) USB device\(count == 1 ? "" : "s")"))
         }
-        guard !parts.isEmpty else { return nil }
-        let separator = Text("  •  ")
-        return parts.dropFirst().reduce(parts[0]) { acc, next in
-            acc + separator + next
-        }
+        return rows
     }
 }
 

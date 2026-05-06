@@ -43,7 +43,12 @@ enum Theme {
         /// Wizard section icons — keep in lockstep with the section
         /// titles in `AddProfileView`.
         static let nameSection = "tag.fill"
-        static let usbSection = "cable.connector"
+        // Was `cable.connector` — that glyph reads as a stick figure
+        // at small sizes (the USB-A connector silhouette is genuinely
+        // person-shaped). `externaldrive.connected.to.line.below` is
+        // unambiguously "peripheral connected to host" and reads cleanly
+        // at caption size.
+        static let usbSection = "externaldrive.connected.to.line.below"
         static let audioSection = "speaker.wave.2.fill"
         static let cameraSection = "camera.fill"
     }
@@ -52,6 +57,24 @@ enum Theme {
         /// Tagline shown under the welcome greeting. Keep voice warm,
         /// not corporate; the user-facing personality lives here.
         static let tagline = "Your audio and camera, dialed in automatically."
+        /// The app's display name. Use sparingly in user-facing copy
+        /// — see the rule below before adding a new reference.
+        ///
+        /// **Self-naming rule for user-facing strings:**
+        /// - **Inside a Settings tab, sheet, alert, or any in-app
+        ///   surface** → don't name the app; the frame already
+        ///   implies it. *"Enable virtual camera"* not *"Enable
+        ///   AV Pain Reliever as a virtual camera."*
+        /// - **In a button label that performs an action ON the app
+        ///   itself** (Restart, Quit) → name it; "Restart" alone
+        ///   could read as "restart macOS" — explicit target wins.
+        /// - **When telling the user to do something in ANOTHER
+        ///   app** ("Pick X in Zoom") → name it (in quotes); the
+        ///   user needs to recognize the exact string in the other
+        ///   app's picker.
+        /// - **About / Welcome / menu bar / login items /
+        ///   notifications** → name it; these are external or
+        ///   system-level surfaces where the brand is the point.
         static let appName = "AV Pain Reliever"
     }
 }

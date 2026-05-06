@@ -538,30 +538,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         aboutOpenToken = UUID()
     }
 
-    /// Confirm + delete a profile. Shown as a modal alert so the user
-    /// can't accidentally lose a configuration. After deletion the
-    /// engine reloads against the trimmed config.
-    func requestDelete(_ profile: Profile) {
-        let alert = NSAlert()
+    /// Delete a profile from the on-disk config and reload the engine.
+    /// Caller (the SwiftUI Profiles tab) owns the confirmation alert
+    /// — keeping the confirmation in SwiftUI lets it render with
+    /// native `.alert()` chrome (no app-icon badge) matching the
+    /// other destructive prompts in Settings (Reset stats, etc.).
+    /// On failure, surfaces an NSAlert because the error path is
+    /// rare and doesn't have a sensible SwiftUI escape hatch from
+    /// here.
+    func deleteProfile(_ profile: Profile) {
         let pretty = PrettyName.format(profile.name)
-        alert.messageText = "Delete “\(pretty)”?"
-        alert.informativeText = "This profile won't switch your audio + camera defaults when its USB devices are attached. You can always recapture it later."
-        alert.alertStyle = .warning
-        // Override the generic-app fallback icon NSAlert picks up when
-        // running unbundled (`swift run`, no Info.plist). Setting
-        // `alert.icon` makes the pill render in both bundled and
-        // unbundled contexts; `.warning` style still overlays its
-        // caution badge on top.
-        alert.icon = AppIcon.image
-        // Cancel first → default (Return) → safe accidental press.
-        // Delete second, destructive-styled (red on macOS 11+) so the
-        // dangerous action both looks dangerous and requires a
-        // deliberate click rather than a stray Return.
-        alert.addButton(withTitle: "Cancel")
-        let deleteButton = alert.addButton(withTitle: "Delete")
-        deleteButton.hasDestructiveAction = true
-        let response = alert.runModal()
-        guard response == .alertSecondButtonReturn else { return }
         do {
             try ProfileWriter().delete(named: profile.name, in: Self.profilesTOMLURL)
             reloadConfig()
