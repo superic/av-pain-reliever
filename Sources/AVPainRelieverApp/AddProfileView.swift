@@ -123,7 +123,7 @@ struct AddProfileView: View {
                     sectionHeader("Camera", symbol: Theme.Symbol.cameraSection)
                 }
             }
-            .formStyle(.grouped)
+            .groupedFormChrome()
 
             if let error = viewModel.lastError {
                 HStack(alignment: .top, spacing: 8) {
