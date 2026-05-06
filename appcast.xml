@@ -406,5 +406,23 @@
                        type="application/octet-stream"
                        sparkle:edSignature="kgiZ+sI2BQLhtpbVIPKzkpSdUylbTD0rfH7h4xiAF6tkZaKrqf6qezlKlafHaVv876L92dIpZv8ZDZHhvW8eAw==" length="2898897" />
         </item>
+        <item>
+            <title>Version 0.2.0.9</title>
+            <description><![CDATA[
+<h2>What's new</h2>
+<p>Three things in one drop.</p>
+<p>A new <strong>Stats tab</strong> in Settings. Opt-in, off by default — you flip the switch when you want it on. After that, every profile switch, manual override, streak day, and unique USB device gets counted locally. No content, no telemetry, no phoning home. Just numbers about your setup, on your Mac. The "Most-used location" line is the one that hits.</p>
+<p>The <strong>Add and Edit Profile windows finally match Settings</strong> visually. They were lined up wrong — gray cards in the wizard pushed against the window edges while Settings had breathing room. Took a few iterations to nail. Now they're family.</p>
+<p>Cleaner pills in the wizard's USB list. "mic" instead of "microphone." "video" covers cameras AND HDMI capture cards (capture cards aren't really cameras but they're video sources from your point of view — one word covers it). "audio" for the catch-all. And the list itself sorts smart: important stuff at the top, the "(unnamed device)" entries (those internal hub-leg things you never tick) pushed to the bottom. Easier to scan in two seconds. Money.</p>
+]]></description>
+            <pubDate>Wed, 06 May 2026 01:33:24 +0000</pubDate>
+            <sparkle:channel>experimental</sparkle:channel>
+            <sparkle:version>0.2.0.9</sparkle:version>
+            <sparkle:shortVersionString>0.2.0.9</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/superic/av-pain-reliever/releases/download/v0.2.0.9/AVPainReliever.app.zip"
+                       type="application/octet-stream"
+                       sparkle:edSignature="gQ86Rsc8j+iJVdqe99Pc/L9M9+m76HqCTKdnm6za0p0Cr3MTyRLqczGzddN1wTUo9hWvNRZ9GJWw1SyY8gjPBg==" length="2964687" />
+        </item>
     </channel>
 </rss>
