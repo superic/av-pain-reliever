@@ -182,7 +182,17 @@ struct AddProfileView: View {
                 .animation(.easeInOut(duration: 0.18), value: viewModel.didSave)
             }
         }
-        .padding(20)
+        // Wider horizontal padding than vertical so the Form's gray
+        // section cards land with breathing room that reads as
+        // consistent with the Settings tabs. The wizard's window is
+        // 40pt wider than the Settings window AND lacks the system
+        // chrome that the Settings scene wraps tab content in, so we
+        // can't rely on `.groupedFormChrome()`'s 8pt alone — the Form
+        // cards would visually creep up against the window edges.
+        // Vertical stays at 20pt so the Cancel / Save buttons keep
+        // their existing comfortable distance from the bottom.
+        .padding(.horizontal, 32)
+        .padding(.vertical, 20)
         // Fixed dialog size — pairs with the dialog chrome (no
         // resize/minimize/zoom) configured at the window scene. The
         // Form itself scrolls internally if the device list overflows
