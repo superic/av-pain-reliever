@@ -10,6 +10,12 @@ script from the tag prefix:
   — the bundle that embeds the CMIO Camera Extension. Tagged from
   `feature/virtual-camera`.
 
+Builds run on a **self-hosted runner** installed on the maintainer's
+Mac, not on a GitHub-hosted VM. This is what guarantees toolchain
+parity between the bytes shipped to users and the bytes the maintainer
+sees in dev builds. Setup, security model, and recovery procedure are
+in [SELF_HOSTED_RUNNER.md](SELF_HOSTED_RUNNER.md).
+
 Until the GitHub Secrets listed below are populated, every step that
 depends on Apple credentials or the Sparkle private key skips with a
 warning, so a `v0.0.0-dryrun` tag can verify the workflow shape
@@ -116,6 +122,21 @@ gh secret set SPARKLE_PRIVATE_KEY        < sparkle-private-key.txt
 After setting secrets, delete `cert.p12` and `sparkle-private-key.txt`
 from your working directory.
 
+### 4. Self-hosted runner
+
+The release workflow runs on a self-hosted runner installed on the
+maintainer's Mac (not on a GitHub-hosted VM). This is what
+guarantees toolchain parity between bytes shipped to users and
+bytes the maintainer sees in dev builds — see the v0.2.0.12
+post-mortem below for the failure mode this prevents.
+
+Setup, security configuration (fork-PR approval policy), status
+checks, lockstep rule for Xcode upgrades, uninstall, and recovery
+on a fresh Mac are all in
+[SELF_HOSTED_RUNNER.md](SELF_HOSTED_RUNNER.md). Do that one-time
+install before tagging your first release; subsequent releases
+just need the runner to be online.
+
 ---
 
 ## Cutting a release
@@ -143,14 +164,46 @@ from your working directory.
    git push origin v0.1.11
    ```
 4. Watch the run: `gh run watch` (or in the browser).
-5. Once the workflow completes:
-   - The release is in **draft** state — review and publish it
-     manually via the Releases page.
-   - `appcast.xml` on `main` has a new `<item>` referencing the
-     release asset. Existing installs see the update on their next
-     Sparkle check (or via Advanced → Check for Updates…), and the
-     update window shows the release notes panel sourced from your
-     GitHub release body.
+5. **Pre-publish binary verification.** Before flipping the draft to
+   published, confirm the CI binary matches what you've been
+   building locally — toolchain mismatches between CI and dev are
+   how visible regressions silently shipped before the v0.2.0.12
+   self-hosted runner switch (see post-mortem below). Even now that
+   builds run on a self-hosted runner using the dev's own Xcode,
+   keep the verification as a defensive habit:
+   ```sh
+   # Download the CI artifact:
+   mkdir -p /tmp/ci-verify && rm -rf /tmp/ci-verify/AVPainReliever.app
+   gh release download vX.Y.Z --pattern 'AVPainReliever.app.zip' --dir /tmp/ci-verify
+   ditto -x -k /tmp/ci-verify/AVPainReliever.app.zip /tmp/ci-verify/
+
+   # Build the same tag locally (in a clean checkout):
+   git checkout vX.Y.Z
+   MAC_CERT_NAME="Developer ID Application: Eric Willis (HLH4LEWS9S)" \
+   NOTARIZE_KEYCHAIN_PROFILE=avpain-notary \
+   scripts/make-app-with-virtual-camera.sh
+
+   # Compare:
+   CI=/tmp/ci-verify/AVPainReliever.app/Contents/MacOS/AVPainRelieverApp
+   DEV=dist/AVPainReliever.app/Contents/MacOS/AVPainRelieverApp
+   stat -f '%-12z bytes  %N' "$CI" "$DEV"
+   otool -l "$CI" | grep -A 2 LC_BUILD_VERSION | grep sdk
+   otool -l "$DEV" | grep -A 2 LC_BUILD_VERSION | grep sdk
+   cmp "$CI" "$DEV"
+   ```
+   Expected: same SDK target on both. Byte delta of a few KB is
+   fine (notarization-ticket embedding differs per build). A delta
+   of 100+ KB or a different SDK target means the toolchains
+   diverged — investigate before publishing.
+6. Publish the draft:
+   ```sh
+   gh release edit vX.Y.Z --draft=false
+   ```
+   `appcast.xml` on `main` already has the new `<item>` referencing
+   the release asset (the workflow appended it). Existing installs
+   see the update on their next Sparkle check (or via Advanced →
+   Check for Updates…), and the update window shows the release
+   notes panel sourced from your GitHub release body.
 
 ### First-tag checklist
 
@@ -357,3 +410,79 @@ into the schedule. The release workflow is fast (~90s through
 `Build .app`, then ~30-60s in notarytool), so each iteration is
 cheap. Don't pre-publish the draft release until after the smoke
 test in **First-tag checklist** above.
+
+---
+
+## Post-mortem: lessons from v0.2.0.12
+
+### 1. CI toolchain != dev toolchain ships invisible regressions
+
+For months, the maintainer kept noticing "the buttons in the shipped
+app look slightly different from my dev build." A/B screenshots made
+it concrete in the v0.2.0.11 verification cycle.
+
+Root cause: GitHub-hosted `macos-14` runner with `xcode-version:
+latest-stable` resolved to **Xcode 16.2 / MacOSX15.2.sdk** at build
+time. The maintainer's local Xcode was 26.4.1 / MacOSX26.0.sdk.
+SwiftUI `.bordered` button rendering differs across SDK versions —
+Apple keeps both old and new rendering paths alive forever for
+backward compat, and the SDK at compile time picks which one the
+binary calls into. So even with identical Swift source, CI shipped
+the older "chunkier white-fill" rendering while dev builds got the
+newer "flat grey-fill" rendering. The maintainer was the only person
+who could see the discrepancy because everyone else only ever saw
+the CI version.
+
+Fix: switched CI to a self-hosted runner on the maintainer's Mac
+that uses the maintainer's own Xcode (see
+[SELF_HOSTED_RUNNER.md](SELF_HOSTED_RUNNER.md)). Toolchain parity
+guaranteed. Bonus: queue time dropped from "30+ min spike risk on
+Apple Silicon free pool" to "starts in seconds."
+
+### 2. Always do pre-publish binary verification
+
+After v0.2.0.12 fixed the toolchain, established the pre-publish
+binary verification step (see "Cutting a release" → step 5) as a
+standard part of every ship. Compare CI's `.app` bytes against a
+fresh local build of the same tag; specifically check the SDK
+target via `otool -l ... | grep LC_BUILD_VERSION`. A few KB delta
+is normal (notarization-ticket metadata differs); 100+ KB delta or
+mismatched SDK is a sign the toolchains have diverged again.
+
+### 3. `latest-stable` is not stable across runners
+
+The `maxim-lobanov/setup-xcode` action's `latest-stable` value
+resolves to the newest pre-installed Xcode on the runner image,
+which depends on the runner OS version. macos-14 → Xcode 16.x;
+macos-26-arm64 → Xcode 26.2 (default), not 26.4.1. For repeatable
+GitHub-hosted builds, pin `xcode-version: '26.4.1'` (or whatever
+exact version) explicitly. For self-hosted, the runner uses
+whatever's at `/Applications/Xcode.app` and follows the
+maintainer's local Xcode automatically.
+
+### 4. Sparkle replaces the bundle but doesn't kill the running process
+
+After Sparkle delivers an update to `/Applications`, the running
+menu-bar process is still the OLD code in memory; only the on-disk
+bundle is new. Visual changes won't appear until the process is
+restarted. Always:
+
+```sh
+pkill -f AVPainRelieverApp
+open /Applications/AVPainReliever.app
+```
+
+…after a Sparkle-delivered update, before evaluating any visual
+changes. This bit the maintainer at the start of the v0.2.0.12
+debugging session — a "the new release looks wrong" complaint that
+was actually "you're still running the old process, look at `ps`."
+
+### 5. Two `.app` bundles with the same bundle ID confuse `open`
+
+If both `/Applications/AVPainReliever.app` and a local
+`dist/AVPainReliever.app` exist on disk, `open` may launch either
+one, even when given an explicit path. Verify with `ps aux | grep
+AVPainReliever` to see which executable path is actually running.
+For dev iteration that wants to keep `/Applications` clean, delete
+the `dist/` bundle after each test, or live with the ambiguity but
+always ground-truth via `ps`.
