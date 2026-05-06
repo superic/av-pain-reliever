@@ -42,7 +42,7 @@ enum MenuBarIcon {
         "arrow.left.arrow.right",
         "wand.and.stars",
         // Connectivity
-        "cable.connector",
+        "externaldrive.connected.to.line.below",
         // The eighteenth slot — fills the orphan cell in the 6×3
         // grid and ties back to the About / Welcome confetti.
         "party.popper.fill",
