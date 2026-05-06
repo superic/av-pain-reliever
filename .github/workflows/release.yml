@@ -44,7 +44,16 @@ permissions:
 
 jobs:
   release:
-    runs-on: macos-14
+    # macos-26-arm64 carries Xcode 26.x (the version we develop against
+    # locally), so SwiftUI button rendering in CI-shipped builds matches
+    # what we see in dev. The previous macos-14 runner pinned us to
+    # Xcode 16.x / SDK 15.2, which compiled SwiftUI .bordered buttons
+    # against an older API path — the runtime then drew the chunkier,
+    # white-fill style on every shipped release while local dev builds
+    # got the newer flat grey-fill rendering. Apple keeps both paths
+    # alive for backward compatibility, so it's the SDK at compile time
+    # that picks which one the binary calls into.
+    runs-on: macos-26-arm64
     timeout-minutes: 45  # notarization can take 10+ minutes on a cold Team ID
 
     env:
@@ -102,7 +111,12 @@ jobs:
       - name: Select Xcode
         uses: maxim-lobanov/setup-xcode@v1
         with:
-          xcode-version: latest-stable
+          # Pinned to match the developer's local toolchain so CI-shipped
+          # builds render identically to dev builds. `latest-stable` on
+          # macos-26-arm64 currently resolves to Xcode 26.2 (the runner's
+          # default), not 26.4.1 — we want the exact build (17E202) that
+          # local Xcode is on. Bump in lockstep when local Xcode bumps.
+          xcode-version: '26.4.1'
 
       - name: Reset SPM artifact cache
         # The macos-14 runner sometimes carries a primed
