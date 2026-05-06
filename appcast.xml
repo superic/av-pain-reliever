@@ -443,5 +443,23 @@
                        type="application/octet-stream"
                        sparkle:edSignature="Y7vjGFDypph2iZgPD1thE6+r+/EiXZLGw2rkFqwuDpE5TNoD0qEFdSjp3iy1eAeJm/1WVeE8dTTYZkTim/zqBA==" length="2967509" />
         </item>
+        <item>
+            <title>Version 0.2.0.11</title>
+            <description><![CDATA[
+<h2>What's new</h2>
+<p>Polish drop. One fix, but it's been quietly bugging us for months.</p>
+<p>The bottom of the <strong>Profiles tab</strong>. That strip with the Add Profile button and the "4 profiles" count? It's been a faux bottom bar all this time — a custom HStack with a Divider above it, dressed up to LOOK like a native Mac bar but never actually being one. The button inside always read a little off, a little flat, a little not-quite-Apple. Could never quite put a finger on why.</p>
+<p>Fixed. It's a real macOS bottom bar now — translucent material chrome, automatic separator, the same kind of bar Mail uses under the mailbox sidebar and Reminders uses under the lists. And the Add Profile affordance is now the universal Apple <strong><code class="notranslate">+</code> icon</strong> at bottom-left, the way Mail does new mailboxes, Reminders does new lists, and System Settings → Network does interface +/-. Hover it for the tooltip. Borderless, minimal, instantly recognizable.</p>
+<p>Money.</p>
+]]></description>
+            <pubDate>Wed, 06 May 2026 03:15:48 +0000</pubDate>
+            <sparkle:channel>experimental</sparkle:channel>
+            <sparkle:version>0.2.0.11</sparkle:version>
+            <sparkle:shortVersionString>0.2.0.11</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/superic/av-pain-reliever/releases/download/v0.2.0.11/AVPainReliever.app.zip"
+                       type="application/octet-stream"
+                       sparkle:edSignature="Rjvs719j/DjZpbzoLJNiNWVQRR8Fw7KXO73ih8qcYeurdQYFa0/1LG4IsXHwnDQtcWKjc9qN8MUhR1F/5zZTCw==" length="2971989" />
+        </item>
     </channel>
 </rss>
