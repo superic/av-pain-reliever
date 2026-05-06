@@ -293,7 +293,7 @@ private struct ProfilesSettingsTab: View {
     @Environment(\.openWindow) private var openWindow
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
+        Group {
             if delegate.availableProfiles.isEmpty {
                 emptyState
             } else {
@@ -313,21 +313,37 @@ private struct ProfilesSettingsTab: View {
                 }
                 .listStyle(.inset)
             }
-
-            Divider()
-
-            HStack {
-                Button("Add Profile…") {
-                    delegate.beginAddingProfile()
-                    openWindow(id: addProfileWindowID)
-                    NSApp.activate(ignoringOtherApps: true)
+        }
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            // Native macOS bottom-bar pattern (Mail sidebar, Reminders,
+            // System Settings → Network). The `.bar` material gives the
+            // translucent footer chrome with an automatic separator;
+            // the borderless `+` icon matches Apple's "add a row to
+            // this list" affordance everywhere it appears in their
+            // own apps. Suppressed in empty state — the hero CTA
+            // already covers add-a-profile, doubling up reads as
+            // visual noise.
+            if !delegate.availableProfiles.isEmpty {
+                HStack(spacing: 8) {
+                    Button {
+                        delegate.beginAddingProfile()
+                        openWindow(id: addProfileWindowID)
+                        NSApp.activate(ignoringOtherApps: true)
+                    } label: {
+                        Image(systemName: "plus")
+                            .frame(width: 22, height: 22)
+                    }
+                    .buttonStyle(.borderless)
+                    .help("Add Profile")
+                    Spacer()
+                    Text("\(delegate.availableProfiles.count) profile\(delegate.availableProfiles.count == 1 ? "" : "s")")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
-                Spacer()
-                Text("\(delegate.availableProfiles.count) profile\(delegate.availableProfiles.count == 1 ? "" : "s")")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 4)
+                .background(.bar)
             }
-            .padding(12)
         }
     }
 

@@ -3527,6 +3527,86 @@ the tappable surface.
 PR: [#28](https://github.com/superic/av-pain-reliever/pull/28),
 shipped in v0.2.0.10.
 
+### Profiles tab → real macOS bottom bar (2026-05-05)
+
+Follow-up to the v0.2.0.10 button pass. The user surfaced a long-
+standing visual oddity: the "Add Profile" button at the bottom of
+the Profiles tab "looked wrong throughout the entire app" and had
+been bothering them across many releases.
+
+Investigation: Profiles is the *only* Settings tab not using
+`Form { }.groupedFormChrome()` — it's the bespoke
+`VStack { List + Divider + HStack(footer) }` layout (see
+`GroupedFormChrome.swift`'s "intentionally bespoke" comment). The
+footer was a faux bottom bar — a custom `HStack` with `.padding(12)`
+*after* a `Divider()` — that visually mimicked a native macOS
+bottom bar (Mail's "+ New Mailbox" sidebar bottom, Reminders' "Add
+List", System Settings → Network's `+/-`) without using any of the
+SwiftUI/AppKit APIs that produce one. As a result the button inside
+read as a `.bordered` chip floating in custom chrome instead of
+matching the unmistakable native bottom-bar affordance.
+
+Fix: switched to the proper SwiftUI macOS bottom-bar pattern.
+
+```swift
+.safeAreaInset(edge: .bottom, spacing: 0) {
+    HStack(spacing: 8) {
+        Button { /* … */ } label: {
+            Image(systemName: "plus")
+                .frame(width: 22, height: 22)
+        }
+        .buttonStyle(.borderless)
+        .help("Add Profile")
+        Spacer()
+        Text("\(count) profile…")
+            .font(.caption)
+            .foregroundStyle(.secondary)
+    }
+    .padding(.horizontal, 10)
+    .padding(.vertical, 4)
+    .background(.bar)
+}
+```
+
+Three native-rendering wins from this change:
+
+1. **`.safeAreaInset(edge: .bottom)`** is the macOS API for "give
+   me a bottom bar attached to this content." It reserves layout
+   space correctly for the inset content and inherits proper
+   safe-area behavior. `.toolbar { ToolbarItem(placement:
+   .bottomBar) }` is the API name everyone reaches for first
+   (including me, when first recommending the fix) — but
+   `bottomBar` placement is iOS-only. On macOS, `.safeAreaInset`
+   is the answer.
+2. **`.background(.bar)`** is the system bar Material — translucent,
+   adapts to light/dark, gets the automatic separator above. This
+   is what makes the bottom bar read as a native macOS bottom bar
+   instead of a custom HStack with a manually-drawn `Divider()`.
+3. **Borderless `+` icon** is what Apple uses for "add a row to
+   this list" everywhere it appears in their own apps — Mail's
+   sidebar, Reminders, Notes, Network preferences. The hover
+   tooltip via `.help("Add Profile")` keeps it discoverable.
+
+Also: the bottom bar is suppressed in the empty state (the
+borderedProminent + large hero "Add Profile…" CTA already covers
+add-a-profile; doubling up reads as visual noise).
+
+Lesson: always check for the existence of a real platform API
+before reaching for a custom layout that mimics one. The faux
+bottom bar pre-dated my involvement and had survived multiple
+visual passes because it *looked* close enough — but the actual
+native API gives you Material chrome, automatic separators, and
+the right button-rendering context for free, none of which a
+custom HStack reproduces by accident.
+
+Lesson 2: API name carryover from iOS to macOS isn't always
+1:1. `.toolbar(content:) { ToolbarItem(placement: .bottomBar) }`
+exists on both platforms but `.bottomBar` placement only does
+something on iOS. macOS needs `.safeAreaInset(edge: .bottom) +
+.background(.bar)`.
+
+PR: TBD, shipped in v0.2.0.11.
+
 - **When we ship a Phase 1 fix or feature**, ask: does this teach us
   something about the Swift port? If yes, add to "Lessons learned."
 - **When the user gives feedback or hits a bug**, ask: should this be
