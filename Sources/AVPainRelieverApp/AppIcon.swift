@@ -1,16 +1,17 @@
 import AppKit
 import SwiftUI
 
-/// Generates the app icon used at runtime — a cool-charcoal gradient
-/// squircle with a single hand-drawn pharmaceutical capsule on top.
+/// Generates the app icon used at runtime — a pale icy squircle with
+/// a centered USB-fingerprint glyph in flat Apple-system-blue.
 ///
-/// The capsule is two-tone (near-white "cap", soft warm-gray "body"
-/// with a thin seam where they meet) and tilted ~25° downward to the
-/// right. This is the "system utility" register: monochrome,
-/// composed, the same family as Activity Monitor / Console / Disk
-/// Utility — keeping the pills metaphor that matches the product
-/// name without the kitchen-medicine-cabinet feel of the SF-Symbol
-/// dual-pill glyph this replaces.
+/// The aesthetic borrows from Sparkle's update-icon style: light-blue
+/// → white linear gradient chrome with a subtle top highlight, a
+/// medium-dark inset rim that gives the squircle real depth, and a
+/// crisp single-color mark at the center. The glyph itself is the
+/// `externaldrive.connected.to.line.below` SF Symbol — the same one
+/// the in-app "USB fingerprint" section header uses, so the Dock,
+/// the About window, and the wizard's section vocabulary all line
+/// up.
 ///
 /// Rendered in memory rather than shipped as a `.icns` so a tweak to
 /// the drawing doesn't require regenerating an asset. The signed
@@ -48,149 +49,112 @@ enum AppIcon {
             return image
         }
 
-        // 1. Squircle clip + cool charcoal gradient. The hue shifts
-        //    very slightly toward blue (cooler) so the icon reads as
-        //    a "pro tool" rather than a generic gray rectangle, but
-        //    stays well within the system-utility palette.
-        ctx.saveGState()
         let cornerRadius: CGFloat = size.width * 0.225
+        let canvasRect = NSRect(origin: .zero, size: size)
         let squircle = NSBezierPath(
-            roundedRect: NSRect(origin: .zero, size: size),
+            roundedRect: canvasRect,
             xRadius: cornerRadius,
             yRadius: cornerRadius
         )
-        squircle.addClip()
 
-        let topGray = NSColor(red: 0.478, green: 0.486, blue: 0.510, alpha: 1.0)
-        let bottomGray = NSColor(red: 0.180, green: 0.188, blue: 0.204, alpha: 1.0)
-        if let gradient = NSGradient(colors: [topGray, bottomGray]) {
-            gradient.draw(
-                in: NSRect(origin: .zero, size: size),
-                angle: -90  // top → bottom
-            )
+        // 1. Squircle clip + icy light-blue gradient. Top is near-white
+        //    with a hint of cool tint; bottom is a soft cornflower blue.
+        ctx.saveGState()
+        squircle.addClip()
+        let topIce = NSColor(red: 0.965, green: 0.985, blue: 1.000, alpha: 1.0)
+        let bottomIce = NSColor(red: 0.840, green: 0.905, blue: 0.975, alpha: 1.0)
+        if let gradient = NSGradient(colors: [topIce, bottomIce]) {
+            gradient.draw(in: canvasRect, angle: -90)
         }
 
-        // 2. Capsule artwork. Drawn into a separate NSImage so the
-        //    soft shadow lands once on the silhouette, not separately
-        //    on each fill (which would compound and look muddy).
-        let capsule = capsuleArtwork(canvasSize: size)
+        // 2. Top-edge highlight — a faint white-to-clear gradient over
+        //    the upper 45% of the chrome. Reads as glossy, not flat.
+        if let highlight = NSGradient(colorsAndLocations:
+            (NSColor.white.withAlphaComponent(0.22), 0.0),
+            (NSColor.white.withAlphaComponent(0.0), 0.45)
+        ) {
+            highlight.draw(in: canvasRect, angle: -90)
+        }
+        ctx.restoreGState()
+
+        // 3. Mark — `externaldrive.connected.to.line.below` SF Symbol,
+        //    flat-filled in Apple-system-blue. Drawn into a separate
+        //    NSImage so the soft drop shadow lands once on the
+        //    silhouette rather than separately on each stroke.
+        let mark = symbolMark(canvasSize: size)
         ctx.saveGState()
         let shadow = NSShadow()
-        shadow.shadowColor = NSColor.black.withAlphaComponent(0.22)
-        shadow.shadowOffset = NSSize(width: 0, height: -size.height * 0.010)
-        shadow.shadowBlurRadius = size.width * 0.030
+        shadow.shadowColor = NSColor.black.withAlphaComponent(0.10)
+        shadow.shadowOffset = NSSize(width: 0, height: -size.height * 0.006)
+        shadow.shadowBlurRadius = size.width * 0.012
         shadow.set()
-        capsule.draw(
-            in: NSRect(origin: .zero, size: size),
-            from: .zero,
-            operation: .sourceOver,
-            fraction: 1.0
-        )
+        mark.draw(in: canvasRect, from: .zero, operation: .sourceOver, fraction: 1.0)
         ctx.restoreGState()
 
-        // 3. Subtle inner-edge highlight at ~4% white. Adds a hairline
-        //    rim that helps the icon separate from a dark Dock or
-        //    menu-bar background. Drawn last so it sits on top of
-        //    both the gradient and the capsule shadow's spread.
-        let edgePath = NSBezierPath(
-            roundedRect: NSRect(origin: .zero, size: size).insetBy(dx: 2, dy: 2),
-            xRadius: cornerRadius - 2,
-            yRadius: cornerRadius - 2
+        // 4. Inset rim — 16% black stroke that defines the squircle
+        //    edge. Modeled after the Sparkle-update-icon reference;
+        //    gives the chrome depth against light wallpapers without
+        //    competing with the mark.
+        let rimInset = size.width * 0.014
+        let rimWidth = size.width * 0.0094
+        let rim = NSBezierPath(
+            roundedRect: canvasRect.insetBy(dx: rimInset, dy: rimInset),
+            xRadius: cornerRadius - rimInset,
+            yRadius: cornerRadius - rimInset
         )
-        edgePath.lineWidth = 2
-        NSColor.white.withAlphaComponent(0.04).setStroke()
-        edgePath.stroke()
+        rim.lineWidth = rimWidth
+        NSColor.black.withAlphaComponent(0.16).setStroke()
+        rim.stroke()
 
-        ctx.restoreGState()
         return image
     }
 
-    /// Two-tone pharmaceutical capsule, tilted ~25° down-to-the-right,
-    /// rendered in its own image so the parent draw can apply a
-    /// single shadow pass to the whole silhouette.
-    private static func capsuleArtwork(canvasSize: NSSize) -> NSImage {
+    /// SF Symbol mark filled in Apple-system-blue, returned as an
+    /// `NSImage` the size of the canvas so the parent draw can apply
+    /// a single shadow pass to the whole silhouette.
+    ///
+    /// Two-step composite: render the symbol white onto a transparent
+    /// canvas to get a precise alpha mask, then paint the mask with
+    /// the brand color via `.sourceIn` blend mode.
+    private static func symbolMark(canvasSize: NSSize) -> NSImage {
         let image = NSImage(size: canvasSize)
         image.lockFocus()
         defer { image.unlockFocus() }
 
-        guard let ctx = NSGraphicsContext.current?.cgContext else {
+        guard
+            let ctx = NSGraphicsContext.current?.cgContext,
+            let sym = NSImage(
+                systemSymbolName: "externaldrive.connected.to.line.below",
+                accessibilityDescription: nil
+            )
+        else {
             return image
         }
 
-        // Capsule dimensions in local (unrotated) coords.
-        let capsuleLength = canvasSize.width * 0.62
-        let capsuleWidth = canvasSize.width * 0.20
-
-        // Origin → centre, then rotate. -25° (radians) tilts the right
-        // end down, so the cap (left half, near-white) sits up-and-to-
-        // the-left — the canonical pharmaceutical-capsule pose.
-        ctx.translateBy(x: canvasSize.width / 2, y: canvasSize.height / 2)
-        ctx.rotate(by: -25 * .pi / 180)
-
-        let capsuleRect = NSRect(
-            x: -capsuleLength / 2,
-            y: -capsuleWidth / 2,
-            width: capsuleLength,
-            height: capsuleWidth
+        // Empirically tuned for `externaldrive.connected.to.line.below`
+        // — a wide glyph that fills ~55% of canvas height comfortably.
+        let pt = canvasSize.width * 0.55
+        let baseCfg = NSImage.SymbolConfiguration(pointSize: pt, weight: .regular)
+        let whiteCfg = baseCfg.applying(
+            NSImage.SymbolConfiguration(paletteColors: [NSColor.white])
         )
-        let capsulePath = NSBezierPath(
-            roundedRect: capsuleRect,
-            xRadius: capsuleWidth / 2,
-            yRadius: capsuleWidth / 2
-        )
-
-        // Clip subsequent fills to the capsule silhouette so the
-        // half-fills land cleanly inside the rounded ends.
-        NSGraphicsContext.current?.saveGraphicsState()
-        capsulePath.addClip()
-
-        // Cap — left half, near-white.
-        NSColor(red: 0.957, green: 0.961, blue: 0.969, alpha: 1.0).set()
-        NSRect(
-            x: -capsuleLength / 2,
-            y: -capsuleWidth / 2,
-            width: capsuleLength / 2,
-            height: capsuleWidth
-        ).fill()
-
-        // Body — right half, soft warm gray.
-        NSColor(red: 0.765, green: 0.773, blue: 0.792, alpha: 1.0).set()
-        NSRect(
-            x: 0,
-            y: -capsuleWidth / 2,
-            width: capsuleLength / 2,
-            height: capsuleWidth
-        ).fill()
-
-        // Seam — the thin band where cap and body meet on a real
-        // pharma capsule. Slightly darker than either half so it
-        // reads as a recess rather than a gap.
-        let seamWidth = canvasSize.width * 0.012
-        NSColor(red: 0.659, green: 0.667, blue: 0.686, alpha: 1.0).set()
-        NSRect(
-            x: -seamWidth / 2,
-            y: -capsuleWidth / 2,
-            width: seamWidth,
-            height: capsuleWidth
-        ).fill()
-
-        // Highlight along the top edge of the upper half — a soft
-        // white-to-clear gradient gives the capsule a glassy quality
-        // without going skeuomorphic.
-        if let highlight = NSGradient(colorsAndLocations:
-            (NSColor.white.withAlphaComponent(0.16), 0.0),
-            (NSColor.white.withAlphaComponent(0.0), 1.0)
-        ) {
-            let highlightRect = NSRect(
-                x: -capsuleLength / 2,
-                y: 0,
-                width: capsuleLength,
-                height: capsuleWidth / 2
-            )
-            highlight.draw(in: highlightRect, angle: 90)
+        guard let whiteSym = sym.withSymbolConfiguration(whiteCfg) else {
+            return image
         }
 
-        NSGraphicsContext.current?.restoreGraphicsState()
+        let symRect = NSRect(
+            x: (canvasSize.width - whiteSym.size.width) / 2,
+            y: (canvasSize.height - whiteSym.size.height) / 2,
+            width: whiteSym.size.width,
+            height: whiteSym.size.height
+        )
+        whiteSym.draw(in: symRect, from: .zero, operation: .sourceOver, fraction: 1.0)
+
+        ctx.setBlendMode(.sourceIn)
+        NSColor(red: 0.000, green: 0.478, blue: 1.000, alpha: 1.0).setFill()
+        NSRect(origin: .zero, size: canvasSize).fill()
+        ctx.setBlendMode(.normal)
+
         return image
     }
 }

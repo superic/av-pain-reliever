@@ -11,9 +11,10 @@ import Foundation
 /// "what shape represents the app" question.
 enum MenuBarIcon {
     /// Default symbol when the user has never touched the picker.
-    /// Same value as `Theme.Symbol.appIcon` so existing installs see
-    /// no change.
-    static let defaultSymbol: String = Theme.Symbol.appIcon
+    /// Matches the SF Symbol used for the app icon and the in-app
+    /// "USB fingerprint" section header — Dock, menu bar, and the
+    /// wizard share one vocabulary.
+    static let defaultSymbol: String = Theme.Symbol.usbSection
 
     /// Display order: brand glyphs first, then audio signal /
     /// hardware, then video, then control surfaces, then connectivity.
