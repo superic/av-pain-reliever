@@ -514,5 +514,26 @@
                        type="application/octet-stream"
                        sparkle:edSignature="9yXpwXHICICkhNxXhjsj5FKefhAfFR1OytFwPanmnt+PLvRX+qqHFTIslayb1jo93Vp0nT7zQSOie2o0hp79Bw==" length="3107325" />
         </item>
+        <item>
+            <title>Version 0.2.0.15</title>
+            <description><![CDATA[
+<p>OK here's the deal. v0.2.0.15 is mostly a face-lift. <strong>New app icon.</strong> Out goes the gray squircle with the floating pill capsule; in comes a pale icy-blue squircle with a single clean USB-fingerprint glyph in Apple-system-blue. It's the same symbol the wizard uses when you set up a location, so Dock, menu bar, and the in-app vocabulary now all match. Looks at home next to Calculator, Reminders, and the rest of the modern Mac icon family. Sharp on white wallpapers, doesn't dissolve, single defined edge. Money.</p>
+<p>The menu bar default updates to the same glyph. If you'd customized your menu bar pick, you keep your pick. If you were on the original pill default, you'll see the new one show up after this update. Don't worry about it. Your pill is still in the picker (Settings → Behavior → Menu bar icon) if you miss it. The party-popper is still in there too.</p>
+<p>A few small ones while we're here:</p>
+<ul>
+<li><strong>Camera permission prompt</strong> got tightened up. It used to say "AV Pain Reliever" three times in one dialog. We get it. We're AV Pain Reliever. Cleaner copy, same meaning.</li>
+<li><strong>About window</strong>: title is just "About" now (the rest of the window already says the app's name, no need to double up), the fortune-slip drifts toward the middle, and the Check for Updates button has room to breathe.</li>
+<li><strong>Settings opens on General</strong> every time, like Apple's own Settings does. No more landing on Stats because that's where you happened to be last week.</li>
+</ul>
+<p>That's the whole thing. Update, enjoy the new icon, get back to work. You're gonna love it.</p>
+]]></description>
+            <pubDate>Thu, 07 May 2026 06:08:37 +0000</pubDate>
+            <sparkle:version>0.2.0.15</sparkle:version>
+            <sparkle:shortVersionString>0.2.0.15</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/superic/av-pain-reliever/releases/download/v0.2.0.15/AVPainReliever.app.zip"
+                       type="application/octet-stream"
+                       sparkle:edSignature="uVPH5CSXGtaSfleOLqe+gtCWq9Tq+MpIqbI6E4wq35ZtTje8rh6084htTvTyEdVBiUlvYlQDSGUAplO2R6ApDg==" length="3118907" />
+        </item>
     </channel>
 </rss>
