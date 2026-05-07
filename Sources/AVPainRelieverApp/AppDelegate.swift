@@ -291,9 +291,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
 
     /// Initial tab when the Settings window opens. Mutated by the
     /// menu's "Edit Profiles…" item before opening so the user lands
-    /// directly on the Profiles list. Persists across opens — leaving
-    /// the user on whichever tab they were last using is the macOS
-    /// default and preferred over forcing General every time.
+    /// directly on the Profiles list. Reset to `.general` on every
+    /// Settings window close (in `SettingsView.onDisappear`) so a
+    /// fresh open always starts at the first tab — matches Apple's
+    /// own System Settings behavior.
     @Published var settingsTab: SettingsTab = .general
 
     private func maybeShowWelcomeWindow() {
