@@ -92,9 +92,9 @@ enum AppIcon {
         ctx.restoreGState()
 
         // 4. Inset rim — 16% black stroke that defines the squircle
-        //    edge. Modeled after the Sparkle-update-icon reference;
-        //    gives the chrome depth against light wallpapers without
-        //    competing with the mark.
+        //    edge from the inside. Modeled after the Sparkle-update
+        //    -icon reference; gives the chrome depth against light
+        //    wallpapers without competing with the mark.
         let rimInset = size.width * 0.014
         let rimWidth = size.width * 0.0094
         let rim = NSBezierPath(
@@ -105,6 +105,21 @@ enum AppIcon {
         rim.lineWidth = rimWidth
         NSColor.black.withAlphaComponent(0.16).setStroke()
         rim.stroke()
+
+        // 5. Hairline silhouette stroke — sits ON the squircle path
+        //    (no inset). Without this, the pale icy chrome dissolves
+        //    into white Finder backgrounds and the icon reads as
+        //    "blurry on the outside." A 1px-equivalent line at 14%
+        //    black gives the silhouette a crisp definition on any
+        //    background while preserving the inset-rim depth cue.
+        let edge = NSBezierPath(
+            roundedRect: canvasRect,
+            xRadius: cornerRadius,
+            yRadius: cornerRadius
+        )
+        edge.lineWidth = size.width * 0.0010
+        NSColor.black.withAlphaComponent(0.14).setStroke()
+        edge.stroke()
 
         return image
     }

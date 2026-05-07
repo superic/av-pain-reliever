@@ -71,6 +71,15 @@ func makeIcon() -> NSImage {
     NSColor.black.withAlphaComponent(0.16).setStroke()
     rim.stroke()
 
+    let edge = NSBezierPath(
+        roundedRect: canvasRect,
+        xRadius: cornerRadius,
+        yRadius: cornerRadius
+    )
+    edge.lineWidth = size.width * 0.0010
+    NSColor.black.withAlphaComponent(0.14).setStroke()
+    edge.stroke()
+
     return image
 }
 

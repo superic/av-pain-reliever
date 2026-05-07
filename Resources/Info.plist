@@ -31,7 +31,7 @@
 	<key>LSUIElement</key>
 	<true/>
 	<key>NSCameraUsageDescription</key>
-	<string>AV Pain Reliever reads frames from the camera selected by your active profile and forwards them to the AV Pain Reliever virtual camera.</string>
+	<string>Reads frames from the camera selected by your active profile and forwards them to the virtual camera.</string>
 	<key>NSHumanReadableCopyright</key>
 	<string>Copyright © 2026 Eric Willis. MIT-licensed.</string>
 	<key>NSSupportsAutomaticTermination</key>

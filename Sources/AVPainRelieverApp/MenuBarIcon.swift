@@ -16,11 +16,14 @@ enum MenuBarIcon {
     /// wizard share one vocabulary.
     static let defaultSymbol: String = Theme.Symbol.usbSection
 
-    /// Display order: brand glyphs first, then audio signal /
-    /// hardware, then video, then control surfaces, then connectivity.
-    /// Curated by hand — every entry has been eyeballed at 17pt menu
-    /// bar size to confirm it reads cleanly there.
+    /// Display order: the app icon's symbol leads (so the picker's
+    /// first cell is the default), then brand glyphs, then audio
+    /// signal / hardware, then video, then control surfaces. Curated
+    /// by hand — every entry has been eyeballed at 17pt menu bar
+    /// size to confirm it reads cleanly there.
     static let catalog: [String] = [
+        // Default — matches the app icon
+        "externaldrive.connected.to.line.below",
         // Brand
         "pills.fill",
         "capsule.fill",
@@ -42,8 +45,6 @@ enum MenuBarIcon {
         "slider.horizontal.3",
         "arrow.left.arrow.right",
         "wand.and.stars",
-        // Connectivity
-        "externaldrive.connected.to.line.below",
         // The eighteenth slot — fills the orphan cell in the 6×3
         // grid and ties back to the About / Welcome confetti.
         "party.popper.fill",
