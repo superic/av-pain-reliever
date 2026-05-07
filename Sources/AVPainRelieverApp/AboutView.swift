@@ -61,6 +61,10 @@ struct AboutView: View {
                     delegate.checkForUpdates()
                 }
                 .controlSize(.large)
+                // Extra top padding so the action group breathes
+                // away from the fortune slip — without it the
+                // sequence (slip → button → link) reads as squished.
+                .padding(.top, 14)
 
                 Button("Show welcome again") {
                     delegate.showWelcomeAgain()
