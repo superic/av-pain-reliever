@@ -60,24 +60,13 @@ func makeIcon() -> NSImage {
     mark.draw(in: canvasRect, from: .zero, operation: .sourceOver, fraction: 1.0)
     ctx.restoreGState()
 
-    let rimInset = size.width * 0.014
-    let rimWidth = size.width * 0.0094
-    let rim = NSBezierPath(
-        roundedRect: canvasRect.insetBy(dx: rimInset, dy: rimInset),
-        xRadius: cornerRadius - rimInset,
-        yRadius: cornerRadius - rimInset
-    )
-    rim.lineWidth = rimWidth
-    NSColor.black.withAlphaComponent(0.16).setStroke()
-    rim.stroke()
-
     let edge = NSBezierPath(
         roundedRect: canvasRect,
         xRadius: cornerRadius,
         yRadius: cornerRadius
     )
-    edge.lineWidth = size.width * 0.0010
-    NSColor.black.withAlphaComponent(0.14).setStroke()
+    edge.lineWidth = size.width * 0.0040
+    NSColor.black.withAlphaComponent(0.18).setStroke()
     edge.stroke()
 
     return image

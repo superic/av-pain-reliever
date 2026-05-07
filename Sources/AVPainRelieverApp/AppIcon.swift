@@ -91,34 +91,25 @@ enum AppIcon {
         mark.draw(in: canvasRect, from: .zero, operation: .sourceOver, fraction: 1.0)
         ctx.restoreGState()
 
-        // 4. Inset rim — 16% black stroke that defines the squircle
-        //    edge from the inside. Modeled after the Sparkle-update
-        //    -icon reference; gives the chrome depth against light
-        //    wallpapers without competing with the mark.
-        let rimInset = size.width * 0.014
-        let rimWidth = size.width * 0.0094
-        let rim = NSBezierPath(
-            roundedRect: canvasRect.insetBy(dx: rimInset, dy: rimInset),
-            xRadius: cornerRadius - rimInset,
-            yRadius: cornerRadius - rimInset
-        )
-        rim.lineWidth = rimWidth
-        NSColor.black.withAlphaComponent(0.16).setStroke()
-        rim.stroke()
-
-        // 5. Hairline silhouette stroke — sits ON the squircle path
-        //    (no inset). Without this, the pale icy chrome dissolves
-        //    into white Finder backgrounds and the icon reads as
-        //    "blurry on the outside." A 1px-equivalent line at 14%
-        //    black gives the silhouette a crisp definition on any
-        //    background while preserving the inset-rim depth cue.
+        // 4. Edge stroke — a single 18% black line sitting ON the
+        //    squircle path (no inset). Defines the silhouette
+        //    cleanly on any background, including pure-white Finder.
+        //    Sized at 0.4% of canvas (~4px at 1024) so it downscales
+        //    cleanly to Finder size without antialiasing into a soft
+        //    fringe. An earlier draft layered this on top of an
+        //    inset rim — at small sizes the two read as a wobbly
+        //    double-border with a thin pale band between, so the
+        //    inset rim was retired. Depth comes from the chrome
+        //    gradient + the mark's drop shadow + Finder's automatic
+        //    icon drop shadow, which together carry enough lift
+        //    without an interior rim.
         let edge = NSBezierPath(
             roundedRect: canvasRect,
             xRadius: cornerRadius,
             yRadius: cornerRadius
         )
-        edge.lineWidth = size.width * 0.0010
-        NSColor.black.withAlphaComponent(0.14).setStroke()
+        edge.lineWidth = size.width * 0.0040
+        NSColor.black.withAlphaComponent(0.18).setStroke()
         edge.stroke()
 
         return image
