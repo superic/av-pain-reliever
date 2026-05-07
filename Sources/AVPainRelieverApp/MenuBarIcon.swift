@@ -11,15 +11,19 @@ import Foundation
 /// "what shape represents the app" question.
 enum MenuBarIcon {
     /// Default symbol when the user has never touched the picker.
-    /// Same value as `Theme.Symbol.appIcon` so existing installs see
-    /// no change.
-    static let defaultSymbol: String = Theme.Symbol.appIcon
+    /// Matches the SF Symbol used for the app icon and the in-app
+    /// "USB fingerprint" section header — Dock, menu bar, and the
+    /// wizard share one vocabulary.
+    static let defaultSymbol: String = Theme.Symbol.usbSection
 
-    /// Display order: brand glyphs first, then audio signal /
-    /// hardware, then video, then control surfaces, then connectivity.
-    /// Curated by hand — every entry has been eyeballed at 17pt menu
-    /// bar size to confirm it reads cleanly there.
+    /// Display order: the app icon's symbol leads (so the picker's
+    /// first cell is the default), then brand glyphs, then audio
+    /// signal / hardware, then video, then control surfaces. Curated
+    /// by hand — every entry has been eyeballed at 17pt menu bar
+    /// size to confirm it reads cleanly there.
     static let catalog: [String] = [
+        // Default — matches the app icon
+        "externaldrive.connected.to.line.below",
         // Brand
         "pills.fill",
         "capsule.fill",
@@ -41,8 +45,6 @@ enum MenuBarIcon {
         "slider.horizontal.3",
         "arrow.left.arrow.right",
         "wand.and.stars",
-        // Connectivity
-        "externaldrive.connected.to.line.below",
         // The eighteenth slot — fills the orphan cell in the 6×3
         // grid and ties back to the About / Welcome confetti.
         "party.popper.fill",

@@ -4,8 +4,10 @@ import AVPainReliever
 
 /// Stable identifiers for the Settings tabs. Bound to the TabView's
 /// selection so callers (e.g. the menu's "Edit Profiles…" item) can
-/// pre-select a tab before opening the window. Tab choice persists
-/// across opens via the AppDelegate's @Published property.
+/// pre-select a tab before opening the window. Reset to `.general`
+/// every time the Settings window closes (see `onDisappear` below),
+/// so a fresh open always starts on General unless a caller
+/// explicitly pre-selected another tab.
 enum SettingsTab: Hashable {
     case general
     case profiles
@@ -60,6 +62,15 @@ struct SettingsView: View {
         }
         .frame(width: 480, height: 380)
         .centeredOnScreen()
+        // Reset to General on close so the next open starts at the
+        // first tab. Apple's own System Settings does the same. The
+        // menu's "Edit Profiles…" override still works: that path
+        // mutates `settingsTab = .profiles` right before opening,
+        // and `.onDisappear` only fires when the previous session
+        // closed — so the override survives the next open.
+        .onDisappear {
+            delegate.settingsTab = .general
+        }
     }
 }
 

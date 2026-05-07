@@ -44,7 +44,7 @@ struct AVPainRelieverApp: SwiftUI.App {
             SettingsView(delegate: appDelegate, settings: appDelegate.settings)
         }
 
-        Window("About AV Pain Reliever", id: aboutWindowID) {
+        Window("About", id: aboutWindowID) {
             AboutWindowContent(delegate: appDelegate)
         }
         .windowResizability(.contentSize)
@@ -225,9 +225,9 @@ private struct MenuContentView: View {
                 Divider()
                 Button {
                     // Pre-select the Profiles tab before opening so
-                    // the user lands on the list directly — Settings
-                    // remembers this across re-opens, mirroring macOS
-                    // default tab persistence.
+                    // the user lands on the list directly. The reset
+                    // to General fires on the next *close*, so this
+                    // override survives the open about to happen.
                     delegate.settingsTab = .profiles
                     openSettings()
                     NSApp.activate(ignoringOtherApps: true)

@@ -152,13 +152,24 @@ let `.primary` / `.secondary` handle text contrast.
     `.green` (success), `.orange` (warn), `.red` (error). These
     survive in `Theme.Color.{success,warn,error}` as the only
     brand-surface entries left.
-- **Menu bar icon (v1)**: SF Symbol `pills.fill` rendered as a template
-  image. Auto-adapts to light/dark mode, native vibe, zero design effort.
-- **App icon (v1)**: runtime-generated neutral gray squircle (top-down
-  light→dark gray gradient) with a white `pills.fill` SF Symbol on
-  top. Looks like an Apple-built utility — System Settings, Disk
-  Utility, that family. The Asset Catalog version for the signed
-  `.app` is still pending.
+- **Menu bar icon (v2 — 2026-05-06)**: SF Symbol
+  `externaldrive.connected.to.line.below` as a template image. Replaces
+  the v1 `pills.fill` default; same SF Symbol the app icon uses, so
+  Dock + menu bar + the wizard's "USB fingerprint" section header
+  share one vocabulary. Picker catalog still ships every prior option
+  including `pills.fill`; users who'd customized keep their choice
+  (the lazy-default pattern at `SettingsStore.swift:245` never
+  persists `defaultSymbol`, so unmodified installs auto-migrate).
+- **App icon (v2 — 2026-05-06)**: runtime-generated icy-blue squircle
+  (light-blue → white linear gradient, top-edge highlight, 16% black
+  inset rim for depth) with a flat Apple-system-blue
+  `externaldrive.connected.to.line.below` SF Symbol mark. Reads as
+  Sparkle-update-icon family — pale chrome, single saturated mark,
+  visible-but-restrained edge. Retires the v1 capsule design (gray
+  squircle + rotated pharma pill) entirely. The drawing is in
+  `Sources/AVPainRelieverApp/AppIcon.swift` and mirrored in
+  `scripts/render-app-icon.swift` (the regen-script copy);
+  `Resources/AppIcon.icns` is checked in and bundled by `make-app.sh`.
 - **Menu bar UI**: native SwiftUI defaults. Status item shows the
   pill icon + current profile title (or "New location" when fallback
   resolves with USB attached).

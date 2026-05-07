@@ -38,8 +38,6 @@ enum Theme {
     }
 
     enum Symbol {
-        /// SF Symbol used for the menu-bar icon and About-window hero.
-        static let appIcon = "pills.fill"
         /// Wizard section icons — keep in lockstep with the section
         /// titles in `AddProfileView`.
         static let nameSection = "tag.fill"

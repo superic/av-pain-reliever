@@ -4,7 +4,7 @@
 // Standalone Swift script invoked by `scripts/regen-icon.sh` whenever
 // the design in `Sources/AVPainRelieverApp/AppIcon.swift` changes.
 // The drawing routine here is a direct copy of `AppIcon.makeIcon()`
-// (and its `capsuleArtwork` helper) so the regen path doesn't require
+// (and its `symbolMark()` helper) so the regen path doesn't require
 // linking the main module — keep the two in sync by hand. The
 // duplication is small (~80 lines of Core Graphics) and the regen
 // script is the only consumer.
@@ -27,102 +27,88 @@ func makeIcon() -> NSImage {
         return image
     }
 
-    ctx.saveGState()
     let cornerRadius: CGFloat = size.width * 0.225
+    let canvasRect = NSRect(origin: .zero, size: size)
     let squircle = NSBezierPath(
-        roundedRect: NSRect(origin: .zero, size: size),
+        roundedRect: canvasRect,
         xRadius: cornerRadius,
         yRadius: cornerRadius
     )
+
+    ctx.saveGState()
     squircle.addClip()
-
-    let topGray = NSColor(red: 0.478, green: 0.486, blue: 0.510, alpha: 1.0)
-    let bottomGray = NSColor(red: 0.180, green: 0.188, blue: 0.204, alpha: 1.0)
-    if let gradient = NSGradient(colors: [topGray, bottomGray]) {
-        gradient.draw(in: NSRect(origin: .zero, size: size), angle: -90)
+    let topIce = NSColor(red: 0.965, green: 0.985, blue: 1.000, alpha: 1.0)
+    let bottomIce = NSColor(red: 0.840, green: 0.905, blue: 0.975, alpha: 1.0)
+    if let gradient = NSGradient(colors: [topIce, bottomIce]) {
+        gradient.draw(in: canvasRect, angle: -90)
     }
+    if let highlight = NSGradient(colorsAndLocations:
+        (NSColor.white.withAlphaComponent(0.22), 0.0),
+        (NSColor.white.withAlphaComponent(0.0), 0.45)
+    ) {
+        highlight.draw(in: canvasRect, angle: -90)
+    }
+    ctx.restoreGState()
 
-    let capsule = capsuleArtwork(canvasSize: size)
+    let mark = symbolMark(canvasSize: size)
     ctx.saveGState()
     let shadow = NSShadow()
-    shadow.shadowColor = NSColor.black.withAlphaComponent(0.22)
-    shadow.shadowOffset = NSSize(width: 0, height: -size.height * 0.010)
-    shadow.shadowBlurRadius = size.width * 0.030
+    shadow.shadowColor = NSColor.black.withAlphaComponent(0.10)
+    shadow.shadowOffset = NSSize(width: 0, height: -size.height * 0.006)
+    shadow.shadowBlurRadius = size.width * 0.012
     shadow.set()
-    capsule.draw(in: NSRect(origin: .zero, size: size),
-                 from: .zero,
-                 operation: .sourceOver,
-                 fraction: 1.0)
+    mark.draw(in: canvasRect, from: .zero, operation: .sourceOver, fraction: 1.0)
     ctx.restoreGState()
 
-    let edgePath = NSBezierPath(
-        roundedRect: NSRect(origin: .zero, size: size).insetBy(dx: 2, dy: 2),
-        xRadius: cornerRadius - 2,
-        yRadius: cornerRadius - 2
+    let edge = NSBezierPath(
+        roundedRect: canvasRect,
+        xRadius: cornerRadius,
+        yRadius: cornerRadius
     )
-    edgePath.lineWidth = 2
-    NSColor.white.withAlphaComponent(0.04).setStroke()
-    edgePath.stroke()
+    edge.lineWidth = size.width * 0.0040
+    NSColor.black.withAlphaComponent(0.18).setStroke()
+    edge.stroke()
 
-    ctx.restoreGState()
     return image
 }
 
-func capsuleArtwork(canvasSize: NSSize) -> NSImage {
+func symbolMark(canvasSize: NSSize) -> NSImage {
     let image = NSImage(size: canvasSize)
     image.lockFocus()
     defer { image.unlockFocus() }
 
-    guard let ctx = NSGraphicsContext.current?.cgContext else {
+    guard
+        let ctx = NSGraphicsContext.current?.cgContext,
+        let sym = NSImage(
+            systemSymbolName: "externaldrive.connected.to.line.below",
+            accessibilityDescription: nil
+        )
+    else {
         return image
     }
 
-    let capsuleLength = canvasSize.width * 0.62
-    let capsuleWidth = canvasSize.width * 0.20
-
-    ctx.translateBy(x: canvasSize.width / 2, y: canvasSize.height / 2)
-    ctx.rotate(by: -25 * .pi / 180)
-
-    let capsuleRect = NSRect(
-        x: -capsuleLength / 2,
-        y: -capsuleWidth / 2,
-        width: capsuleLength,
-        height: capsuleWidth
+    let pt = canvasSize.width * 0.55
+    let baseCfg = NSImage.SymbolConfiguration(pointSize: pt, weight: .regular)
+    let whiteCfg = baseCfg.applying(
+        NSImage.SymbolConfiguration(paletteColors: [NSColor.white])
     )
-    let capsulePath = NSBezierPath(
-        roundedRect: capsuleRect,
-        xRadius: capsuleWidth / 2,
-        yRadius: capsuleWidth / 2
-    )
-
-    NSGraphicsContext.current?.saveGraphicsState()
-    capsulePath.addClip()
-
-    NSColor(red: 0.957, green: 0.961, blue: 0.969, alpha: 1.0).set()
-    NSRect(x: -capsuleLength / 2, y: -capsuleWidth / 2,
-           width: capsuleLength / 2, height: capsuleWidth).fill()
-
-    NSColor(red: 0.765, green: 0.773, blue: 0.792, alpha: 1.0).set()
-    NSRect(x: 0, y: -capsuleWidth / 2,
-           width: capsuleLength / 2, height: capsuleWidth).fill()
-
-    let seamWidth = canvasSize.width * 0.012
-    NSColor(red: 0.659, green: 0.667, blue: 0.686, alpha: 1.0).set()
-    NSRect(x: -seamWidth / 2, y: -capsuleWidth / 2,
-           width: seamWidth, height: capsuleWidth).fill()
-
-    if let highlight = NSGradient(colorsAndLocations:
-        (NSColor.white.withAlphaComponent(0.16), 0.0),
-        (NSColor.white.withAlphaComponent(0.0), 1.0)
-    ) {
-        let highlightRect = NSRect(
-            x: -capsuleLength / 2, y: 0,
-            width: capsuleLength, height: capsuleWidth / 2
-        )
-        highlight.draw(in: highlightRect, angle: 90)
+    guard let whiteSym = sym.withSymbolConfiguration(whiteCfg) else {
+        return image
     }
 
-    NSGraphicsContext.current?.restoreGraphicsState()
+    let symRect = NSRect(
+        x: (canvasSize.width - whiteSym.size.width) / 2,
+        y: (canvasSize.height - whiteSym.size.height) / 2,
+        width: whiteSym.size.width,
+        height: whiteSym.size.height
+    )
+    whiteSym.draw(in: symRect, from: .zero, operation: .sourceOver, fraction: 1.0)
+
+    ctx.setBlendMode(.sourceIn)
+    NSColor(red: 0.000, green: 0.478, blue: 1.000, alpha: 1.0).setFill()
+    NSRect(origin: .zero, size: canvasSize).fill()
+    ctx.setBlendMode(.normal)
+
     return image
 }
 
