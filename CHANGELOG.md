@@ -640,7 +640,7 @@ is at `/Applications/Xcode.app` (currently 26.4.1), so toolchain
 parity is automatic — when local Xcode bumps, CI follows. Queue
 time drops from "30+ minute spike risk" to "starts in seconds."
 Setup details + security model in
-[docs/SELF_HOSTED_RUNNER.md](docs/SELF_HOSTED_RUNNER.md).
+[docs/self-hosted-runner.md](docs/self-hosted-runner.md).
 
 Security mitigation for self-hosted on a public repo: configured
 the Actions setting `fork-pr-contributor-approval =
@@ -658,7 +658,7 @@ and `cmp`'d the two Mach-Os. Result: 3,520 byte delta (down from
 ~209 KB on v0.2.0.11), all attributable to notarization-ticket
 embedding. Same SDK, same renderings paths, byte-equivalent code.
 Only then published. This step is now standard for every release —
-see [docs/RELEASING.md](docs/RELEASING.md) "Pre-publish binary
+see [docs/releasing.md](docs/releasing.md) "Pre-publish binary
 verification."
 
 Lessons:
@@ -691,8 +691,8 @@ Files touched:
 - `.github/workflows/release.yml` — runs-on swap, removed Select
   Xcode step, made SPM cache reset GitHub-hosted-only
 - `.github/workflows/test.yml` — same
-- `docs/SELF_HOSTED_RUNNER.md` — new setup + security guide
-- `docs/RELEASING.md` — added pre-publish verification convention,
+- `docs/self-hosted-runner.md` — new setup + security guide
+- `docs/releasing.md` — added pre-publish verification convention,
   post-mortem entry for v0.2.0.12
 
 PR: [#31](https://github.com/superic/av-pain-reliever/pull/31)
@@ -751,7 +751,7 @@ What the graduation actually changes:
   remain in place. Help text under the toggle was genericized
   ahead of this PR (PR #34) so it doesn't name v0.2.x specifically
   and stays accurate as the experimental queue empties / refills.
-- **`docs/RELEASING.md` documents the new tag convention** in a
+- **`docs/releasing.md` documents the new tag convention** in a
   new "Stable vs experimental tags" section, including the
   `vX.Y.Z` vs `vX.Y.Z-experimental.N` rule and graduation
   procedure ("ship next release without the suffix; optionally
@@ -1315,7 +1315,7 @@ generation) gating the first real release.
   ready-to-paste `<item>` block. Reads the private key from
   `$SPARKLE_PRIVATE_KEY` (CI) or the `avpainreliever` keychain
   account (local).
-- `docs/RELEASING.md` — runbook for Apple Developer Program
+- `docs/releasing.md` — runbook for Apple Developer Program
   enrollment, Sparkle key generation, the seven `gh secret set`
   commands, the first-tag checklist, and a troubleshooting section.
 
@@ -1368,12 +1368,12 @@ generation) gating the first real release.
 
 - Apple Developer Program enrollment ($99/yr, 24–48h approval).
 - Sparkle EdDSA keypair generation + Info.plist substitution.
-- Setting the seven GitHub Secrets per `docs/RELEASING.md`.
+- Setting the seven GitHub Secrets per `docs/releasing.md`.
 - First `git tag v0.1.0` push to exercise the workflow end-to-end.
 - Smoke-test auto-update by tagging `v0.1.1` immediately after
   with a one-line README change.
 
-`docs/RELEASING.md` is the canonical handoff for these.
+`docs/releasing.md` is the canonical handoff for these.
 
 ### Verification done in this session
 
@@ -1433,7 +1433,7 @@ auto-update exercise immediately after.
   out cleanly: "The binary is not signed with a valid Developer ID
   certificate" + "The signature does not include a secure
   timestamp" for both arm64 and x86_64 slices. Fix: add the path
-  to the array. Documented in `docs/RELEASING.md` post-mortem
+  to the array. Documented in `docs/releasing.md` post-mortem
   section so a future Sparkle version bump prompts a re-walk of
   `Versions/B/`.
 - **`xcrun notarytool log <id>` is the must-have diagnostic.** A
@@ -1477,7 +1477,7 @@ To make a recurrence less likely:
   (allows up to <3.0) to `.upToNextMinor(from: "2.9.0")` (allows
   2.9.x patches only). New minor needs a deliberate bump and a
   fresh walk of `Versions/B/` to confirm no new nested helpers.
-- `docs/RELEASING.md` post-mortem section captures the four
+- `docs/releasing.md` post-mortem section captures the four
   lessons above + the diagnostic incantations.
 
 ### Pending after v0.1.0 (small)
@@ -1498,7 +1498,7 @@ To make a recurrence less likely:
   AppDelegate as the SwiftUI scene wiring + lifecycle. Not
   blocking anything; the file is dense but understandable.
 - Homebrew-cask distribution path (still on the v2 list per
-  `docs/RELEASING.md`).
+  `docs/releasing.md`).
 
 ---
 
@@ -1596,7 +1596,7 @@ from the same drawing via a new `scripts/regen-icon.sh` pipeline:
 2. `sips` downscales to every size `iconutil` expects.
 3. `iconutil -c icns` packs the iconset.
 
-`docs/RELEASING.md` documents the regen step.
+`docs/releasing.md` documents the regen step.
 
 **Menu bar symbol picker.** New Settings → General → Behavior row
 "Menu bar icon" with a popover-bound 6-column grid of ~12 curated

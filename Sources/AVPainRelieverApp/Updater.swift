@@ -15,7 +15,7 @@ import OSLog
 ///     raw.githubusercontent.com.
 ///   - `SUPublicEDKey` is the EdDSA public key Sparkle uses to verify
 ///     downloaded zips. Filled in once by the maintainer running
-///     Sparkle's `generate_keys` (see docs/RELEASING.md).
+///     Sparkle's `generate_keys` (see docs/releasing.md).
 ///
 /// We don't override automatic-check defaults — Sparkle's standard
 /// behaviour (prompt the user on first launch, then check daily once
@@ -37,7 +37,7 @@ final class Updater {
     /// Build-time placeholder string in `Resources/Info.plist`. The
     /// release pipeline expects the maintainer to swap this for the
     /// real `SUPublicEDKey` printed by Sparkle's `generate_keys`
-    /// before tagging a signed release — see docs/RELEASING.md §2.
+    /// before tagging a signed release — see docs/releasing.md §2.
     static let publicKeyPlaceholder = "__SPARKLE_PUBLIC_KEY__"
 
     /// True iff Sparkle should be wired up for the running binary.

@@ -14,7 +14,7 @@ Builds run on a **self-hosted runner** installed on the maintainer's
 Mac, not on a GitHub-hosted VM. This is what guarantees toolchain
 parity between the bytes shipped to users and the bytes the maintainer
 sees in dev builds. Setup, security model, and recovery procedure are
-in [SELF_HOSTED_RUNNER.md](SELF_HOSTED_RUNNER.md).
+in [self-hosted-runner.md](self-hosted-runner.md).
 
 Until the GitHub Secrets listed below are populated, every step that
 depends on Apple credentials or the Sparkle private key skips with a
@@ -133,7 +133,7 @@ post-mortem below for the failure mode this prevents.
 Setup, security configuration (fork-PR approval policy), status
 checks, lockstep rule for Xcode upgrades, uninstall, and recovery
 on a fresh Mac are all in
-[SELF_HOSTED_RUNNER.md](SELF_HOSTED_RUNNER.md). Do that one-time
+[self-hosted-runner.md](self-hosted-runner.md). Do that one-time
 install before tagging your first release; subsequent releases
 just need the runner to be online.
 
@@ -460,7 +460,7 @@ the CI version.
 
 Fix: switched CI to a self-hosted runner on the maintainer's Mac
 that uses the maintainer's own Xcode (see
-[SELF_HOSTED_RUNNER.md](SELF_HOSTED_RUNNER.md)). Toolchain parity
+[self-hosted-runner.md](self-hosted-runner.md)). Toolchain parity
 guaranteed. Bonus: queue time dropped from "30+ min spike risk on
 Apple Silicon free pool" to "starts in seconds."
 

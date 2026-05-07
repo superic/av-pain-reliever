@@ -13,7 +13,7 @@
 #   5. Append a new <item> to appcast.xml on main and push, so existing
 #      installs see the update.
 #
-# Required GitHub Secrets — see docs/RELEASING.md for setup instructions:
+# Required GitHub Secrets — see docs/releasing.md for setup instructions:
 #   MACOS_CERTIFICATE             base64 of the Developer ID Application .p12
 #   MACOS_CERTIFICATE_PASSWORD    .p12 password
 #   MACOS_KEYCHAIN_PASSWORD       random — for the temp keychain Actions creates

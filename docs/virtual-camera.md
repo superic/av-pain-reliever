@@ -2,7 +2,7 @@
 
 The native CMIO Camera Extension that lets Zoom / Slack / Teams pick up "AV Pain Reliever" as a camera and follow the active profile's source. This is the canonical V2 record — design decisions, system-extension lifecycle, lock-step rule with the host app, codesign quirks, and the implementation milestones (M1–M7) as they landed.
 
-For developer setup of this feature see [docs/VIRTUAL_CAMERA_DEV.md](VIRTUAL_CAMERA_DEV.md) (build/install loop, common failures, fallback paths).
+For developer setup of this feature see [docs/virtual-camera-dev.md](virtual-camera-dev.md) (build/install loop, common failures, fallback paths).
 
 ## V2 plan: native virtual camera (CMIO Camera Extension)
 
@@ -311,7 +311,7 @@ What landed:
   activation. No-op on v0.1.x builds (entitlement absent → request
   fails harmlessly). M4 will replace this with a real Settings
   toggle.
-- `docs/VIRTUAL_CAMERA_DEV.md` — local-test recipe:
+- `docs/virtual-camera-dev.md` — local-test recipe:
   `systemextensionsctl developer on`, build, ditto into
   `/Applications`, env-var-launch, verify in Zoom, iteration loop,
   uninstall, common failure modes.
@@ -384,7 +384,7 @@ milestones don't relearn the same things:
    the extension on. State then transitions to
    `[activated enabled]`.
 
-The dev workflow (`docs/VIRTUAL_CAMERA_DEV.md`) was rewritten in a
+The dev workflow (`docs/virtual-camera-dev.md`) was rewritten in a
 follow-up commit to reflect the actual recipe instead of the
 ad-hoc + developer-mode + SIP-off path I originally documented.
 
@@ -676,7 +676,7 @@ Three sub-tasks, all landed:
    base64-encoded provisioning profile; decoded into
    `Resources/AVPainReliever.provisionprofile` only for v0.2.x+
    runs (skipped silently on v0.1.x to keep that pipeline a
-   no-op). `docs/RELEASING.md` updated to reflect the new
+   no-op). `docs/releasing.md` updated to reflect the new
    secret + the script-selection logic.
 
 3. **Sparkle / extension upgrade-replace verification —
@@ -747,7 +747,7 @@ Failure modes worth watching for:
 ### v0.2.0 release notes (draft, ready to copy)
 
 Paste this into the GitHub Release body when pre-creating the v0.2.0
-draft release (per `docs/RELEASING.md`'s curated-notes flow). The CI
+draft release (per `docs/releasing.md`'s curated-notes flow). The CI
 workflow renders it through GitHub's `/markdown` API and pipes the
 HTML into the appcast `<description>`, so what you write here is
 exactly what shows up in Sparkle's "What's New" panel for upgrading

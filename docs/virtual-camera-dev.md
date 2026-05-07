@@ -2,7 +2,7 @@
 
 Recipe for building, activating, and testing the v0.2.0 Camera
 Extension on a development Mac. Distribution flow lives in
-`docs/RELEASING.md` once we get there; for now this is the loop
+`docs/releasing.md` once we get there; for now this is the loop
 used while the feature is on `feature/virtual-camera`.
 
 The recommended path uses your normal Developer ID Application
@@ -89,7 +89,7 @@ System extensions can't be activated by macOS without a notarized
 bundle, even with valid Developer ID signing. The build script
 runs notarization via `xcrun notarytool` against a keychain
 profile you've already set up for v0.1.x — see
-`docs/RELEASING.md` for the one-time
+`docs/releasing.md` for the one-time
 `xcrun notarytool store-credentials avpain-notary` step.
 
 If you've ever notarized a v0.1.x release locally, you have it.

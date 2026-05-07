@@ -21,7 +21,7 @@
 #
 # Dev workflow note: ad-hoc-signed builds will only activate on a
 # machine with `systemextensionsctl developer on`. See
-# docs/VIRTUAL_CAMERA_DEV.md for the full local-test recipe.
+# docs/virtual-camera-dev.md for the full local-test recipe.
 
 set -euo pipefail
 
@@ -154,7 +154,7 @@ cp -R "$SPARKLE_FRAMEWORK_SRC" "$APP_BUNDLE/Contents/Frameworks/Sparkle.framewor
 # We require it for Developer-ID-signed builds and warn (but allow)
 # ad-hoc builds without it, since the ad-hoc path is for the
 # fallback developer-mode workflow that doesn't honour profiles
-# anyway. See docs/VIRTUAL_CAMERA_DEV.md.
+# anyway. See docs/virtual-camera-dev.md.
 if [[ -n "${MAC_CERT_NAME:-}" ]]; then
     if [[ ! -f "$APP_PROVISIONING_PROFILE" ]]; then
         cat <<EOF >&2
@@ -172,7 +172,7 @@ Generate one at developer.apple.com:
   - Profiles: New → Developer ID → select the App ID → download.
 
 Save the .provisionprofile at the path above (it's gitignored).
-See docs/VIRTUAL_CAMERA_DEV.md for the full walkthrough.
+See docs/virtual-camera-dev.md for the full walkthrough.
 EOF
         exit 1
     fi
@@ -192,7 +192,7 @@ if [[ -n "${MAC_CERT_NAME:-}" ]]; then
 else
     SIGN_IDENTITY="-"
     SIGN_OPTS=()
-    echo "==> ad-hoc sign (MAC_CERT_NAME unset; needs systemextensionsctl developer on + SIP off — see docs/VIRTUAL_CAMERA_DEV.md fallback)"
+    echo "==> ad-hoc sign (MAC_CERT_NAME unset; needs systemextensionsctl developer on + SIP off — see docs/virtual-camera-dev.md fallback)"
 fi
 
 sign_path() {
@@ -269,4 +269,4 @@ echo "  version:   $VERSION  (build $BUILD_VERSION)"
 echo "  extension: $EXT_DIR_NAME"
 echo "  zip:       $FINAL_ZIP ($(stat -f%z "$FINAL_ZIP") bytes)"
 echo
-echo "next: see docs/VIRTUAL_CAMERA_DEV.md for activation + Zoom test"
+echo "next: see docs/virtual-camera-dev.md for activation + Zoom test"
