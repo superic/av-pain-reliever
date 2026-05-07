@@ -25,12 +25,19 @@ Never put the cert name, team ID, or anything personal-credential-shaped into pu
 | Virtual camera (V2 CMIO extension) — design + impl journal | `docs/virtual-camera.md` |
 | Phase-1 Hammerspoon→Swift port history | `docs/port-history.md` |
 | Project journal (newest-first) | `CHANGELOG.md` |
-| Release process (cutting a release, secrets setup) | `docs/RELEASING.md` |
-| Self-hosted CI runner setup + lockstep rule | `docs/SELF_HOSTED_RUNNER.md` |
-| Virtual camera developer setup (build/install loop) | `docs/VIRTUAL_CAMERA_DEV.md` |
+| Release process (cutting a release, secrets setup) | `docs/releasing.md` |
+| Self-hosted CI runner setup + lockstep rule | `docs/self-hosted-runner.md` |
+| Virtual camera developer setup (build/install loop) | `docs/virtual-camera-dev.md` |
 | User-facing intro | `README.md` |
 
 If a fact you need isn't in any of these, it likely belongs in code comments or memory, not new prose.
+
+### Markdown filename convention
+
+- **Repo-root meta files** (`README.md`, `LICENSE`, `CHANGELOG.md`, `CLAUDE.md`) → UPPERCASE. These speak *about* the project; GitHub renders them prominently.
+- **Content under `docs/`** → lowercase-hyphenated. Modern docs convention; URL-friendly. Example: `docs/architecture.md`, `docs/self-hosted-runner.md`.
+
+Don't mix the two conventions inside `docs/`. If a new doc belongs there, it's lowercase-hyphenated.
 
 ## Project-wide conventions
 
