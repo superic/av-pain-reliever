@@ -28,6 +28,11 @@ prototypes/hammerspoon/logs/
 # Distribution output — produced by scripts/make-app.sh; never commit.
 dist/
 
+# Local-only dev tooling (private build helpers, cert config, etc).
+# Each developer maintains their own dev/ as the working tree of a
+# separate private repo. See dev/README.md for setup.
+dev/
+
 # Provisioning profiles. Team-specific, regenerable from
 # developer.apple.com, and contain the team ID + cert hashes —
 # never commit. Each developer drops their own at this path.
