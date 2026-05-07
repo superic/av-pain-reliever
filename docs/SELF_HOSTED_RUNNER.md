@@ -5,9 +5,9 @@ maintainer's Mac. This document covers why, the security model, the
 install procedure, and how to recover the setup on a fresh machine.
 
 For the release pipeline that uses this runner, see
-[RELEASING.md](RELEASING.md). For the v0.2.0.12 post-mortem that
-motivated this setup, see the journal entry of the same name in
-[../SWIFT_PORT.md](../SWIFT_PORT.md).
+[RELEASING.md](RELEASING.md). The v0.2.0.12 post-mortem that
+motivated this setup is captured in RELEASING.md's "Post-mortem:
+lessons from v0.2.0.12" section.
 
 ## Why self-hosted
 

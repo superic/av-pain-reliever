@@ -81,7 +81,7 @@ public protocol USBWatcher {
 /// Production `USBWatcher` backed by IOKit. Lifted from
 /// `prototypes/usb-watcher.swift` once that prototype proved the
 /// notification-port + drained-iterator pattern works (see
-/// `SWIFT_PORT.md` → "IOKit prototype findings").
+/// `docs/architecture.md` → "IOKit prototype findings").
 ///
 /// Threading: the IOKit notification port is wired into the main run
 /// loop, so `onChange` always fires on the main thread, matching the

@@ -1,0 +1,1626 @@
+# Changelog
+
+Project journal in newest-first order. Each entry captures what shipped, why, and any operational notes worth keeping. The "What's new" entries are the user-facing release-notes voice (Vince Vaughn); earlier entries are internal design-pass notes.
+
+## What's new
+
+OK here's the deal. v0.2.0 is the big one. **AV Pain Reliever is now
+a virtual camera.** That's right — the same app that's been quietly
+swapping your audio defaults all this time can now also be the camera
+that Zoom, Slack, Teams, and any other video app picks up. One
+camera in their picker. One name. **AV Pain Reliever.** It streams
+whatever real camera the active profile names — your built-in webcam
+at the laptop, the HDMI capture at the home office, your iPhone via
+Continuity at the conference room — whatever you've configured. The
+profile changes, the picture follows. Money.
+
+Here's what this fixes: Zoom, Slack, and Teams keep their *own*
+camera selection that ignores the system default. So back in v0.1.x
+when you docked at a new location, your microphone and speakers
+would change, but Zoom would just sit there showing your laptop
+webcam like nothing happened. That's amateur hour. With v0.2.0, you
+pick "AV Pain Reliever" in Zoom once and you're done. Forever.
+
+It's **off by default** — installing a virtual camera is a real thing
+and we're not turning it on without your permission, that's not how
+we do business. Open **Settings → Camera** and flip the toggle.
+macOS will ask you to approve the extension once (System Settings →
+Login Items & Extensions → Camera Extensions). After that, you're in.
+
+A few technical things, briefly, because if you're reading this far
+you probably care:
+
+- **Hold-last-frame** during the swap. When you change profiles, the
+  new camera takes a beat to warm up — about half a second. Instead
+  of flashing black at your Zoom call, the virtual camera holds the
+  last frame from the old camera until the new one's delivering
+  frames. You see a soft pause; nobody on the call sees a glitch.
+- **Format conversion** for any camera. Built-in webcams ship BGRA,
+  USB capture cards ship YUV at 1080p, every device has its quirks.
+  We accept whatever the camera natively delivers and convert to
+  1280×720 BGRA on the fly, hardware-accelerated where possible.
+  Means your weird HDMI capture card just works.
+- **Profile-driven everywhere.** The same Add Profile wizard that
+  picks your audio defaults now also picks the camera the virtual
+  camera streams. No new config to learn — it's the same `camera =`
+  field you've already been using. v0.1.x configs upgrade clean.
+
+One known thing: if you toggle the virtual camera off and then back
+on inside the same launch, macOS holds the extension in a stale
+state and the feed goes black. The Settings UI catches this and
+gives you a **Restart AV Pain Reliever** button that handles it. One
+click, fresh process, you're back. Edge case — most folks turn it
+on once and leave it. Not a deal-breaker.
+
+That's the update. Virtual camera, profile-driven, hold-last-frame,
+universal format support. v0.1.x will keep getting patch releases
+in parallel for anyone who doesn't need any of this. **Money.**
+```
+
+### M2 lessons (gotchas the architecture or first attempts hit)
+
+1. **`AVCaptureVideoDataOutput.sessionPreset` ≠ output
+   dimensions.** Setting `session.sessionPreset = .hd1280x720`
+   does not force the output to 1280×720 — the FaceTime HD camera
+   shipped 1920×1080 frames anyway. Fix: add
+   `kCVPixelBufferWidthKey`/`kCVPixelBufferHeightKey` to
+   `output.videoSettings`. AVFoundation does the downscale.
+2. **Pre-built `CMFormatDescription` is fragile.** If the format
+   description's dimensions don't match the actual pixel buffer,
+   `CMSampleBufferCreateForImageBuffer` fails with -12743
+   (`kCMSampleBufferError_InvalidMediaFormat`). Derive the
+   format description from the pixel buffer (cached when
+   dimensions stay constant). See
+   `CMIOSinkWriter.formatDescription(for:)`.
+3. **Don't trust stream array order.** OBS's plugin uses
+   `streams[1]` to find its sink, but that's not portable across
+   device implementations. Query
+   `kCMIOStreamPropertyDirection` (0 = output/sink,
+   1 = input/source) and pick by direction.
+4. **Hardened runtime needs `com.apple.security.device.camera`
+   even outside the sandbox.** TCC won't even prompt — it
+   silently denies. Without that key, `requestAccess` returns
+   `denied` with no UI. Add the entitlement to the v0.2.0 host
+   entitlements file.
+5. **Swift `NSLog` doesn't reach unified logging on
+   macOS 14+** in our LSUIElement host or the system extension.
+   Use `os.Logger(subsystem:category:)` exclusively. Tail with
+   `log stream --predicate 'subsystem CONTAINS "ericwillis.avpainreliever"' --info --style compact`.
+6. **Iterating on the extension binary requires either a reboot
+   OR a Settings toggle off/on cycle.** Each new extension
+   version queues the previous one as
+   `[terminated waiting to uninstall on reboot]`, and macOS
+   stops exposing the device through `system_profiler
+   SPCameraDataType` until that queue clears. Confirmed both
+   paths work: full reboot or System Settings → General →
+   Login Items & Extensions → Camera Extensions → toggle off,
+   wait, toggle on. The toggle path is faster but doesn't
+   always work; reboot is the supported recovery.
+7. **`open --env VAR=val`, not `VAR=val open`.** The shell-prefix
+   form is stripped by `open` before launchd handoff. Has
+   bitten us in M1 too — kept as a permanent note.
+8. **Don't overlay a new bundle in `/Applications` between a
+   build and a reboot.** macOS picks up the new bundle during
+   boot and kicks off another upgrade cycle, undoing whatever
+   the reboot was supposed to clean up. Reboot first, then
+   install.
+
+### Wizard camera-picker discovery (2026-05-04)
+
+User report: after activating the virtual camera, "AV Pain
+Reliever" showed up in Photo Booth but not in the Add/Edit
+Profile wizard's camera picker. Three independent gotchas
+overlapping; fix had to address each:
+
+1. **Camera TCC for the host process.** `AVCaptureDevice.DiscoverySession`
+   in a host that's never been granted camera permission
+   silently hides `.external` devices including the host's
+   own embedded Camera Extension. `CameraCaptureSession` only
+   asks when the sink pipeline starts, which leaves the
+   wizard blind on toggle-on-but-never-opened-Add states.
+   Fix: `AppDelegate.applicationDidFinishLaunching` now
+   pre-grants on `.notDetermined` so TCC settles before any
+   wizard opens. Idempotent — `AVCaptureDevice.requestAccess`
+   no-ops once authorized.
+2. **Wizard reads the camera list once, at init.**
+   `AddProfileViewModel.refresh()` runs from the initializer
+   and from the manual Refresh button — nothing observes
+   `VirtualCameraActivator.state`. A wizard opened during
+   `.activating` / `.needsApproval` froze without the virtual
+   camera. Fix: `WizardForm` now `.onReceive`s
+   `delegate.virtualCameraActivator.$state` and triggers
+   `viewModel.refresh()` on `.on`.
+3. **Host process can't always see its own Camera Extension.**
+   Even with TCC and a fresh refresh, AVFoundation's
+   in-process discovery cache stays stale on first
+   activation in some launches. Photo Booth (separate
+   process) sees it; the host doesn't until relaunch.
+   Same family as the existing disable→re-enable
+   `requiresRelaunch` quirk. Fix:
+   `VirtualCameraActivator.scheduleHostVisibilityCheck()`
+   runs ~1.5 s after state flips to `.on`, runs a fresh
+   `DiscoverySession`, looks for the extension by
+   `virtualCameraUID`. If absent, escalates to
+   `.requiresRelaunch` and stops the capture pipeline so
+   the existing Settings "Restart" affordance handles it.
+
+Lesson: a CMIO Camera Extension being live in the OS-level
+graph does not guarantee the host that activated it can see
+it. Always test the picker from inside the host, not just
+Photo Booth.
+
+### Lazy capture, signaled from the extension (2026-05-04)
+
+User report: "macOS shows the green camera light on whenever
+AV Pain Reliever is running, even when I'm not in a call.
+OBS doesn't do this."
+
+Root cause: `VirtualCameraActivator.enable()` was opening an
+`AVCaptureSession` on the user's webcam the moment the
+toggle flipped, regardless of whether anything was reading
+the virtual camera. Always-on capture = always-on green
+light. The original M3 design picked this for hold-last-frame
+guarantees during mid-call source swaps, but those guarantees
+only matter while a call is in progress; the rest of the
+time the running session was pure waste.
+
+OBS comparison: OBS gates capture on (a) a scene that uses
+the camera being active AND (b) a downstream consumer
+reading the OBS Virtual Camera output. We had neither gate.
+
+Constraint that shaped the fix (M2 attempt #1, above): the
+Camera Extension itself can't run AVFoundation, so we can't
+move capture into the extension. Capture stays host-side; the
+only knob is *when* the host starts/stops it.
+
+Design:
+
+- Extension exposes a "consumer is active" signal via Darwin
+  notifications (Team-ID-prefixed names so the sandbox lets
+  the extension post). Edge-triggered on `streamingCounter`
+  0↔1 transitions in `CameraExtensionStreamSource.startStream`
+  / `stopStream`.
+- Host (`VirtualCameraActivator`) registers
+  `CFNotificationCenter` Darwin observers as soon as state
+  reaches `.on`, posts a "what's the current state?" ping so
+  the extension re-broadcasts (covers the "host launches with
+  extension already streaming a Zoom call from a previous
+  host instance" case), and routes notifications to
+  `handleConsumerActive` / `handleConsumerInactive`.
+- Active: cancel any pending stop, start the pipeline if not
+  running.
+- Inactive: schedule a 30-s `DispatchSourceTimer` grace.
+  Cancelled if a new consumer joins inside the window.
+  Stops the pipeline on expiry.
+
+Why Darwin notifications and not custom CMIO properties: the
+CMIOExtension framework's bridging from `CMIOExtensionProperty`
+(string-based) to host-visible `CMIOObjectAddPropertyListener`
+(OSType selectors) isn't documented for custom properties.
+Darwin notifications are 1980s-tech, but they work cleanly
+across the sandbox boundary with a Team-ID prefix and are
+edge-triggered for free. The "host launches mid-stream" case
+is solved by a single ping at observer-registration time.
+
+Result:
+
+- Idle (toggle on, no Zoom call): green light off, no
+  capture.
+- Zoom opens our virtual camera: ~300-500 ms warmup, then
+  frames flow.
+- Zoom call ends: capture stays warm 30 s; green light goes
+  off after.
+- Profile-driven mid-call source swap: unchanged — the
+  extension still re-emits the cached frame to cover the
+  source-swap gap.
+
+What we explicitly didn't add: a logo splash for the warmup
+window. AV Pain Reliever's "passive utility" identity says
+the camera should show the user's actual face, not our
+brand, even for half a second.
+
+### Profile camera = source, virtual camera = output (2026-05-04)
+
+User caught a conceptual mismatch the day after the wizard
+fix shipped: the per-profile Camera picker was listing
+"AV Pain Reliever" alongside real cameras. That treated the
+virtual camera as a possible *input source* — which is
+nonsense, since the virtual camera's whole purpose is to be
+the *output* that Zoom/Slack/etc. point at. A profile names
+the *real* camera the virtual camera should route per
+location.
+
+Decision (option #2 of the three we walked through): when the
+virtual camera is the active routing layer, the system-wide
+preferred camera (`AVCaptureDevice.userPreferredCamera`)
+points at the virtual camera, not the real one. Reasoning:
+
+- Users set Zoom/Slack/Teams to "AV Pain Reliever" once,
+  manually. That's the contract.
+- AVFoundation-modern apps (FaceTime, Safari getUserMedia,
+  Photo Booth) honour `userPreferredCamera` automatically.
+  Setting it to the virtual camera makes those apps follow
+  the same routing as Zoom — one coherent system state.
+- System Settings → Cameras → Preferred Camera shows
+  "AV Pain Reliever," which reinforces the model when the
+  user goes looking.
+
+Implementation:
+
+- New `VirtualCameraSourceController.preferredCameraOverride: String?`
+  protocol property (default `nil` so existing impls / tests
+  compile unchanged).
+- `VirtualCameraActivator` returns `"AV Pain Reliever"` when
+  state is `.on`, nil otherwise. During `.activating` /
+  `.needsApproval` / `.requiresRelaunch` / `.failed` we don't
+  redirect — the device might not deliver frames.
+- `ProfileApplier`: when `preferredCameraOverride` is non-nil,
+  `setPreferred` gets the override; `setSource` still gets
+  the profile's literal real-camera name. When nil, both
+  calls get the literal name (legacy V1 behaviour).
+- Wizard filters the virtual camera out of the picker
+  (`AddProfileViewModel.refresh`) and quietly clears any
+  saved profile value that points at it (legacy migration
+  for profiles created during the buggy window). Helper text
+  under the picker now adapts to the toggle state — explains
+  the routing model when the virtual camera is on.
+- `Engine.reapply()` + `ProfileApplier.invalidateLastApplied()`:
+  the same profile name now produces different system-state
+  writes depending on the toggle, so the dedupe key has to be
+  invalidated when the toggle flips. Toggle off ⇒ AppDelegate
+  calls `engine.reapply()` synchronously; toggle on ⇒ the
+  activator's `.on` transition fires a `$state` Combine
+  observer that does the same.
+- `VirtualCameraActivator.disable()`: defensively clears
+  `userPreferredCamera` if it's currently the virtual camera,
+  so AVFoundation-modern apps don't get stuck on a now-dead
+  device while the engine catches up.
+
+Pieces left untouched:
+
+- Menu bar's `currentCameraDisplay` still shows the
+  *profile's* real camera name. Correct under the new
+  model — the profile's intent is "use BRIO at this
+  location," and the menu surfaces that intent.
+- We don't programmatically set `userPreferredCamera` on
+  toggle-on outside of the next profile apply. If the
+  active profile has `camera == nil`, the system pref
+  isn't touched. The user's "set Zoom to AV Pain
+  Reliever once" instruction stays the contract; we don't
+  over-ride to be helpful.
+
+### Self-source feedback loop on late consumer connect (2026-05-05)
+
+User report: virtual camera frozen on one frame intermittently
+when sourcing from the office Neat Bar. FaceTime as the
+source worked fine. Frames showed flowing in the log, just
+all the same frame.
+
+Two interacting bugs from the prior two days landed us here:
+
+1. **`preferredCameraOverride` set `userPreferredCamera` to
+   the virtual camera** (the right call for Zoom/FaceTime
+   parity, see prior section). But
+   `CameraCaptureSession.pickInitialDevice` reads
+   `userPreferredCamera` first — so the host opened its own
+   output as a capture source. Self-source: the host writes
+   whatever it just read; the extension forwards it back; the
+   only "real" frame is whatever the extension had cached at
+   the loop's first iteration. Frozen frame, but with
+   `Consumed` / `Forwarded` / `Enqueued` cycling at 30 fps in
+   the log so it wasn't obviously broken.
+2. **Lazy capture dropped pending `setSource` requests.**
+   When a profile applied while no consumer was connected,
+   `VirtualCameraActivator.setSource` no-op'd silently and
+   forgot the requested name. So when Zoom connected later,
+   the host had no idea the active profile wanted "Neat Bar
+   Pro" and fell through to `userPreferredCamera` — bug #1.
+
+Why "sometimes": the failure mode depends on Zoom-vs-dock
+ordering. Open Zoom first, then dock → engine resolves the
+office profile → `setSource` runs against the live session →
+`switchSource` swaps inputs → real frames. Dock first, then
+open Zoom → `setSource` is a no-op + dropped → consumer
+connects → host self-sources → frozen.
+
+Fix:
+
+- `CameraCaptureSession.pickInitialDevice` rejects the
+  virtual camera at every fallback step (userPreferred,
+  systemPreferred, first discovered). New
+  `isVirtualCamera(_:)` helper that matches on
+  `VirtualCameraActivator.virtualCameraUID`. `findDevice`
+  also rejects defensively so a profile that names "AV
+  Pain Reliever" can't reopen the loop from the swap path.
+- `CameraCaptureSession` gains an `initialSourceName: String?`
+  init param. When set, it's the first thing
+  `pickInitialDevice` tries.
+- `VirtualCameraActivator.setSource` now stores the
+  requested name in `pendingSourceName` even when the
+  capture pipeline isn't running. `startCapturePipeline`
+  passes it through to `CameraCaptureSession.init`. Cleared
+  on disable + on the visibility-check failure path so the
+  next enable starts clean.
+
+Lesson: any time a capture pipeline can be torn down and
+re-created mid-session (lazy capture, sleep/wake, error
+recovery), the "what does the user want right now" state
+has to live OUTSIDE the pipeline — otherwise it's lost on
+every restart and the pipeline restarts with system defaults
+that may not match the active profile.
+
+### Local stats screen + privacy-first opt-in (2026-05-05)
+
+User wanted a "fun nerdy stats" surface — counts of profile
+switches, per-profile activations, streaks, unique USB
+devices recognized. Discussed and ruled out anything
+duration-based (camera-on time, frames piped, meeting
+length) as too close to "tracking my work."
+
+Shipped under a new **Stats** Settings tab. Originally
+planned as "Advanced" with stats inside, but the menu bar
+already exposes an Advanced submenu — two surfaces with the
+same name read as a UI bug. Renamed to "Stats" to match
+the actual content; future advanced/diagnostic settings can
+get their own home if and when they show up.
+
+Privacy stance: tracking is **off by default**. Every
+recording method on `SettingsStore` (`incrementSwitchCount`,
+`incrementManualOverrideCount`, `recordSwitch`,
+`recordDevicesSeen`) early-returns when
+`statsTrackingEnabled == false`. No `UserDefaults` writes
+happen until the user explicitly opts in. Existing values
+freeze (don't reset) when the user later disables — a
+separate Reset Stats button wipes everything on demand.
+
+Stat list (Balanced bundle):
+
+- Total auto-switches (existing `profileSwitchCount`,
+  surfaced)
+- Per-profile activation counts → most-used location
+  highlight + ranked list
+- Tracking-since date (stamped on first opt-in, NOT on
+  app first-launch, so the "47 days strong" number is
+  honest about what's actually been recorded)
+- Last switched (relative time + profile slug)
+- Manual overrides (count of menu-driven `applyManually`
+  calls)
+- Current streak / Longest streak / Active days
+- Unique USB devices recognized (count only, hashed as
+  `"<vid>:<pid>"`)
+
+Engine plumbing: new `Engine.onDevicesEvaluated:
+((Set<USBDevice>) -> Void)?` callback, fires inside
+`evaluateAndApply` after the watcher poll, regardless of
+profile change. Lets `AppDelegate` feed the unique-devices
+set without spinning up its own watcher.
+
+Lesson: privacy-first defaults are easy to bolt on with a
+single gate flag, but only if you push the gate into the
+domain object (`SettingsStore`) instead of every caller.
+Putting `guard statsTrackingEnabled else { return }` at the
+top of each `record*` method means callers in `AppDelegate`
+don't carry the conditional, and the easter-egg menu line
+("Switched N times…") naturally freezes on opt-out without
+any view-level changes.
+
+### Button styling pass for macOS HIG alignment (2026-05-05)
+
+Sweep across every standalone Button in the app to retire the
+"indie SwiftUI app" tells and read as a native macOS settings
+utility. Triggered by a side-by-side review of all four Settings
+tabs + the Add/Edit Profile sheet — the buttons worked but
+collectively read as off-pattern next to System Settings.
+
+Rules applied (now also documented in
+[plans/look-at-all-of-rustling-beacon.md](.claude/plans/look-at-all-of-rustling-beacon.md)):
+
+1. No SF Symbol prefix on text Buttons. Apple's own dialog/sheet
+   footers are text-only — Cancel never has an xmark, Save never
+   has a plus or pencil. Exceptions: menu bar items (icon aids
+   scanning), state indicators (spinner during save, ✓ on
+   success), and toolbar buttons.
+2. `.borderedProminent` is reserved for the *one* default action
+   of a sheet/dialog (the one bound to Return). Using it on
+   list-footer "Add" buttons competes visually with sheet
+   primaries.
+3. Row-action buttons in lists are borderless icon-only.
+   Always-visible bordered chips look heavy next to row text.
+4. Visual weight matches urgency. Restart-required state now
+   pairs with a borderedProminent button instead of a muted
+   `.small` default.
+5. Ellipsis (`…`) on buttons that open further UI — sheets,
+   alerts, system panes.
+6. Destructive triggers inside grouped Form sections render as
+   full-width red rows (`.foregroundStyle(.red)` +
+   `.frame(maxWidth: .infinity, alignment: .leading)` +
+   `.buttonStyle(.plain)`). Matches Apple ID → Sign Out and Game
+   Center → Reset Recommendations. The bare `.role(.destructive)`
+   on a `.bordered` button is a visual no-op on macOS (it only
+   paints red on `.borderedProminent` and inside alerts/menus),
+   so destructive intent has to come from `.foregroundStyle`.
+
+Per-button changes:
+
+- **Add Profile sheet footer** — drop xmark from Cancel and
+  plus/pencil from Save/Update Profile (idle state). Spinner +
+  ✓ Saved state indicators preserved.
+- **Profiles tab footer Add button** — drop borderedProminent +
+  plus icon, plain bordered "Add Profile…".
+- **Profiles empty-state Add button** — drop plus icon, add
+  ellipsis. BorderedProminent + large kept; this *is* the only
+  meaningful action in an empty state.
+- **`IconButton` helper** — `.bordered` → `.borderless`. One
+  change applies to every pencil/trash row button across the
+  Profiles list. Doc comment updated.
+- **Camera tab Restart button** — promote to borderedProminent
+  at default size when restart is required.
+- **Camera tab Open Login Items button** — drop `.small`, add
+  ellipsis (deep-links to System Settings).
+- **Stats tab Reset button** — full-width red row inside the
+  grouped section.
+- **Add Profile USB fingerprint header** — text "Refresh" →
+  borderless `arrow.clockwise` icon with tooltip. Matches Mail /
+  App Store / System Settings refresh idiom. Considered binding
+  ⌘R but the menu bar already owns it for "Re-evaluate Now" —
+  two ⌘R bindings while the wizard is frontmost is asking for
+  surprises, so left as click-only.
+
+Untouched on purpose: AboutView (already correct — Sparkle-style
+default + large Check for Updates), WelcomeView (already correct
+— borderedProminent + large Add Your First Location), App.swift
+menu bar (NSMenuItem entries SHOULD have icons; the rule only
+applies to standalone Buttons).
+
+Lesson: macOS's button vocabulary is narrower than iOS's. On
+macOS, `.role(.destructive)` is semantic-only on bordered
+buttons — if you want red, you have to paint it. And SwiftUI's
+default Button-in-a-grouped-Section-row layout produces a small
+chip floating in a grouped chrome box that doesn't match any
+native pattern; the fix is to expand the label with
+`.frame(maxWidth: .infinity)` + `.contentShape(Rectangle())`
+and switch to `.buttonStyle(.plain)` so the whole row becomes
+the tappable surface.
+
+PR: [#28](https://github.com/superic/av-pain-reliever/pull/28),
+shipped in v0.2.0.10.
+
+### Profiles tab → real macOS bottom bar (2026-05-05)
+
+Follow-up to the v0.2.0.10 button pass. The user surfaced a long-
+standing visual oddity: the "Add Profile" button at the bottom of
+the Profiles tab "looked wrong throughout the entire app" and had
+been bothering them across many releases.
+
+Investigation: Profiles is the *only* Settings tab not using
+`Form { }.groupedFormChrome()` — it's the bespoke
+`VStack { List + Divider + HStack(footer) }` layout (see
+`GroupedFormChrome.swift`'s "intentionally bespoke" comment). The
+footer was a faux bottom bar — a custom `HStack` with `.padding(12)`
+*after* a `Divider()` — that visually mimicked a native macOS
+bottom bar (Mail's "+ New Mailbox" sidebar bottom, Reminders' "Add
+List", System Settings → Network's `+/-`) without using any of the
+SwiftUI/AppKit APIs that produce one. As a result the button inside
+read as a `.bordered` chip floating in custom chrome instead of
+matching the unmistakable native bottom-bar affordance.
+
+Fix: switched to the proper SwiftUI macOS bottom-bar pattern.
+
+```swift
+.safeAreaInset(edge: .bottom, spacing: 0) {
+    HStack(spacing: 8) {
+        Button { /* … */ } label: {
+            Image(systemName: "plus")
+                .frame(width: 22, height: 22)
+        }
+        .buttonStyle(.borderless)
+        .help("Add Profile")
+        Spacer()
+        Text("\(count) profile…")
+            .font(.caption)
+            .foregroundStyle(.secondary)
+    }
+    .padding(.horizontal, 10)
+    .padding(.vertical, 4)
+    .background(.bar)
+}
+```
+
+Three native-rendering wins from this change:
+
+1. **`.safeAreaInset(edge: .bottom)`** is the macOS API for "give
+   me a bottom bar attached to this content." It reserves layout
+   space correctly for the inset content and inherits proper
+   safe-area behavior. `.toolbar { ToolbarItem(placement:
+   .bottomBar) }` is the API name everyone reaches for first
+   (including me, when first recommending the fix) — but
+   `bottomBar` placement is iOS-only. On macOS, `.safeAreaInset`
+   is the answer.
+2. **`.background(.bar)`** is the system bar Material — translucent,
+   adapts to light/dark, gets the automatic separator above. This
+   is what makes the bottom bar read as a native macOS bottom bar
+   instead of a custom HStack with a manually-drawn `Divider()`.
+3. **Borderless `+` icon** is what Apple uses for "add a row to
+   this list" everywhere it appears in their own apps — Mail's
+   sidebar, Reminders, Notes, Network preferences. The hover
+   tooltip via `.help("Add Profile")` keeps it discoverable.
+
+Also: the bottom bar is suppressed in the empty state (the
+borderedProminent + large hero "Add Profile…" CTA already covers
+add-a-profile; doubling up reads as visual noise).
+
+Lesson: always check for the existence of a real platform API
+before reaching for a custom layout that mimics one. The faux
+bottom bar pre-dated my involvement and had survived multiple
+visual passes because it *looked* close enough — but the actual
+native API gives you Material chrome, automatic separators, and
+the right button-rendering context for free, none of which a
+custom HStack reproduces by accident.
+
+Lesson 2: API name carryover from iOS to macOS isn't always
+1:1. `.toolbar(content:) { ToolbarItem(placement: .bottomBar) }`
+exists on both platforms but `.bottomBar` placement only does
+something on iOS. macOS needs `.safeAreaInset(edge: .bottom) +
+.background(.bar)`.
+
+PR: TBD, shipped in v0.2.0.11.
+
+### CI toolchain pin via self-hosted runner (2026-05-05, v0.2.0.12)
+
+This was supposed to be a sanity-check release for the bottom-bar
+fix. Instead it became the answer to a much older mystery the user
+had been calling out for months: **the buttons in the shipped app
+look subtly different from the buttons in the dev build.**
+
+Story arc:
+
+1. **The complaint resurfaced** during v0.2.0.11 verification. The
+   user A/B'd two screenshots of the Add Profile sheet's Cancel +
+   Save Profile buttons. One had taller buttons with white-fill
+   chrome; the other had flatter, grey-fill chrome. The user
+   preferred the flatter look.
+2. **First wrong hypothesis:** I assumed Sparkle had landed an
+   incomplete update (Info.plist new, Mach-O old). Verified via
+   `cmp` and `shasum` — both bundles' executables differed but were
+   source-equivalent on string content (`Add Profile…`, `Open Login
+   Items & Extensions…`, etc. all present in both with the same
+   counts). Source-equivalent, byte-different.
+3. **Second wrong hypothesis:** LaunchServices was launching the
+   wrong bundle (two .apps with the same bundle ID on disk —
+   `/Applications/AVPainReliever.app` and
+   `dist/AVPainReliever.app` from a recent local build). `ps`
+   confirmed the running process was actually `dist/`, not
+   `/Applications/`. So the user's "two screenshots from two
+   builds" was actually "two screenshots, both from dist/" — and
+   the chunkier "white-fill" rendering was actually from an
+   earlier session of `/Applications` that the user had captured
+   but mis-labeled. This was a real LaunchServices ambiguity bug
+   to know about, but not the rendering cause.
+4. **Third hypothesis (the right one):** check the build
+   configuration of the CI binary vs the local binary. Both built
+   `swift build -c release`, both signed with the same Developer ID,
+   identical Info.plist. But:
+
+   ```
+   $ otool -l /Applications/AVPainReliever.app/Contents/MacOS/AVPainRelieverApp \
+       | grep -A 5 LC_BUILD_VERSION
+   platform 1
+       minos 14.0
+         sdk 15.2     ← CI was building against Sequoia SDK
+   $ otool -l dist/AVPainReliever.app/Contents/MacOS/AVPainRelieverApp \
+       | grep -A 5 LC_BUILD_VERSION
+   platform 1
+       minos 14.0
+         sdk 26.4     ← Local was building against macOS 26 SDK
+   ```
+
+   Verified with `gh run view --log` on the v0.2.0.11 release
+   workflow: CI's `Select Xcode` step picked **Xcode 16.2.0** when
+   `xcode-version: latest-stable` resolved on the `macos-14` runner.
+   Local Xcode is 26.4.1.
+
+The mechanism is well-documented but easy to miss: **macOS keeps
+old SwiftUI rendering paths alive for backward compatibility, and
+the SDK at compile time picks which path the binary calls into.**
+Same Swift source, two different SDKs at compile, two different
+runtime renderings. The shipped app rendered with macOS 15-era
+SwiftUI; the dev build rendered with macOS 26-era SwiftUI; they
+visibly diverged on `.bordered` chrome thickness even on the same
+host machine.
+
+**Initial fix attempt:** bump CI runner to `macos-26-arm64` (which
+carries Xcode 26.x) and pin `xcode-version: '26.4.1'` explicitly.
+This worked toolchain-wise, but the runner queue time spiked to
+30+ minutes — Apple Silicon `macos-26-arm64` runners are scarce in
+GitHub's free pool. Aborted; needed a different solution.
+
+**Final fix:** self-hosted runner installed on the user's Mac as a
+LaunchAgent (`~/actions-runner/`). The runner uses whichever Xcode
+is at `/Applications/Xcode.app` (currently 26.4.1), so toolchain
+parity is automatic — when local Xcode bumps, CI follows. Queue
+time drops from "30+ minute spike risk" to "starts in seconds."
+Setup details + security model in
+[docs/SELF_HOSTED_RUNNER.md](docs/SELF_HOSTED_RUNNER.md).
+
+Security mitigation for self-hosted on a public repo: configured
+the Actions setting `fork-pr-contributor-approval =
+all_external_contributors`, so every external contributor's
+workflow run requires explicit maintainer approval before it can
+execute on the runner. Combined with GitHub's design that secrets
+are never passed to fork-PR workflows, this means a malicious fork
+can neither auto-execute on the dev's Mac nor read the signing
+cert / Sparkle private key even if approval is granted.
+
+**New convention introduced this release: pre-publish binary
+verification.** Before flipping the v0.2.0.12 draft release to
+published, downloaded the CI artifact, built the same tag locally,
+and `cmp`'d the two Mach-Os. Result: 3,520 byte delta (down from
+~209 KB on v0.2.0.11), all attributable to notarization-ticket
+embedding. Same SDK, same renderings paths, byte-equivalent code.
+Only then published. This step is now standard for every release —
+see [docs/RELEASING.md](docs/RELEASING.md) "Pre-publish binary
+verification."
+
+Lessons:
+
+1. **"Same source, different binary, different rendering" is a real
+   thing.** When debugging visual divergence between two builds,
+   check the SDK target via `otool -l ... | grep LC_BUILD_VERSION`
+   before assuming code is different. Apple's backward-compat SDK
+   pinning means the byte difference can be entirely in which
+   SwiftUI runtime API path the compiler emitted calls to.
+2. **`latest-stable` is not stable across runners.** The maxim-
+   lobanov/setup-xcode action's `latest-stable` resolves to the
+   newest Xcode pre-installed on the runner image, which depends
+   on the runner OS version. macos-14 → Xcode 16.x; macos-26-arm64
+   → Xcode 26.x default (26.2 not 26.4.1). For repeatable builds,
+   pin explicitly OR use a self-hosted runner.
+3. **LaunchServices ambiguity with duplicate bundle IDs is its own
+   gotcha.** Two `.app` bundles with the same bundle ID confuse
+   `open` — the path argument isn't always honored. For dev-vs-
+   shipped comparison, `ps aux | grep AVPainReliever` is the
+   ground truth for which executable is running.
+4. **Sparkle replaces the bundle on disk but doesn't kill the
+   running process.** Always `pkill -f AVPainRelieverApp && open
+   /Applications/AVPainReliever.app` after a Sparkle-delivered
+   update to actually pick up the new code, otherwise the running
+   process is the old one. Bit us at the start of this debugging
+   session.
+
+Files touched:
+- `.github/workflows/release.yml` — runs-on swap, removed Select
+  Xcode step, made SPM cache reset GitHub-hosted-only
+- `.github/workflows/test.yml` — same
+- `docs/SELF_HOSTED_RUNNER.md` — new setup + security guide
+- `docs/RELEASING.md` — added pre-publish verification convention,
+  post-mortem entry for v0.2.0.12
+
+PR: [#31](https://github.com/superic/av-pain-reliever/pull/31)
+(workflow changes), shipped in v0.2.0.12. Doc updates in a follow-
+up PR.
+
+### v0.2.x graduates from experimental to stable (2026-05-05)
+
+The virtual-camera development track has been on the experimental
+Sparkle channel since v0.2.0 (2026-05-04). Decision today: graduate
+it. The work was driven by three things converging:
+
+1. **Apple-side gates are clear.** A round of research (Apple
+   Developer Forums + Halle Winkler's CMIO blog series, see the
+   memory `project_virtual_camera_v2.md`) confirmed that
+   distributing a CMIO Camera Extension via Developer ID outside
+   the Mac App Store needs only the entitlements we already declare
+   (`system-extension.install`, `application-groups`,
+   `device.camera`). No additional Apple email request needed. The
+   12 successful notarizations of v0.2.0 → v0.2.0.12 are empirical
+   proof.
+2. **The feature has been exercised end-to-end.** Capture from
+   FaceTime HD + HDMI capture cards, hold-last-frame during
+   profile switches, format negotiation, self-source feedback loop
+   guard, and the macOS-extension-deactivation `.requiresRelaunch`
+   workaround all shipped and survived real use.
+3. **Keeping v0.2.x experimental indefinitely is wrong** — the
+   experimental channel exists for risky feature development, not
+   as a permanent home for shipped features. Sitting on it
+   permanently contradicts the channel's purpose and confuses
+   future graduations.
+
+What the graduation actually changes:
+
+- **`release.yml` channel rule inverted.** Was: "v0.1.x stable,
+  everything else experimental." Now: stable by default; explicit
+  `-experimental` (or `-experimental.N`) tag suffix opts in. Future
+  `v0.2.0.13`, `v0.3.0`, `v1.0.0` etc. ship stable automatically.
+  Future risky-feature builds use a tag like
+  `v0.2.1.0-experimental.1`. Convention is more future-proof
+  (no workflow edit needed when major version bumps) and matches
+  how most apps work (stable is the default; experimental is the
+  intentional opt-in).
+- **`appcast.xml` v0.2.0.12 retagged stable.** Single XML edit
+  drops the `<sparkle:channel>experimental</sparkle:channel>` line
+  from v0.2.0.12 only. Previous experimental items (v0.2.0.2 →
+  v0.2.0.11) keep their tags — historical accuracy preserved; they
+  WERE experimental at the time. Stable-channel users (currently
+  nobody beyond the dev) will see v0.2.0.12 on their next Sparkle
+  check; no need to wait for a new release.
+- **Settings → General → "Receive experimental updates" toggle
+  stays.** Per the dev's intent, the experimental capability is
+  preserved for future risky-feature work — the toggle, the
+  `ChannelGatingDelegate`, the `experimentalUpdates` setting, and
+  the "you're running an experimental version" nudge alert all
+  remain in place. Help text under the toggle was genericized
+  ahead of this PR (PR #34) so it doesn't name v0.2.x specifically
+  and stays accurate as the experimental queue empties / refills.
+- **`docs/RELEASING.md` documents the new tag convention** in a
+  new "Stable vs experimental tags" section, including the
+  `vX.Y.Z` vs `vX.Y.Z-experimental.N` rule and graduation
+  procedure ("ship next release without the suffix; optionally
+  retag specific appcast items").
+
+What graduation explicitly does NOT do:
+
+- No new release tag was cut. The dev is currently the only user;
+  no need for a ceremonial graduation release. The next normal
+  release (whenever something ships next) will be the first
+  workflow-default-stable release.
+- No code-level change to extension activation, the host's CMIO
+  pipeline, or the virtual camera surfaces in Settings. The
+  feature itself is unchanged — only its Sparkle channel
+  classification changed.
+
+Lesson: experimental release channels are scaffolding, not a
+permanent home. When the feature they were built around graduates,
+the channel needs to be reset back to "empty waiting room" for the
+next risky thing — keep the mechanism, retire the specific
+classification.
+
+PR: TBD (this commit), shipped without a tag. Next release inherits
+the new behavior automatically.
+
+- **When we ship a Phase 1 fix or feature**, ask: does this teach us
+  something about the Swift port? If yes, add to "Lessons learned."
+- **When the user gives feedback or hits a bug**, ask: should this be
+  a feature in the Swift app? If yes, add to "Open questions" or
+  "Scope creep candidates."
+- **When we resolve an open question** (via real-world use or explicit
+  user answer), move it from "Open questions" up to "Validated design
+  decisions."
+- **When we hit a Swift-specific design decision before we start Swift**
+  (e.g., "should we use SwiftUI or AppKit for the preferences window?"),
+  capture it under "Locked architectural choices" with the rationale.
+- **Before starting Phase 2**, do a final pass through this doc to confirm
+  every "open question" has been answered or explicitly deferred.
+## V1 design pass (2026-05-01)
+
+The functional engine + wizard was complete (94 tests, end-to-end
+working) before this pass. The brief: take the app from "trustworthy
+native utility that works" to "trustworthy native utility you'd want
+on your machine." Raycast-clean SwiftUI defaults with brand-color
+pops, warm copy, a few moments of tasteful delight.
+
+### What shipped
+
+**Brand foundation**
+
+- `Theme` namespace owns the locked palette (magenta `#FF87D7` primary,
+  cyan `#00FFFF` highlight, success/warn/error/chrome) plus standard
+  SF Symbols (`pills.fill` app icon, `tag.fill` / `cable.connector` /
+  `speaker.wave.2.fill` / `camera.fill` for wizard sections). Views
+  never hard-code hex values — a future palette tweak (or a real
+  dark-mode override) is one file.
+- `ProfileIcon` maps slugs → SF Symbols with prefix/contains
+  heuristics. `home*` → `house.fill`, `work*`/`office` →
+  `building.2.fill`, `conference`/`meeting` → `person.3.fill`,
+  `studio`/`podcast` → `music.mic`, `cafe`/`coffee` →
+  `cup.and.saucer.fill`, plus `library`, `garage`, `lab`, `hotel`,
+  `school`. Unknown slugs fall through to `mappin.and.ellipse`.
+  Specificity ordering matters: `conference-home` lands on people
+  before house, `home-office` lands on house before building (the
+  more-specific predicate runs first).
+
+**Wizard polish**
+
+- Hero header: pill icon + magenta title + cyan subhead.
+- Section headers carry SF Symbol icons in primary magenta.
+- Save button is brand-magenta primary with a brief green-checkmark
+  "Saved" affordance for ~0.45 s before the window closes — the
+  smoother feedback the brief asked for.
+- Auto-suggest profile name from attached devices: a CalDigit dock
+  pre-fills "Home Office", an LG monitor pre-fills "Office", a
+  Yeti/Shure mic pre-fills "Studio". Suggestion only, fully editable.
+  No-op when editing an existing profile.
+
+**Menu enrichment**
+
+- Each profile in the "Switch to" submenu shows its slug-mapped SF
+  Symbol next to the name (or a checkmark when active).
+- Each profile is itself a sub-submenu with Switch to / Edit… /
+  Delete… entries. Right-click contextMenu would be cleaner but
+  SwiftUI's `MenuBarExtra` doesn't propagate it to its child entries
+  in the macOS 14 SDK; the sub-submenu chain achieves the same
+  affordance.
+- Optional one-line caption per profile shows the audio + camera
+  it would apply (`🎙 Yeti  •  🔈 CalDigit  •  📷 Built-in`), gated
+  by Settings → "Show audio + camera details in menu".
+- Settings… (⌘,) and About AV Pain Reliever menu items added below
+  the existing admin block.
+
+**Notification copy with personality**
+
+- `NotificationCopy.title(forSlug:)` rotates 2-4 alternates per
+  common slug family. Selection is deterministic on day-of-year so
+  the title varies between days but doesn't whiplash within a single
+  docking cycle. Body is constant: "Audio + camera switched".
+- Notifications are now gated by Settings → "Send notifications when
+  profiles change" (default on).
+
+**Settings scene** (`Settings { }`, opens with ⌘,)
+
+- General tab: notifications toggle, audio+camera-in-menu toggle,
+  debounce-window slider (0.5–5.0 s, default 1.5 s — engine rebuilds
+  with the new value on next reload).
+- Profiles tab: full list with magenta-tinted icons, "Active" pill
+  on the resolved profile, Edit and Delete buttons per row. Empty
+  state has a friendly tray icon + warm copy.
+- Deliberately no mention of Hammerspoon, OBS, or any third-party
+  tool. Per `feedback_app_self_contained`.
+
+**About window**
+
+- Replaces `NSApp.orderFrontStandardAboutPanel` with a SwiftUI scene:
+  pulsing pill hero in magenta, title in big rounded magenta type,
+  cyan tagline, version string, "Made to stop the fiddling" italic
+  line.
+
+**First-run welcome**
+
+- Shown when no profile has a real fingerprint AND the user hasn't
+  previously dismissed the welcome. Hero pill, magenta title, cyan
+  tagline, warm one-paragraph explainer, magenta "Add Your First
+  Location" CTA, cyan "Skip — I'll set up later" link. Suppressed
+  forever once either button is clicked or any profile saves.
+- Implemented as a SwiftUI `Window` scene whose visibility is
+  triggered by an `@Published shouldShowWelcome` flag on
+  `AppDelegate` — read by a hidden `WelcomeOpener` view inside the
+  `MenuBarExtra` so it can call SwiftUI's `openWindow` (which is
+  environment-only and not reachable from `AppDelegate` directly).
+
+**Edit + delete plumbing**
+
+- `ProfileWriter.delete(named:in:)` excises a `[profiles.<name>]`
+  section while preserving surrounding content, comments, and
+  header banners. Tidies trailing blank lines.
+- `AddProfileViewModel` takes an optional `editing: Profile?` —
+  pre-fills name (pretty-cased), audio, camera, and the selected
+  fingerprint. Save dispatches to replace mode when the slug is
+  unchanged; renaming during edit cleans up the prior section
+  automatically.
+- Native `NSAlert` confirms before delete.
+
+**Persistent settings**
+
+- `SettingsStore` (`UserDefaults`-backed): notificationsEnabled,
+  debounceInterval, showAudioCameraInMenu, profileSwitchCount,
+  suppressedWelcome. Defaults treat `object(forKey:) == nil` as
+  "never set" so default-on toggles stay on across launches.
+- `AppDelegate` republishes `settings.objectWillChange` through its
+  own `objectWillChange` so views observing the AppDelegate (the
+  menu, the About scene) re-render on a settings flip without each
+  having to observe the store directly.
+
+**Easter egg**
+
+- Hold Option while the menu is open to reveal a cyan stats line
+  under the title: "Switched 47 times. Saving your sanity since
+  plug-in #1." Bumped from every actual profile change. Pluralizes
+  correctly at counts 0/1/2+.
+
+### Lessons learned
+
+- **`MenuBarExtra` doesn't propagate `contextMenu(for:)` to its
+  child Buttons.** Right-click on a profile entry in the "Switch to"
+  submenu doesn't surface anything. Workaround: nest each profile
+  inside its own `Menu` so Switch / Edit / Delete read as a sub-
+  submenu. Discoverability is slightly worse than right-click but
+  the affordance survives. Re-evaluate when SwiftUI's MenuBar APIs
+  pick up `contextMenu` support (FB-pending).
+- **`@MainActor`-isolating `SettingsStore` blocks the AppDelegate
+  from reading from non-main contexts.** `buildEngine` is called from
+  `bootEngine`, which the docs reach but which isn't yet `@MainActor`
+  itself; rather than annotate the entire AppDelegate, drop the
+  isolation from `SettingsStore` (`UserDefaults` is thread-safe and
+  the `@Published` mutations in the wizard happen from main anyway).
+  Same trick applies to any future small persistence helper.
+- **Republishing one ObservableObject through another is one line
+  of Combine.** `settings.objectWillChange.sink { [weak self] in
+  self?.objectWillChange.send() }.store(in: &cancellables)` lets the
+  SwiftUI graph treat AppDelegate as the canonical source for both
+  engine state AND user preferences. Saves passing `SettingsStore`
+  into every view via `@ObservedObject`.
+- **First-run welcome can't open a window from the AppDelegate.**
+  SwiftUI's `openWindow` is environment-only; AppDelegate has no
+  `EnvironmentValues`. Workaround: AppDelegate publishes
+  `shouldShowWelcome: Bool`, and a hidden helper view inside the
+  `MenuBarExtra` scene watches it via `.onChange` and calls
+  `openWindow` from its own environment. Clean, no AppKit cycling.
+- **A pure-logic test target for the App module is worth it.**
+  ProfileIcon, NotificationCopy, StatsCopy, SettingsStore, and the
+  AddProfileViewModel are all unit-testable without AppKit. SPM's
+  `executableTarget` can be `@testable`-imported by a sibling
+  `testTarget` — no Xcode project required for coverage.
+- **Save-success feedback wants 0.45 s, not 0.2 s and not 1.0 s.**
+  At 0.2 s the green flash is gone before the eye registers. At 1.0 s
+  the modal feels sluggish. 0.45 s reads as a confirmed beat without
+  blocking flow.
+
+### Effort estimate update
+
+The pass touched ~1500 lines across 8 new files + 5 modified files,
+plus 36 new tests. ~3 hours actual against an open-ended brief. Most
+of that was the Settings + About + Welcome scenes (each is ~80–150
+lines). The pure-logic helpers (ProfileIcon, NotificationCopy,
+StatsCopy) took minutes each because the surface is a single function
++ a small mapping table.
+
+### Deferred to v2
+
+- ~~Custom app icon~~ — runtime-generated icon shipped in the polish
+  pass below. Asset Catalog version still pending for the signed
+  `.app`.
+- User-customizable per-profile icons (auto from slug for v1).
+- OBS scene routing as a Settings tab.
+- ~~Sparkle / signing / GitHub Actions release pipeline~~ — landed
+  2026-05-02 (see "Distribution pipeline kickoff" below); appcast
+  hosted on raw.githubusercontent.com.
+- "Show Welcome Again" menu/affordance — easy to add later if
+  someone asks.
+
+---
+
+## V1 polish pass (2026-05-01)
+
+A second design pass on the same day, focused on fit-and-finish and
+on fixing one regression I'd shipped in the V1 design pass. Five
+buckets:
+
+### Menu UX restoration
+
+The V1 design pass had wrapped each profile in the "Switch to"
+submenu in its own sub-submenu (Switch / Edit / Delete) — three
+clicks to switch, vs. the pre-V1 menu's one click. Restored to a
+flat menu: each profile is a `Button` that applies on click; Edit
+and Delete already live in Settings → Profiles.
+
+The per-profile summary line ("🎙 Yeti  •  🔈 CalDigit  •
+📷 Built-in") is now inlined onto the same row as the name. AppKit's
+Menu renderer flattens VStack labels to just the first line in
+`MenuBarExtra` menus, so the previous multi-line layout never
+showed the summary in the actual menu — only in SwiftUI previews.
+
+### Unknown-location state
+
+`AppDelegate` carries two new published flags (`atUnknownLocation`,
+`lastUnknownDevices`), set when `Engine.onUnknownLocation` fires
+(empty-fingerprint resolution + non-empty attached set). Both reset
+the moment the engine resolves to a real-fingerprint profile.
+
+Visible effect: when fallback fires with USB attached, the menu-bar
+label switches to a `questionmark.circle` icon + "New location" text;
+the menu header reads "New location detected — N USB devices
+attached"; a magenta "Set Up This Location…" CTA opens the wizard
+with all attached devices already pre-selected (the wizard already
+did this; the CTA is just a more discoverable entry point).
+
+Without this, the user docking somewhere new sees the menu bar say
+"Laptop" and assumes the engine missed the USB event. The status
+toast already told them "new location" but a transient banner
+isn't enough — the menu has to keep telling the truth.
+
+### App icon (runtime-generated)
+
+`AppIcon.makeIcon()` renders a 1024×1024 squircle with a
+magenta→deep-magenta→cyan radial gradient and a white `pills.fill`
+SF Symbol on top with a soft shadow. Wired at launch via
+`NSApp.applicationIconImage` and reused by the About + Welcome
+heroes (rounded-rect-clipped at 96/104 px).
+
+The white-symbol-on-gradient trick uses `.destinationIn` compositing:
+fill a fresh image with white, then `destinationIn`-clip by the
+template SF Symbol's alpha mask. The result is a real white-filled
+symbol image that draws cleanly onto the gradient. SwiftUI's
+`Image(systemName:).foregroundStyle(.white)` doesn't help here
+because we need an `NSImage` to composite into the AppKit graphics
+context, not a SwiftUI view.
+
+Generated in memory rather than shipped as a `.icns` so palette
+tweaks don't need a regenerated Asset Catalog. The signed `.app`
+will eventually carry a proper Asset Catalog AppIcon for higher-
+fidelity rendering at 16/32/64-pt sizes; the runtime icon covers
+the dev workflow without an Xcode project.
+
+### Launch at Login
+
+New `SettingsStore.launchAtLogin` (default off — fresh users opt
+in, per macOS background-task etiquette). `LaunchAtLogin.apply(
+enabled:)` wraps `SMAppService.mainApp.register()` /
+`unregister()`. AppDelegate calls apply() on launch so a setting
+toggled in a previous session takes effect.
+
+Caveat: `SMAppService` needs a properly bundled `.app` for clean
+registration. The SPM dev binary will see `register()` throw — the
+helper logs and continues so the toggle stays usable in Settings;
+once the signed `.app` ships, the same code starts working with no
+app-side changes. This is the same SPM-dev-vs-signed-bundle
+shimming pattern as `Notifier` (AppleScriptNotifier vs the eventual
+UNUserNotificationCenter wrapper).
+
+### Theme adaptive colors
+
+The locked palette (`#FF87D7` magenta, `#00FFFF` cyan, `#00FF00`
+green, `#FF0000` red) is tuned for dark backgrounds — mirrors the
+Hammerspoon TUI which assumes a dark terminal, and the menu-bar
+agent's most common surfaces (the menu, dark-mode windows) are
+dark. On light-mode forms the canonical hex codes washed out:
+`#00FFFF` cyan on white is unreadable as link text.
+
+`Theme.Color.{primary,highlight,success,error}` now return adaptive
+colors via an `NSColor` dynamic provider. The canonical hex codes
+are preserved as the dark-mode value; a darker, more saturated
+cousin handles light mode. The brand-pop intent stays — the user
+can't tell from glancing at either appearance that anything's
+adaptive, but light-mode contrast is now WCAG-respectable.
+
+This respects the spirit of the locked palette (the brand color in
+the surface that matters most — the menu, dark-mode windows — is
+exactly the canonical hex) while fixing a real accessibility
+concern. Documented prominently in the file's doc comment so a
+future palette tweak goes through both variants.
+
+### Lessons learned
+
+- **`MenuBarExtra` collapses multi-line VStack labels to one line.**
+  AppKit's menu renderer pulls the first line out of a VStack and
+  drops the rest. Looks fine in SwiftUI previews; ships broken in
+  the actual menu. Inline summary text is the only reliable way to
+  add a sub-line to a menu entry.
+- **SF Symbols are template images; `.foregroundStyle(.white)` /
+  `setFill()` doesn't tint them when drawing into an AppKit context.**
+  Use `.destinationIn` compositing (fill white → clip by symbol
+  mask) to get a real white-filled image you can composite. Pattern
+  generalizes to any tint of any SF Symbol when drawing into a CG
+  context.
+- **`SMAppService.mainApp` needs a real bundle.** The SPM dev binary
+  fails the registration silently (or throws). Wrap the call so
+  failures log + return — the user toggling Settings during dev
+  doesn't crash anything, and the same code starts working once
+  the signed `.app` ships. Same pattern we used for the
+  AppleScriptNotifier dev-vs-bundle shim.
+- **The locked palette needed light-mode variants for
+  accessibility.** Pure cyan and pure green are unreadable on
+  white. Adaptive colors via `NSColor(name:dynamicProvider:)` keep
+  the dark-mode brand intact and let light-mode breathe — same
+  pattern Apple uses for system colors. Honor the canonical hex
+  in the appearance that matters most (dark, where the menu lives
+  most of the time) and tweak the cousin for light.
+- **Keyboard shortcuts in SwiftUI menus are global to the menu's
+  scope.** Two `Button(...)`s with `.keyboardShortcut("n")` in the
+  same menu silently breaks both. Surface a generic "Add Profile…"
+  shortcut on one entry, leave the visually-prominent CTAs without
+  a shortcut.
+
+### Effort estimate update
+
+Polish pass: ~1.5 hours, 2 new files + 8 modified files, +1 test
+(menu state changes are easier to verify by smoke-launch than to
+unit-test against AppKit). Total polish + design pass over the same
+day: ~4.5 hours, 35+ tests added.
+
+### Deferred to v2 (after polish)
+
+- ~~Asset-Catalog AppIcon for the signed `.app`~~ — replaced 2026-05-02
+  with a `Resources/AppIcon.icns` rendered from `AppIcon.swift`'s
+  pill via `scripts/build-icon.sh`. No Asset Catalog needed.
+- User-customizable per-profile icons.
+- OBS scene routing as a Settings tab.
+- ~~Sparkle / signing / GitHub Actions release pipeline~~ — landed
+  2026-05-02.
+- ~~"Show Welcome Again" affordance~~ — shipped in the fit & finish
+  pass below.
+- Right-click context menu on profile rows — would let us put
+  Edit/Delete back on the menu without losing the one-click
+  switch. SwiftUI MenuBarExtra doesn't support `contextMenu`
+  propagation in macOS 14; revisit when SDK support lands.
+
+---
+
+## V1 fit & finish (2026-05-01 — third pass same day)
+
+A short third pass focused on individual rough edges spotted on
+the polished build. Three buckets, each landed in its own commit.
+
+### Wizard: live profile-icon preview
+
+The Name section now renders the SF Symbol the menu would use
+for the typed slug, live, with a short crossfade. Surfaces the
+"each location gets its own icon" feature visually and tells the
+user what their slug matched on without forcing them to save +
+inspect the menu. `AddProfileViewModel.previewSlug` exposes the
+slug used for the icon; falls back to a generic placeholder slug
+while the field is empty so the icon doesn't flicker on every
+keystroke at the start.
+
+### Wizard: "Suggested: untick" portability badges
+
+`DevicePortability.portabilityCategory(deviceName:)` classifies
+attached USB devices by name into "this almost certainly travels
+with you" categories — keyboards, pointing devices, phones /
+wearables, headphones, watches. The fingerprint list now shows a
+yellow capsule "Suggested: untick (<category>)" on flagged rows.
+
+Conservative on purpose — when in doubt, don't flag, because a
+wrong-positive (silently dropping an actually-fingerprintable
+peripheral) is worse than a missed flag (the user spends two
+seconds unticking three rows manually). Auto-untick was
+considered and rejected for the same reason.
+
+### Warmer toast copy
+
+The "new location detected" toast body switched from
+> 5 USB devices attached. Add it to your profiles so AV Pain
+> Reliever can switch automatically.
+
+to
+> 5 USB devices joined the party. Open the menu to teach me
+> this spot.
+
+Same information, half the words, voice consistent with the rest
+of the app. Pulled into a public testable helper at
+`NotificationCopy.unknownLocationBody(deviceCount:)`.
+
+### Profiles tab empty state
+
+`Settings → Profiles` previously rendered a generic SF tray icon
++ small caption when no profiles existed. Replaced with an
+inviting empty-state hero: rounded-rect-clipped app icon with a
+soft shadow, magenta "Set up your first location" headline, a
+sentence of explainer copy, and a large magenta "Add Profile" CTA.
+The empty state now reads as part of the product, not as a
+placeholder.
+
+### Show Welcome Again
+
+The first-run welcome window is suppressed forever after the user
+clicks either button. The About scene now carries a small "Show
+welcome again" link below the explainer copy that flips the
+published flag, dismisses About, and re-opens the welcome via the
+existing `WelcomeOpener` watcher. `AppDelegate.showWelcomeAgain()`
+toggles `shouldShowWelcome` false→true across runloop turns so
+the `.onChange` watcher fires even if the flag was already true.
+
+### Wizard error banner
+
+`viewModel.lastError` previously rendered as a single line of
+`.foregroundStyle(.red)` text. Now wrapped in a proper banner:
+triangle warning icon, error-tinted background + border, padded
+rounded rectangle, opacity+slide transition on appear. Same
+information, much higher signal — the user can't miss it.
+
+### Lessons learned
+
+- **`MenuBarExtra` activated views can take an `@ObservedObject`
+  AppDelegate** even when the AppDelegate's own properties
+  changed via Combine republishing. The dependency tracking
+  picks up the republished signal without complaint. This is
+  what made `Show Welcome Again` work — a Settings change
+  observed in the menu's stats line + an About-scene
+  callback driving an AppDelegate published property all
+  flow through the same single observation.
+- **NSImage rounded-rect clipping inside SwiftUI doesn't need
+  an `Image(uiImage:)`-style hack on macOS** — `Image(nsImage:
+  AppIcon.image).resizable().clipShape(RoundedRectangle(...))`
+  works directly. The signed `.app`'s Asset Catalog icon will
+  still be sharper at small render sizes, but the runtime icon
+  composites cleanly enough at 76+ pt.
+- **Conservative classification beats aggressive defaults.** The
+  Wizard's "Suggested: untick" hint is on portable devices only
+  — auto-unticking would silently drop an ergonomic-keyboard
+  fingerprint the user actually wanted, and that failure
+  (silent data loss in a config workflow) is irrecoverable
+  without re-discovery. The badge surfaces the suggestion;
+  the user remains in control of every checkbox.
+
+### Effort estimate update
+
+Fit & finish pass: ~1 hour, 1 new file + 8 modified files,
++9 tests (140 total). Combined day-of-2026-05-01 design + polish
++ fit & finish: ~5 hours actual, 45+ tests added across three
+commits' worth of UI/UX work plus the supporting library + app
+helpers. The tests bias is intentional — every pure-logic
+helper (Theme adaptation aside) gets a `testTarget` rather than
+relying on visual smoke tests, since smoke tests can't gate CI.
+
+### Deferred (still on the v2 list)
+
+- ~~Asset-Catalog AppIcon for the signed `.app`~~ — superseded by
+  `scripts/build-icon.sh` rendering the pill into `.icns` (2026-05-02).
+- User-customizable per-profile icons.
+- OBS scene routing as a Settings tab.
+- ~~Sparkle / signing / GitHub Actions release pipeline~~ — landed
+  2026-05-02 (Distribution pipeline kickoff section below).
+- Right-click context menu on profile rows.
+- Notification-action support ("Open Wizard" button on the
+  unknown-location toast). Needs UNUserNotificationCenter, which
+  ~~needs a real bundle~~ becomes available now that we ship a
+  signed `.app` — re-evaluate when revisiting notifications.
+
+---
+
+## Distribution pipeline kickoff (2026-05-02)
+
+Phase 2 distribution — turning the SPM executable into a signed,
+notarized, auto-updating `.app` released via GitHub Actions on tag
+push. The work landed in a single session, with one user-driven
+follow-up (Apple Developer Program enrollment + Sparkle EdDSA key
+generation) gating the first real release.
+
+### What landed
+
+- `Resources/Info.plist` — bundle metadata, `LSUIElement=YES`,
+  `LSMinimumSystemVersion=14.0`, `SUFeedURL` pointing at
+  `raw.githubusercontent.com/superic/av-pain-reliever/main/appcast.xml`,
+  `SUPublicEDKey` placeholder waiting on first `generate_keys`.
+  `__MARKETING_VERSION__` / `__BUILD_VERSION__` substituted at build
+  time by `make-app.sh`.
+- `Resources/AVPainReliever.entitlements` — `app-sandbox=NO`. The
+  engine reads `~/Library/Application Support`, talks to IOKit and
+  CoreAudio, and uses `SMAppService` for Launch-at-Login — none of
+  which are sandbox-compatible. No special hardened-runtime
+  exceptions needed.
+- `Resources/AppIcon.icns` (455KB) — rendered from
+  `Sources/AVPainRelieverApp/AppIcon.swift`'s pill design via
+  `scripts/build-icon.sh` + `scripts/icon-exporter.swift`. Renders
+  natively at each iconset size (16/32/64/128/256/512/1024 + @2x)
+  rather than downscaling a single high-res master, which gives SF
+  Symbols a chance to use size-specific glyphs and stay crisp at
+  16×16.
+- `scripts/make-app.sh` — universal-binary build (`swift build
+  --arch arm64 --arch x86_64`), bundle assembly, version stamping
+  via sed substitution, embedding of Sparkle.framework's macOS slice
+  from the SPM artifact directory, `install_name_tool -add_rpath
+  @executable_path/../Frameworks` (SPM only adds `../lib`),
+  inside-out codesigning of Sparkle's nested helpers, and a final
+  ad-hoc-or-Developer-ID sign of the main app driven by the
+  `MAC_CERT_NAME` env var.
+- `Sources/AVPainRelieverApp/Updater.swift` + the AppDelegate hook —
+  thin wrapper around `SPUStandardUpdaterController`, plus a
+  conditional gate that skips Sparkle init when running outside a
+  proper bundle (`swift run`) **or** when the SUPublicEDKey is still
+  the `__SPARKLE_PUBLIC_KEY__` placeholder. Without the placeholder
+  guard, dev builds pop a "Unable to Check For Updates / EdDSA key
+  not valid" dialog at every launch.
+- `Sources/AVPainRelieverApp/App.swift` — "Check for Updates…" item
+  added to the existing **Advanced** submenu (commit `8f54caf`).
+- `appcast.xml` (stub) — empty `<channel>` so the first running app
+  resolves to "you're up to date" against an empty feed.
+- `.github/workflows/release.yml` — fires on `v*.*.*` tag push,
+  imports the cert from `MACOS_CERTIFICATE` (base64 `.p12`) into a
+  temp keychain, runs `make-app.sh`, runs `notarytool submit
+  --wait`, staples, EdDSA-signs the zip via Sparkle's `sign_update`,
+  drafts a GitHub Release with auto-generated notes, then commits
+  the new `<item>` to `appcast.xml` on `main`. Each Apple- or
+  Sparkle-secret-dependent step early-exits with a `::warning::` if
+  the secret is empty, so a `v0.0.0-dryrun` tag exercises the
+  workflow end-to-end without credentials.
+- `scripts/sign-appcast.sh` — wraps `sign_update`, emits a
+  ready-to-paste `<item>` block. Reads the private key from
+  `$SPARKLE_PRIVATE_KEY` (CI) or the `avpainreliever` keychain
+  account (local).
+- `docs/RELEASING.md` — runbook for Apple Developer Program
+  enrollment, Sparkle key generation, the seven `gh secret set`
+  commands, the first-tag checklist, and a troubleshooting section.
+
+### Lessons learned
+
+- **macOS file-provider race against codesign.** Building the
+  bundle directly under `dist/` in a `~/Documents`-rooted repo
+  triggered a race: macOS's fileprovider daemon (visible as a
+  lingering `com.apple.fileprovider.fpfs#P` xattr) re-added
+  `com.apple.FinderInfo` to the bundle root in the milliseconds
+  between our `xattr -cr` scrub and codesign's read, causing a
+  "resource fork detritus not allowed" failure on the main-app
+  sign every time. `xattr -cr "$path" && xattr -d
+  com.apple.FinderInfo "$path"` immediately before codesign wasn't
+  enough — the race was tighter than that. Fix: assemble + sign in
+  a `mktemp -d`, `ditto` the finished bundle to `dist/` at the end.
+  /tmp isn't watched by fileprovider.
+- **Sparkle.framework needs an explicit rpath.** SPM only injects
+  `@executable_path/../lib` into the executable. Sparkle's binary
+  expects `@rpath/Sparkle.framework/Versions/B/Sparkle`, where
+  `@rpath` is conventionally `@executable_path/../Frameworks`.
+  Patching it post-build with `install_name_tool -add_rpath
+  @executable_path/../Frameworks` is one line and avoids unsafe
+  linker flags in `Package.swift`.
+- **Sparkle's nested bundles (Updater.app, Downloader.xpc,
+  Installer.xpc) ship pre-signed by the Sparkle project.**
+  Re-distributing requires re-signing each one with our identity
+  before signing the framework before signing the main app —
+  Apple's `--deep` flag is deprecated and notarization rejects it.
+  Inside-out, path-by-path is the supported approach.
+- **`generate_keys` writes to the user's login keychain.** Running
+  it from an automated agent isn't appropriate (it produces a
+  long-lived credential the user owns); the docs walk the user
+  through running it themselves, replacing the
+  `__SPARKLE_PUBLIC_KEY__` placeholder in `Info.plist`, and stashing
+  the private key in 1Password + `gh secret set
+  SPARKLE_PRIVATE_KEY`.
+- **GitHub Actions secrets can't be used in `if:` conditions
+  directly.** Tried `if: ${{ secrets.X != '' }}` and it doesn't
+  evaluate as expected. The clean pattern: every step runs, but
+  the step body checks `[[ -z "${X:-}" ]]` and `exit 0` with a
+  `::warning::` if missing. That gives us the "dryrun tag works
+  with no Apple creds" property.
+- **macOS bash 3.2 + `set -u` + empty arrays.** `"${arr[@]}"`
+  expansion on an empty array under `set -u` errors with
+  "unbound variable." Use `${arr[@]+"${arr[@]}"}` for the
+  empty-safe expansion.
+
+### Pending (gated on user)
+
+- Apple Developer Program enrollment ($99/yr, 24–48h approval).
+- Sparkle EdDSA keypair generation + Info.plist substitution.
+- Setting the seven GitHub Secrets per `docs/RELEASING.md`.
+- First `git tag v0.1.0` push to exercise the workflow end-to-end.
+- Smoke-test auto-update by tagging `v0.1.1` immediately after
+  with a one-line README change.
+
+`docs/RELEASING.md` is the canonical handoff for these.
+
+### Verification done in this session
+
+- `scripts/make-app.sh` produces a valid universal-binary
+  `dist/AVPainReliever.app` with embedded `Sparkle.framework`,
+  ad-hoc signed, that launches and surfaces the menu-bar pill
+  + engine.
+- 145 of 146 tests still pass (`IOKitUSBWatcher` test depends on
+  attached USB hardware, unrelated to distribution work).
+- `swift build -c release --arch arm64 --arch x86_64` clean.
+- Sparkle wiring confirmed by an earlier crash dialog: with the
+  placeholder public key in Info.plist, Sparkle correctly
+  initialized, fetched feedURL, then refused to start ("EdDSA key
+  not valid") — proving every step except verification works. The
+  guard in `AppDelegate` now suppresses the dialog by skipping
+  Sparkle init until a real key is committed.
+
+---
+
+## v0.1.0 shipped (2026-05-03)
+
+Apple Developer Program approved 2026-05-02 evening. The full
+Phase 4 (cut v0.1.0) ran the same night. Tag landed, release
+workflow turned green, draft GitHub Release published with a
+notarized + stapled `AVPainReliever.app.zip`, and `appcast.xml`
+on `main` carries a signed `<item>` for v0.1.0. The remaining
+local smoke test (drag to /Applications, double-click, no
+Gatekeeper warning) is queued for the morning, with the v0.1.1
+auto-update exercise immediately after.
+
+### What landed for v0.1.0
+
+- Sparkle EdDSA keypair: public key embedded at
+  `Resources/Info.plist:44`, private key in user's login keychain
+  + 1Password + as `SPARKLE_PRIVATE_KEY` GitHub Secret.
+- Developer ID Application certificate generated via Apple's CSR
+  flow, installed in login keychain, exported to `cert.p12`,
+  base64'd into `MACOS_CERTIFICATE` GitHub Secret. Cert identity:
+  `Developer ID Application: Eric Willis (HLH4LEWS9S)`.
+- App-specific password for `notarytool` generated at
+  appleid.apple.com, stored as `APPLE_ID_PASSWORD` Secret AND
+  locally as keychain profile `avpain-notary` so future
+  `xcrun notarytool …` calls can use `--keychain-profile
+  avpain-notary` instead of typing it.
+- All seven GitHub Secrets populated. The release workflow
+  (`.github/workflows/release.yml`) runs end-to-end with no
+  skipped steps.
+- v0.1.0 tag pushed → workflow green in 1m41s on the second
+  attempt (first attempt failed at notarization; see Lessons).
+
+### Lessons learned (v0.1.0 ship)
+
+- **`Sparkle.framework/Versions/B/Autoupdate` was missing from
+  `SPARKLE_NESTED`.** It's a bare Mach-O sibling of the framework's
+  main `Sparkle` binary, not a bundle, which is why it slipped
+  past the inside-out signing pass. The notarytool log called it
+  out cleanly: "The binary is not signed with a valid Developer ID
+  certificate" + "The signature does not include a secure
+  timestamp" for both arm64 and x86_64 slices. Fix: add the path
+  to the array. Documented in `docs/RELEASING.md` post-mortem
+  section so a future Sparkle version bump prompts a re-walk of
+  `Versions/B/`.
+- **`xcrun notarytool log <id>` is the must-have diagnostic.** A
+  notary submission status of `Invalid` says nothing useful on its
+  own; the JSON log lists exactly which path/architecture failed
+  and why. First thing to run on any failure.
+- **Double-clicking a `.cer` to install can hit `errSecKeychainItemNoAccess
+  -25294`** if Keychain Access has the iCloud keychain selected
+  in the sidebar at install time. `security import …
+  developerID_application.cer -k ~/Library/Keychains/login.keychain-db`
+  bypasses the GUI ambiguity entirely.
+- **Markdown-aware chat clients autolink emails inside code
+  blocks.** Pasting `gh secret set APPLE_ID --body 'you@example.com'`
+  back through chat → terminal yielded
+  `'[you@example.com](mailto:you@example.com)'` as the literal
+  Secret value. Twice. Fix is to type the email directly into the
+  terminal, or use `gh secret set NAME` with no `--body` so it
+  reads from a `?` prompt. Captured in the post-mortem because
+  it'll happen to anyone scripting Apple-account Secrets via chat.
+- **Notarization is the moment Apple actually inspects the
+  bundle.** Ad-hoc dev builds happily ignore signing miss-matches
+  that hard-fail under notary. Plan for at least one tag-fail-fix
+  cycle on the first signed release and don't pre-publish the
+  draft until smoke-tested.
+
+### Hardening done concurrently with v0.1.0
+
+To make a recurrence less likely:
+
+- `Updater.shouldEnable(bundleIdentifier:publicKey:)` — the
+  build-time placeholder gate is now a pure function on `Updater`
+  with `UpdaterGatingTests` covering all six branches. Previously
+  inline in `AppDelegate.applicationDidFinishLaunching`,
+  un-testable. A placeholder slipping into a release tag would
+  pop "Unable to Check For Updates" at every user; this catches
+  it in CI.
+- `.github/workflows/test.yml` — runs `swift test` on every PR
+  and on every push to `main`. Cheap fast feedback so a
+  regression doesn't have to wait for a release tag to surface.
+- `Package.swift` Sparkle pin tightened from `from: "2.6.0"`
+  (allows up to <3.0) to `.upToNextMinor(from: "2.9.0")` (allows
+  2.9.x patches only). New minor needs a deliberate bump and a
+  fresh walk of `Versions/B/` to confirm no new nested helpers.
+- `docs/RELEASING.md` post-mortem section captures the four
+  lessons above + the diagnostic incantations.
+
+### Pending after v0.1.0 (small)
+
+- Smoke test the published v0.1.0 `.app.zip` end-to-end on a
+  fresh install (queued for morning of 2026-05-04).
+- Tag v0.1.1 with a one-line README change to exercise Sparkle
+  auto-update from a v0.1.0 install.
+- (Once Sparkle bumps to 2.10/3.0) walk `Sparkle.framework/Versions/B/`,
+  update `SPARKLE_NESTED`, do a `v0.0.0-dryrun` tag.
+
+### Pending after v0.1.0 (larger, deferred)
+
+- AppDelegate is 577 lines. Lots of small responsibilities live
+  there: engine boot, Sparkle gate, login-item apply, welcome
+  state, profile-edit session lifecycle. A natural break is
+  `EngineBootManager` + `EditingSessionManager` + leaving
+  AppDelegate as the SwiftUI scene wiring + lifecycle. Not
+  blocking anything; the file is dense but understandable.
+- Homebrew-cask distribution path (still on the v2 list per
+  `docs/RELEASING.md`).
+
+---
+
+## Menu bar profile-icon toggle (2026-05-03)
+
+Added an opt-in setting that swaps the menu bar's `pills.fill` glyph
+for the active profile's SF Symbol. Default off so the product's
+brand glyph stays the out-of-the-box look; users who want the menu
+bar to track location flip the toggle in Settings → General →
+Behavior ("Show current profile icon in the menu bar").
+
+Implementation reused existing pieces end-to-end:
+
+- `SettingsStore` — new `showProfileIconInMenuBar` Bool with the
+  same `@Published`/`didSet`/UserDefaults pattern as the other
+  toggles. Default decoded with `(object(forKey:) as? Bool) ?? false`
+  so "never set" stays distinct from "explicitly off".
+- `AppDelegate` — one-line passthrough mirror so `MenuLabelView`
+  re-renders via the existing `objectWillChange` republish.
+- `MenuLabelView` — new private `menuBarIcon` computed var routes
+  through `ProfileIcon.effectiveSymbol(for:override:)`, the same
+  resolver the "Switch to" submenu and Profiles list already use.
+  Falls back to `Theme.Symbol.appIcon` when the toggle is off, when
+  no active profile is known yet (fresh launch pre-evaluation), or
+  when the active slug isn't found in `availableProfiles`.
+- The unknown-location branch is intentionally untouched — when the
+  user is at a new dock there's no active profile to represent, so
+  the `questionmark.circle` + "New location" treatment stays the
+  right signal regardless of toggle state.
+
+No new types, no new files. Total diff: ~25 net lines across four
+files.
+
+---
+
+## About dialog refresh (2026-05-03)
+
+Stripped the "fiddling" framing out of the About dialog and rebuilt
+it around the four things that actually matter at the About moment:
+app icon, app name, version, an update affordance, and the existing
+"Show welcome again" link.
+
+What got cut:
+
+- `Theme.Copy.tagline` ("Stop fiddling with mic, speakers, and webcam.")
+- The italic "Made to stop the fiddling." line.
+- The two-line description block ("Lives quietly in your menu bar / Watches your USB ports / Picks the right defaults.").
+- The intervening Divider.
+
+What got added:
+
+- A bordered `Check for Updates` button wired to the existing
+  `delegate.checkForUpdates()` Sparkle pass-through, so the same
+  update path Advanced → Check for Updates… uses is now reachable
+  from About too.
+- A one-shot SwiftUI confetti burst overlaid on the dialog. Hand-
+  rolled, no SPM dep — 36 particles (Circle / Capsule / `pills.fill`
+  brand-glyph wink) with random color, size, drift, spin, and fall
+  duration, each animated by a single per-particle `@State` flipped
+  on appear. The whole overlay unmounts after 2.6 s via `.task` +
+  `showConfetti = false` so nothing keeps ticking once the burst
+  finishes. Palette uses system colors (`.accentColor`, `.yellow`,
+  `.pink`, `.green`, `.blue`, `.orange`) so it inherits the user's
+  macOS accent and stays plain-native.
+
+Frame shrunk 360 × 460 → 360 × 340. `Theme.Copy.tagline` is still
+defined; it just isn't used by the About dialog anymore.
+
+---
+
+## Refined-pills icon + menu bar symbol picker (2026-05-04)
+
+Two related polish moves on the visual identity:
+
+**Icon redesign.** Replaced the SF-Symbol-driven `pills.fill`
+artwork with a hand-drawn pharmaceutical capsule on a cool-charcoal
+gradient squircle. The dual-pill SF symbol read as cartoony /
+medicine-cabinet — the new mark is a single capsule with a near-
+white cap, soft warm-gray body, thin seam at the meeting point, and
+a glassy top-edge highlight, tilted ~25° down-to-the-right. Same
+"system utility" register as Activity Monitor / Console — preserves
+the pills metaphor without the kitsch.
+
+The drawing lives in `Sources/AVPainRelieverApp/AppIcon.swift` (no
+SF symbol reference any more — fully decoupled from
+`Theme.Symbol.appIcon`). `Resources/AppIcon.icns` is regenerated
+from the same drawing via a new `scripts/regen-icon.sh` pipeline:
+
+1. `scripts/render-app-icon.swift` — standalone Swift script that
+   duplicates the drawing routine and writes a 1024×1024 PNG.
+   Duplication is deliberate; ~80 lines of Core Graphics and the
+   regen script is the only consumer, so a second SPM target would
+   be overkill. Comment in both files notes the keep-in-sync
+   requirement.
+2. `sips` downscales to every size `iconutil` expects.
+3. `iconutil -c icns` packs the iconset.
+
+`docs/RELEASING.md` documents the regen step.
+
+**Menu bar symbol picker.** New Settings → General → Behavior row
+"Menu bar icon" with a popover-bound 6-column grid of ~12 curated
+SF symbols (`MenuBarIcon.catalog`). Wired through:
+
+- `SettingsStore.menuBarIconSymbol: String` (default
+  `MenuBarIcon.defaultSymbol` = `"pills.fill"` so existing installs
+  see no change).
+- `AppDelegate.menuBarIconSymbol` passthrough mirror.
+- `MenuLabelView.menuBarIcon` reads from
+  `delegate.menuBarIconSymbol` instead of the literal
+  `Theme.Symbol.appIcon`.
+- `MenuBarSymbolPicker` view — visual sibling of
+  `IconPickerView` (same tile size, same selection-highlight). Kept
+  separate rather than generalising IconPickerView because the
+  wizard picker has an "Auto" affordance keyed to a profile slug
+  that doesn't translate.
+
+Per-profile icon override (existing
+`showProfileIconInMenuBar` toggle) still wins when a profile is
+active. The picker controls the *fallback* symbol.
+
+`Theme.Symbol.appIcon` left as the documented brand-glyph constant
+for any future caller that wants "the original."
+
+---
+

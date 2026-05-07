@@ -57,7 +57,7 @@ mkdir -p "$DIST_DIR"
 # ---------- 2. build universal binary ----------
 # `swift build` accepts repeated --arch flags to produce a universal
 # binary in one shot. Fallback (lipo two single-arch builds) is documented
-# in SWIFT_PORT.md and docs/RELEASING.md if Apple ever regresses this.
+# in docs/RELEASING.md if Apple ever regresses this.
 echo "==> swift build (release, universal arm64+x86_64)"
 swift build -c release \
     --arch arm64 --arch x86_64 \

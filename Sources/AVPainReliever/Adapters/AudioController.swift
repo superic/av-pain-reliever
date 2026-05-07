@@ -93,8 +93,8 @@ public protocol AudioController {
 
 /// Production `AudioController` backed by raw CoreAudio. Lifted from
 /// `prototypes/audio-defaults.swift` once that prototype proved the
-/// read+write surface works end to end (see `SWIFT_PORT.md` →
-/// "CoreAudio prototype findings").
+/// read+write surface works end to end (see `docs/architecture.md`
+/// → "CoreAudio prototype findings").
 ///
 /// Stateless — every call re-enumerates devices. CoreAudio's
 /// `kAudioHardwarePropertyDevices` is fast (microseconds), so caching

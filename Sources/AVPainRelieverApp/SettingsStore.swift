@@ -42,8 +42,8 @@ final class SettingsStore: ObservableObject {
     }
 
     /// USB debounce window in seconds. 1.5s is the validated default
-    /// (see SWIFT_PORT.md → Validated decisions). Slider exposes a
-    /// 0.5–5.0 range; persisted as Double for the UI.
+    /// (see docs/decisions.md → Validated decisions). Slider exposes
+    /// a 0.5–5.0 range; persisted as Double for the UI.
     @Published var debounceInterval: Double {
         didSet { defaults.set(debounceInterval, forKey: Key.debounceInterval) }
     }
