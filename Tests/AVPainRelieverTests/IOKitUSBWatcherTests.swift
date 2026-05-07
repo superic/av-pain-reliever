@@ -6,9 +6,9 @@ import Testing
 /// the host machine — the watcher is a thin wrapper around C-style
 /// IOKit calls that don't unit-test cleanly without injecting an entire
 /// IOKit shim layer that nothing else needs. The IOKit prototype
-/// already proved the wiring works end-to-end (see `SWIFT_PORT.md` →
-/// "IOKit prototype findings"); these tests catch regressions if the
-/// production refactor breaks something.
+/// already proved the wiring works end-to-end (see
+/// `docs/architecture.md` → "IOKit prototype findings"); these tests
+/// catch regressions if the production refactor breaks something.
 @Suite("IOKitUSBWatcher")
 struct IOKitUSBWatcherTests {
     @Test("currentDevices returns the same set across consecutive calls")

@@ -260,7 +260,7 @@ channel.
 This rule was inverted in 2026-05 — earlier, v0.2.x defaulted to
 experimental during the virtual-camera development track. After the
 camera shipped, defaults flipped to "stable unless explicitly
-opted out." See SWIFT_PORT.md for the graduation event.
+opted out." See [CHANGELOG.md](../CHANGELOG.md) for the graduation event.
 
 ---
 

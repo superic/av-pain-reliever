@@ -21,8 +21,7 @@ let package = Package(
         // V2 virtual-camera Camera Extension. Built only when the
         // make-app-with-virtual-camera.sh release script asks for it
         // — the default `make-app.sh` (v0.1.x) doesn't embed it. See
-        // SWIFT_PORT.md "V2 plan: native virtual camera" for the
-        // architecture rationale.
+        // docs/virtual-camera.md for the architecture rationale.
         .executable(
             name: "AVPainRelieverCameraExtension",
             targets: ["AVPainRelieverCameraExtension"]
@@ -30,8 +29,8 @@ let package = Package(
     ],
     dependencies: [
         // TOML parser. Foundation has JSON/plist but no TOML; locked
-        // architectural choice (see SWIFT_PORT.md) is TOML for the
-        // human-edited profiles config, so we pick this up.
+        // architectural choice (see docs/decisions.md) is TOML for
+        // the human-edited profiles config, so we pick this up.
         // TOMLKit wraps tomlplusplus and exposes a Codable interface.
         .package(url: "https://github.com/LebJe/TOMLKit.git", from: "0.5.5"),
         // Sparkle 2 — auto-update framework. Reads the EdDSA-signed

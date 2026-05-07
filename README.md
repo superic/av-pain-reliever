@@ -90,4 +90,4 @@ Questions or bug reports: [open an issue](https://github.com/superic/av-pain-rel
 
 ---
 
-For developers: see [SWIFT_PORT.md](SWIFT_PORT.md) for the running design log and [docs/RELEASING.md](docs/RELEASING.md) for the release pipeline. Licensed MIT — see [LICENSE](LICENSE).
+For developers: see [CHANGELOG.md](CHANGELOG.md) for the project journal, [docs/](docs/) for architecture / decisions / virtual camera / release docs, and [CLAUDE.md](CLAUDE.md) for repo orientation. Licensed MIT — see [LICENSE](LICENSE).

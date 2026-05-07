@@ -6,7 +6,7 @@ import Testing
 /// getting this wrong is high: a placeholder slipping into a
 /// release tag means Sparkle initializes against an invalid key and
 /// pops "Unable to Check For Updates" at every user. That happened
-/// in pre-v0.1.0 dev builds (see SWIFT_PORT.md "Lessons learned"),
+/// in pre-v0.1.0 dev builds (see docs/port-history.md "Lessons learned"),
 /// which is why the gate exists at all.
 @Suite("Updater gating")
 struct UpdaterGatingTests {
