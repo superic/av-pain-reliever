@@ -61,36 +61,15 @@ struct IconPickerView: View {
 
             Divider()
 
-            // Curated catalog grid. Each cell is a 36×36 button; the
-            // selected one (matching `selection`) gets a tinted
-            // background so it stands out against the others.
+            // Curated catalog grid. Each cell is an `IconTile`; the
+            // selected one (matching `selection`) renders with a
+            // tinted background so it stands out against the others.
             LazyVGrid(columns: columns, spacing: 6) {
                 ForEach(ProfileIcon.catalog, id: \.self) { symbol in
-                    Button {
+                    IconTile(symbol: symbol, isSelected: selection == symbol) {
                         selection = symbol
                         onPick()
-                    } label: {
-                        Image(systemName: symbol)
-                            .font(.body)
-                            .frame(width: 36, height: 36)
-                            .background(
-                                RoundedRectangle(cornerRadius: 6, style: .continuous)
-                                    .fill(selection == symbol
-                                          ? Color.accentColor.opacity(0.18)
-                                          : Color.clear)
-                            )
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 6, style: .continuous)
-                                    .strokeBorder(
-                                        selection == symbol
-                                            ? Color.accentColor
-                                            : Color.clear,
-                                        lineWidth: 1
-                                    )
-                            )
                     }
-                    .buttonStyle(.plain)
-                    .help(symbol)
                 }
             }
         }

@@ -140,13 +140,6 @@ final class AddProfileViewModel: ObservableObject {
     /// has actually opted into.
     let virtualCameraEnabled: Bool
 
-    /// Localized name AVFoundation reports for the embedded virtual
-    /// camera. Mirrors `VirtualCameraActivator.virtualCameraDisplayName`.
-    /// Hardcoded here rather than imported because the engine
-    /// module (which owns this view model's `CameraSummary` type)
-    /// has no view of the host activator's constants.
-    private static let virtualCameraDisplayName = "AV Pain Reliever"
-
     /// Saved fingerprint from the profile being edited — preserved
     /// verbatim across `refresh()` so saved-but-disconnected devices
     /// keep showing up even after the live watcher snapshot updates.
@@ -228,13 +221,10 @@ final class AddProfileViewModel: ObservableObject {
             }
         let disconnectedIDs = Set(disconnected.map(\.device))
 
-        // Two-tier sort for live devices: location-defining hardware
-        // (mics, speakers, cameras, capture cards, displays, docks,
-        // hubs — anything not flagged by `DevicePortability`) at the
-        // top, portable peripherals (keyboards, mice, phones,
-        // headphones, watches) at the bottom. Disconnected entries
-        // pushed to the very bottom by name so the active hardware
-        // stays grouped at the top.
+        // Sort live devices by tier (Important → other named →
+        // portable named → unnamed) per `sortedByTier` below, then
+        // append disconnected entries at the very bottom so active
+        // hardware stays grouped at the top.
         attachedDevices = Self.sortedByTier(liveSnapshot)
             + Self.sortedByTier(disconnected)
         disconnectedDeviceIDs = disconnectedIDs
@@ -274,8 +264,8 @@ final class AddProfileViewModel: ObservableObject {
         // brief window where the virtual camera was selectable: the
         // saved-but-now-invalid value is sanitized below.
         cameras = cameraController.availableCameras()
-            .filter { $0.name != Self.virtualCameraDisplayName }
-        if camera == Self.virtualCameraDisplayName {
+            .filter { $0.name != VirtualCameraActivator.virtualCameraDisplayName }
+        if camera == VirtualCameraActivator.virtualCameraDisplayName {
             camera = nil
         }
 
@@ -292,7 +282,7 @@ final class AddProfileViewModel: ObservableObject {
             // preferred — that's by design (#2). Skip it here so
             // the pre-fill always lands on a *real* camera.
             let preferred = cameraController.currentPreferredName()
-            camera = preferred == Self.virtualCameraDisplayName ? nil : preferred
+            camera = preferred == VirtualCameraActivator.virtualCameraDisplayName ? nil : preferred
         }
 
         // First-launch convenience: if the user hasn't typed a name and
@@ -328,16 +318,8 @@ final class AddProfileViewModel: ObservableObject {
         audioDevices.filter(\.supportsOutput)
     }
 
-    /// Two-tier sort for the wizard's live device list. Top tier
-    /// holds devices that aren't flagged by `DevicePortability` —
-    /// docks, hubs, mics, speakers, cameras, capture cards,
-    /// displays, etc. — i.e. the location-bound hardware. Bottom
-    /// tier holds the portable peripherals the wizard already
-    /// suggests unticking (keyboards, mice, phones, headphones,
-    /// watches). Within each tier, items sort alphabetically by
-    /// `displayName` so the order is stable across re-renders.
-    ///
-    /// Four-tier sort, alphabetical within each tier:
+    /// Four-tier sort for the wizard's device list, alphabetical
+    /// within each tier:
     /// 1. Important (mic / video / speaker / audio per
     ///    `DevicePortability.importantCategory`) — top, easiest to
     ///    scan when picking fingerprint candidates.

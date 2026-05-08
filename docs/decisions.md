@@ -115,6 +115,9 @@ they come up so we can prioritize for v2:
 - Per-profile *focus mode* / *Do Not Disturb*
 - Hammerspoon → Swift *config import* (read existing `profiles.lua` and
   generate `profiles.toml`)
+- *Crash and error reporting* (opt-in telemetry for unhandled crashes,
+  plus an in-app viewer for recent OSLog failures so the user notices
+  silent breakage without running `log show`)
 
 ### Onboarding
 

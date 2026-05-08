@@ -69,13 +69,8 @@ final class CMIOSinkWriter {
     private static let outputHeight: Int = 720
     private static let outputFormat: OSType = kCVPixelFormatType_32BGRA
 
-    init(deviceUID: String, width: Int32, height: Int32) {
+    init(deviceUID: String) {
         self.deviceUID = deviceUID
-        // width/height retained as ignored params for backward-
-        // compat with the call site; the output target is fixed
-        // at 1280×720 BGRA (matches the extension's source format).
-        _ = width
-        _ = height
     }
 
     /// Discovers the device, opens its sink stream, primes the

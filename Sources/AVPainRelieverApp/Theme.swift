@@ -7,11 +7,12 @@ import AppKit
 /// cyan highlight) borrowed from the Hammerspoon TUI. The user
 /// reverted that direction (2026-05-02): the app should look like a
 /// plain native macOS utility, no custom accent colors. So this
-/// namespace now exposes only the three semantic system colors the
-/// app actually needs (success / warn / error) for status pills and
-/// banner-style errors. Everything else (headers, captions, links,
-/// button tints) uses SwiftUI's defaults — `.primary` for body text,
-/// `.secondary` for hints, the system accent for prominent buttons.
+/// namespace exposes a small set of semantic system colors —
+/// success / warn / error for status pills and banner-style errors,
+/// plus muted for low-volume informational pills. Everything else
+/// (headers, captions, links, button tints) uses SwiftUI's defaults
+/// — `.primary` for body text, `.secondary` for hints, the system
+/// accent for prominent buttons.
 ///
 /// `Theme.Symbol` and `Theme.Copy` stay as before — those are
 /// product identifiers, not stylistic choices.

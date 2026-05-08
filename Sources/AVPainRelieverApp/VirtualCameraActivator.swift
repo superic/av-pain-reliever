@@ -50,13 +50,6 @@ final class VirtualCameraActivator: NSObject, ObservableObject,
         /// in-session deactivation; resolved by relaunching the
         /// app from a fresh process.
         case requiresRelaunch
-
-        var isLive: Bool {
-            switch self {
-            case .activating, .needsApproval, .on: return true
-            case .off, .failed, .requiresRelaunch: return false
-            }
-        }
     }
 
     static let extensionBundleID = "com.ericwillis.avpainreliever.CameraExtension"
@@ -239,11 +232,7 @@ final class VirtualCameraActivator: NSObject, ObservableObject,
 
     private func startCapturePipeline() {
         guard captureSession == nil else { return }
-        let writer = CMIOSinkWriter(
-            deviceUID: Self.virtualCameraUID,
-            width: 1280,
-            height: 720
-        )
+        let writer = CMIOSinkWriter(deviceUID: Self.virtualCameraUID)
         let session = CameraCaptureSession(
             sink: writer,
             initialSourceName: pendingSourceName

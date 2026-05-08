@@ -29,84 +29,69 @@ struct AboutView: View {
     @State private var horoscope: String = HoroscopeOracle.random()
 
     var body: some View {
-        ZStack {
-            // Three vertical zones with flexible space between them:
-            // top group (icon + name + version) anchored at the top,
-            // fortune slip floating in the middle, action group +
-            // footer anchored at the bottom. The two flexible Spacers
-            // around the fortune keep it visually centered between
-            // the top and bottom groups regardless of frame height.
-            VStack(spacing: 0) {
-                VStack(spacing: 18) {
-                    // Generated app icon — same artwork the OS uses.
-                    // SwiftUI's Image(nsImage:) downscales cleanly
-                    // from the 1024-square master.
-                    Image(nsImage: AppIcon.image)
-                        .resizable()
-                        .interpolation(.high)
-                        .frame(width: 96, height: 96)
-                        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
-                        .shadow(color: .black.opacity(0.18), radius: 12, y: 6)
-                        .scaleEffect(pulse ? 1.03 : 1.0)
-                        .animation(
-                            .easeInOut(duration: 1.8).repeatForever(autoreverses: true),
-                            value: pulse
-                        )
-                        .onAppear { pulse = true }
+        // Three vertical zones with flexible space between them:
+        // top group (icon + name + version) anchored at the top,
+        // fortune slip floating in the middle, action group +
+        // footer anchored at the bottom. The two flexible Spacers
+        // around the fortune keep it visually centered between
+        // the top and bottom groups regardless of frame height.
+        VStack(spacing: 0) {
+            VStack(spacing: 18) {
+                // Generated app icon — same artwork the OS uses.
+                // SwiftUI's Image(nsImage:) downscales cleanly
+                // from the 1024-square master.
+                Image(nsImage: AppIcon.image)
+                    .resizable()
+                    .interpolation(.high)
+                    .frame(width: 96, height: 96)
+                    .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+                    .shadow(color: .black.opacity(0.18), radius: 12, y: 6)
+                    .scaleEffect(pulse ? 1.03 : 1.0)
+                    .animation(
+                        .easeInOut(duration: 1.8).repeatForever(autoreverses: true),
+                        value: pulse
+                    )
+                    .onAppear { pulse = true }
 
-                    VStack(spacing: 4) {
-                        Text(Theme.Copy.appName)
-                            .font(.system(size: 26, weight: .bold, design: .rounded))
-                        Text(VersionInfo.short)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
+                VStack(spacing: 4) {
+                    Text(Theme.Copy.appName)
+                        .font(.system(size: 26, weight: .bold, design: .rounded))
+                    Text(VersionInfo.short)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
+            }
 
-                Spacer(minLength: 0)
-                fortuneSlip
-                Spacer(minLength: 0)
+            Spacer(minLength: 0)
+            fortuneSlip
+            Spacer(minLength: 0)
 
-                // Action group anchors 14pt above the footer — the
-                // earlier draft pushed the buttons down from the
-                // fortune, but the user prefers them anchored to
-                // the bottom of the dialog with the fortune drifting
-                // toward the middle.
-                VStack(spacing: 18) {
-                    Button("Check for Updates") {
-                        delegate.checkForUpdates()
-                    }
-                    .controlSize(.large)
-
-                    Button("Show welcome again") {
-                        delegate.showWelcomeAgain()
-                        dismissWindow(id: aboutWindowID)
-                    }
-                    .buttonStyle(.link)
-                    .font(.caption)
+            // Action group anchors 14pt above the footer — the
+            // earlier draft pushed the buttons down from the
+            // fortune, but the user prefers them anchored to
+            // the bottom of the dialog with the fortune drifting
+            // toward the middle.
+            VStack(spacing: 18) {
+                Button("Check for Updates") {
+                    delegate.checkForUpdates()
                 }
-                .padding(.bottom, 14)
+                .controlSize(.large)
 
-                copyrightFooter
+                Button("Show welcome again") {
+                    delegate.showWelcomeAgain()
+                    dismissWindow(id: aboutWindowID)
+                }
+                .buttonStyle(.link)
+                .font(.caption)
             }
-            .padding(.vertical, 28)
-            .padding(.horizontal, 28)
-            .frame(width: 360, height: 460)
+            .padding(.bottom, 14)
 
-            if showConfetti {
-                ConfettiBurst()
-                    .allowsHitTesting(false)
-                    .task {
-                        // Outlast the longest particle trajectory
-                        // (max riseDuration + fallDuration ≈ 2.4s)
-                        // so every piece arcs back down before the
-                        // layer unmounts. After this, the ZStack
-                        // collapses and no animations keep ticking.
-                        try? await Task.sleep(for: .seconds(3.2))
-                        showConfetti = false
-                    }
-            }
+            copyrightFooter
         }
+        .padding(.vertical, 28)
+        .padding(.horizontal, 28)
+        .frame(width: 360, height: 460)
+        .oneShotConfetti(isPresented: $showConfetti)
         .background(.background)
         .dialogWindowChrome()
         .centeredOnScreen()
