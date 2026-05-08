@@ -49,8 +49,8 @@ public struct Profile: Hashable, Sendable {
 
     /// Display-only names for fingerprint devices, keyed by
     /// `(vid, pid, serial)` USBDevice. Populated by `ConfigLoader`
-    /// and `ConfigImporter` from the `name = "..."` field on each
-    /// fingerprint entry in the source TOML / Lua. The resolver and
+    /// from the `name = "..."` field on each fingerprint entry in
+    /// the source TOML. The resolver and
     /// applier ignore this — match logic is `(vid, pid, serial)`-only.
     /// The wizard's edit form reads this to keep saved-but-currently-
     /// disconnected devices visible (with a "Not connected" hint)

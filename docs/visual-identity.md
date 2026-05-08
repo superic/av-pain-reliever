@@ -48,14 +48,14 @@ let `.primary` / `.secondary` handle text contrast.
 
 ### History note
 
-The first design pass (2026-05-01) borrowed the Hammerspoon TUI
-palette (`#FF87D7` magenta, `#00FFFF` cyan, etc.) and threaded it
-through every header, tagline, button tint, and section icon. The
-user reverted that direction the next day — the visual cost
-(magenta accents on light-mode forms, cyan-on-white legibility,
-"branded form" feel) outweighed the parity benefit with the CLI.
-Plain native is the locked direction now; don't reintroduce
-custom accent colors without explicit user direction.
+The first design pass (2026-05-01) carried a saturated CLI-style
+palette (`#FF87D7` magenta, `#00FFFF` cyan, etc.) threaded through
+every header, tagline, button tint, and section icon. The user
+reverted that direction the next day — the visual cost (magenta
+accents on light-mode forms, cyan-on-white legibility, "branded
+form" feel) outweighed any benefit. Plain native is the locked
+direction now; don't reintroduce custom accent colors without
+explicit user direction.
 - **Notification (`UserNotifications`) styling**: title = "Switched to
   Home Office" (pretty-cased profile name), no subtitle, no body, no
   attachment. Mimics the current `hs.notify` minimalism.

@@ -1,25 +1,22 @@
 # Decisions
 
-What we know to be true about this product, captured before the Swift code was written. The "Validated decisions" section was settled by Phase 1 use of the Hammerspoon prototype; the "Open questions" section is the punchlist of things that still need real-world data to answer.
+What we know to be true about this product. The "Validated decisions" section was settled before the Swift app was built; the "Open questions" section is the punchlist of things that still need real-world data to answer.
 
 For ongoing implementation work see [docs/architecture.md](architecture.md). For the V2 virtual-camera design see [docs/virtual-camera.md](virtual-camera.md).
 
 ## Target product
 
-A distributable macOS menu-bar app that does what `init.lua` + `profiles.lua`
-do today, but:
+A distributable macOS menu-bar app that:
 
 - Ships as a signed + notarized `.app` from GitHub Releases
 - Auto-updates via Sparkle 2
 - Has a real menu-bar UI for status, manual override, profile management
-- Doesn't require Hammerspoon, Lua, or shell scripts to install or use
-- Configurable for non-developers (a typical non-coder collaborator should be
-  able to install it without ever opening a terminal — though we accept that
-  the wizard's "open OBS and click these settings" steps will probably remain
-  manual until OBS adds API surface for them)
+- Runs self-contained — no Lua, no shell scripts, no third-party tools
+- Configurable for non-developers (a typical non-coder collaborator should
+  be able to install it without ever opening a terminal)
 
-Same external behavior as the Hammerspoon engine: USB-driven location detection
-→ switch system audio defaults + OBS scene → notify.
+External behavior: USB-driven location detection → switch system audio
+defaults + camera selection → notify.
 
 ---
 
@@ -52,10 +49,10 @@ These are settled by Phase 1 use and can be assumed when we start Swift:
 - **Profile change triggers don't need WiFi BSSID, Bluetooth, or calendar
   signals as a fallback.** USB alone has been sufficient for Eric's 4
   locations. Revisit if a real user can't disambiguate USB-only.
-- **profiles.lua hand-editing is acceptable for power users**, but the wizard
-  is the right onboarding for non-power-users. The Swift app should not
-  require config-file editing for normal use, but should allow it as escape
-  hatch.
+- **`profiles.toml` hand-editing is acceptable for power users**, but the
+  wizard is the right onboarding for non-power-users. The Swift app should
+  not require config-file editing for normal use, but should allow it as
+  escape hatch.
 - **No manual override.** Profile resolution is always driven by the
   currently-attached USB devices. The user has no use case for "force
   profile X regardless of what's plugged in." Implication: the menu bar
@@ -113,24 +110,17 @@ they come up so we can prioritize for v2:
 - Per-profile *Bluetooth device* connect/disconnect
 - Per-profile *VPN* enable/disable
 - Per-profile *focus mode* / *Do Not Disturb*
-- Hammerspoon → Swift *config import* (read existing `profiles.lua` and
-  generate `profiles.toml`)
 - *Crash and error reporting* (opt-in telemetry for unhandled crashes,
   plus an in-app viewer for recent OSLog failures so the user notices
   silent breakage without running `log show`)
 
 ### Onboarding
 
-- **Q: Did the first external user get all the way through the Phase 1.5
-  wizard without asking for help? Where did they stick?** Trigger: after
-  the first non-author user runs the wizard. Implication: directly
-  informs whether the bash + gum approach is scalable, OR if the Swift
-  app needs a full GUI installer (DMG with drag-to-Applications, then
-  in-app first-run wizard).
-- **Q: How often does Hammerspoon get reloaded vs. the engine just running
-  in the background?** Trigger: usage data over 2-3 weeks. Implication: if
-  reloads are frequent, Swift needs a clean "reload config" menu item; if
-  rare, we can require quit-and-relaunch.
+- **Q: Did the first external user get all the way through the wizard
+  without asking for help? Where did they stick?** Trigger: after the
+  first non-author user runs the wizard. Implication: directly informs
+  whether the in-app onboarding is scalable, OR if it needs a more
+  guided first-run flow.
 
 ---
 

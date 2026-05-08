@@ -8,11 +8,6 @@ import AVPainReliever
 /// ```sh
 /// log stream --predicate 'subsystem == "com.ericwillis.avpainreliever"'
 /// ```
-///
-/// The Hammerspoon engine wrote a parallel file at
-/// `~/.hammerspoon/logs/av-pain-reliever.log`; the Swift port replaces
-/// that with `os.Logger`. Console.app's filtering and search make the
-/// file appender redundant once we're on the unified system.
 struct ConsoleLogger: ApplierLogger {
     private static let logger = Logger(
         subsystem: "com.ericwillis.avpainreliever",

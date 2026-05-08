@@ -20,10 +20,10 @@ public enum ProfileWriteError: Error, Equatable {
 /// Why append-as-text rather than rewrite-from-model: the user might
 /// have hand-edited the TOML to add comments, reorder profiles, or
 /// document why each fingerprint device was chosen. Round-tripping
-/// through `ConfigLoader` → mutate → `ConfigImporter.encodeTOML`
-/// would erase all of that. Appending preserves prior content
-/// verbatim, which is the right default for a config-file workflow
-/// where the file IS the canonical source of truth.
+/// through `ConfigLoader` → mutate → re-encode would erase all of
+/// that. Appending preserves prior content verbatim, which is the
+/// right default for a config-file workflow where the file IS the
+/// canonical source of truth.
 ///
 /// If the target file doesn't exist yet, the writer creates it (and
 /// any missing parent directories). The caller passes the canonical

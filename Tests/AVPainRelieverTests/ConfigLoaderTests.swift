@@ -72,9 +72,9 @@ struct ConfigLoaderTests {
 
     @Test("legacy obsScene field in existing TOML is silently ignored")
     func ignoresUnknownObsSceneField() throws {
-        // Users migrated from the Hammerspoon Phase 1 setup may have
-        // obsScene fields persisted in their TOML. The V1 Swift app
-        // doesn't support OBS — Codable's "unknown keys are tolerated"
+        // Older configs may carry obsScene fields left over from an
+        // earlier OBS-routing experiment. The current app doesn't
+        // support OBS — Codable's "unknown keys are tolerated"
         // default means we read past those without error.
         let profiles = try loader.parseProfiles("""
         [profiles.home-office]
