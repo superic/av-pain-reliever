@@ -1,6 +1,7 @@
 import Foundation
 import CoreMediaIO
 import CoreMedia
+import AVPainRelieverSharedConstants
 import os.log
 
 private let logger = Logger(
@@ -15,22 +16,18 @@ private let logger = Logger(
 /// to the sink; the device source forwards each consumed frame
 /// here via `stream.send(...)`.
 final class CameraExtensionStreamSource: NSObject, CMIOExtensionStreamSource {
-    /// Darwin notification names used to tell the host whether any
-    /// AVCapture client is currently reading the source. The host
-    /// uses this to gate its real-camera capture pipeline (and
-    /// therefore the macOS green camera light): pipeline runs only
-    /// while a consumer is connected, plus a grace window after the
-    /// last one disconnects. Names are Team-ID-prefixed so the
-    /// sandbox lets this extension post them.
+    /// Re-exports of the shared notification names so existing
+    /// `Self.consumerActiveNotification` call sites in this file
+    /// keep their current spellings. The canonical strings live in
+    /// `AVPainRelieverSharedConstants`, which both this extension
+    /// and the host's `VirtualCameraActivator` link statically —
+    /// no hand-mirroring across the two binaries.
     static let consumerActiveNotification =
-        "HLH4LEWS9S.com.ericwillis.avpainreliever.consumer-active"
+        CameraExtensionNotifications.consumerActive
     static let consumerInactiveNotification =
-        "HLH4LEWS9S.com.ericwillis.avpainreliever.consumer-inactive"
-    /// Sent by the host when it (re)starts observing — extension
-    /// responds by re-posting the current state so a host that
-    /// missed the most recent transition can seed its initial value.
+        CameraExtensionNotifications.consumerInactive
     static let queryConsumerStateNotification =
-        "HLH4LEWS9S.com.ericwillis.avpainreliever.query-consumer-state"
+        CameraExtensionNotifications.queryConsumerState
 
     private(set) var stream: CMIOExtensionStream!
     private let streamFormat: CMIOExtensionStreamFormat

@@ -3,6 +3,7 @@ import AppKit
 import AVFoundation
 import SystemExtensions
 import AVPainReliever
+import AVPainRelieverSharedConstants
 import os.log
 
 private let logger = Logger(
@@ -65,17 +66,18 @@ final class VirtualCameraActivator: NSObject, ObservableObject,
     static let virtualCameraUID = VirtualCameraIdentity.deviceUID
     static let virtualCameraDisplayName = VirtualCameraIdentity.displayName
 
-    /// Mirror of the extension's notification names. Kept in sync by
-    /// hand — both targets are sandboxed-vs-not separate executables
-    /// without a shared Swift module, and three constants is cheaper
-    /// than building one. Any change here MUST mirror in
-    /// `CameraExtensionStream.swift`.
+    /// Re-exports of the shared notification names so the rest of
+    /// this file can keep its `Self.consumerActiveNotification`
+    /// spellings while the canonical strings live in
+    /// `AVPainRelieverSharedConstants` (a tiny target both this
+    /// host code and the Camera Extension link statically — no
+    /// more hand-mirroring across the two binaries).
     private static let consumerActiveNotification =
-        "HLH4LEWS9S.com.ericwillis.avpainreliever.consumer-active"
+        CameraExtensionNotifications.consumerActive
     private static let consumerInactiveNotification =
-        "HLH4LEWS9S.com.ericwillis.avpainreliever.consumer-inactive"
+        CameraExtensionNotifications.consumerInactive
     private static let queryConsumerStateNotification =
-        "HLH4LEWS9S.com.ericwillis.avpainreliever.query-consumer-state"
+        CameraExtensionNotifications.queryConsumerState
 
     /// Time we keep the host capture pipeline warm after the last
     /// AVCapture client disconnects. Bridges back-to-back Zoom calls
