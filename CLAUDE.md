@@ -13,7 +13,9 @@ This workspace contains **two independent git repos**:
 - **Public repo** (`superic/av-pain-reliever`) — the project tree at the root. CI / Sparkle / public releases.
 - **Private dev repo** (`superic/av-pain-reliever-dev`) — cloned into `dev/`, gitignored from the public repo. Contains the local build helper (`dev/build`), credentials config, and recovery docs. See `dev/README.md` (private) for setup, recovery, and the cert / notary / Sparkle-key dance.
 
-Never put the cert name, team ID, or anything personal-credential-shaped into public-repo content. See `dev/README.md` for what lives in private.
+Never put the cert name or anything credential-shaped (signing identity passwords, notary keychain profile names, Sparkle EdDSA private keys) into public-repo content. See `dev/README.md` for what lives in private.
+
+The team ID gets a narrow carve-out: macOS sandboxing requires team-ID-prefixed names for some runtime APIs (Darwin notification names posted from a Camera Extension or other sandboxed extensions, App Group identifiers, mach service names, keychain access groups). Those uses are load-bearing — the OS rejects calls without the prefix — so the team ID stays inline at those specific call sites. It's not a credential (it can't be used to sign code on its own) and it's already embedded in every shipping signed binary plus the appcast XML signatures. The rule is "no new exposure where the OS doesn't require it" — utility scripts, CI configs, and prose still keep the team ID out.
 
 ## Where to look for what
 
