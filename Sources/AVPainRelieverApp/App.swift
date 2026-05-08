@@ -17,7 +17,7 @@ struct AVPainRelieverApp: SwiftUI.App {
         // @Published property changes. View-level dependency tracking
         // is what makes the live update work.
         MenuBarExtra {
-            MenuContentView(delegate: appDelegate)
+            MenuContentView(delegate: appDelegate, settings: appDelegate.settings)
             // Hidden helpers — observe AppDelegate flags and open the
             // matching window. Live inside MenuBarExtra so SwiftUI's
             // openWindow environment is available; menu items render
@@ -25,7 +25,7 @@ struct AVPainRelieverApp: SwiftUI.App {
             WelcomeOpener(delegate: appDelegate)
             AddProfileOpener(delegate: appDelegate)
         } label: {
-            MenuLabelView(delegate: appDelegate)
+            MenuLabelView(delegate: appDelegate, settings: appDelegate.settings)
         }
         .menuBarExtraStyle(.menu)
 
@@ -127,6 +127,7 @@ private struct WelcomeWindowContent: View {
 
 private struct MenuLabelView: View {
     @ObservedObject var delegate: AppDelegate
+    @ObservedObject var settings: SettingsStore
 
     var body: some View {
         if delegate.atUnknownLocation {
@@ -141,7 +142,7 @@ private struct MenuLabelView: View {
             Text("New location")
         } else {
             Image(systemName: menuBarIcon)
-            if delegate.showProfileNameInMenuBar {
+            if settings.showProfileNameInMenuBar {
                 Text(delegate.currentProfileTitle)
             }
         }
@@ -156,11 +157,11 @@ private struct MenuLabelView: View {
     /// submenu and Profiles list render.
     private var menuBarIcon: String {
         guard
-            delegate.showProfileIconInMenuBar,
+            settings.showProfileIconInMenuBar,
             let slug = delegate.activeProfileSlug,
             let profile = delegate.availableProfiles.first(where: { $0.name == slug })
         else {
-            return delegate.menuBarIconSymbol
+            return settings.menuBarIconSymbol
         }
         return ProfileIcon.effectiveSymbol(for: slug, override: profile.icon)
     }
@@ -168,6 +169,7 @@ private struct MenuLabelView: View {
 
 private struct MenuContentView: View {
     @ObservedObject var delegate: AppDelegate
+    @ObservedObject var settings: SettingsStore
     @Environment(\.openWindow) private var openWindow
     /// macOS 14+ way to programmatically open the SwiftUI Settings
     /// scene. The AppKit-selector approach (showSettingsWindow:)
@@ -191,7 +193,7 @@ private struct MenuContentView: View {
         // disabled-NSMenuItem dim treatment that comes with non-
         // interactive items in NSMenu.
         if showStats || NSEvent.modifierFlags.contains(.option) {
-            Text(StatsCopy.line(for: delegate.profileSwitchCount))
+            Text(StatsCopy.line(for: settings.profileSwitchCount))
                 .font(.caption)
                 .foregroundStyle(.secondary)
             Divider()

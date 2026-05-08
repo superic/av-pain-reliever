@@ -137,19 +137,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
 
     override init() {
         super.init()
-        // Republish SettingsStore changes through our own
-        // ObservableObject so views that observe the AppDelegate (the
-        // menu, the About scene) re-render when a setting flips —
-        // without each view having to observe the store directly.
-        settings.objectWillChange
-            .sink { [weak self] in self?.objectWillChange.send() }
-            .store(in: &cancellables)
-        // Same propagation for the activator — Settings views show a
-        // live state badge that needs to repaint on every state
-        // transition.
-        virtualCameraActivator.objectWillChange
-            .sink { [weak self] in self?.objectWillChange.send() }
-            .store(in: &cancellables)
         // Drive the activator from the persisted toggle. Skips the
         // initial value (delivered synchronously when the sink
         // attaches) — `applicationDidFinishLaunching` handles the
@@ -608,21 +595,5 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
             engine?.reapply()
         }
     }
-
-    // MARK: - Convenience surfaces for the menu
-
-    /// Mirror of `settings.profileSwitchCount` exposed on the
-    /// AppDelegate so the menu's `@ObservedObject` re-renders without
-    /// a separate observer plumbed through the view.
-    var profileSwitchCount: Int { settings.profileSwitchCount }
-
-    /// Mirror of `settings.showProfileNameInMenuBar` for the same reason.
-    var showProfileNameInMenuBar: Bool { settings.showProfileNameInMenuBar }
-
-    /// Mirror of `settings.showProfileIconInMenuBar` for the same reason.
-    var showProfileIconInMenuBar: Bool { settings.showProfileIconInMenuBar }
-
-    /// Mirror of `settings.menuBarIconSymbol` for the same reason.
-    var menuBarIconSymbol: String { settings.menuBarIconSymbol }
 
 }
