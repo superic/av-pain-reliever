@@ -232,11 +232,7 @@ final class VirtualCameraActivator: NSObject, ObservableObject,
 
     private func startCapturePipeline() {
         guard captureSession == nil else { return }
-        let writer = CMIOSinkWriter(
-            deviceUID: Self.virtualCameraUID,
-            width: 1280,
-            height: 720
-        )
+        let writer = CMIOSinkWriter(deviceUID: Self.virtualCameraUID)
         let session = CameraCaptureSession(
             sink: writer,
             initialSourceName: pendingSourceName

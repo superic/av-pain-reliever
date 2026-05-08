@@ -13,59 +13,45 @@ struct WelcomeView: View {
     @State private var showConfetti = true
 
     var body: some View {
-        ZStack {
-            VStack(spacing: 24) {
-                Image(nsImage: AppIcon.image)
-                    .resizable()
-                    .interpolation(.high)
-                    .frame(width: 104, height: 104)
-                    .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
-                    .shadow(color: .black.opacity(0.18), radius: 14, y: 6)
+        VStack(spacing: 24) {
+            Image(nsImage: AppIcon.image)
+                .resizable()
+                .interpolation(.high)
+                .frame(width: 104, height: 104)
+                .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+                .shadow(color: .black.opacity(0.18), radius: 14, y: 6)
 
-                VStack(spacing: 8) {
-                    Text(Self.greetingTitle)
-                        .font(.system(size: 24, weight: .bold, design: .rounded))
-                        .multilineTextAlignment(.center)
-                    Text(Theme.Copy.tagline)
-                        .font(.title3)
-                        .foregroundStyle(.secondary)
-                        .multilineTextAlignment(.center)
-                }
-
-                Spacer(minLength: 0)
-
-                VStack(spacing: 10) {
-                    Button(action: onAddProfile) {
-                        Text("Add Your First Location")
-                            .frame(minWidth: 220)
-                            .padding(.vertical, 4)
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.large)
-                    .keyboardShortcut(.defaultAction)
-
-                    Button("Skip — I'll set up later", action: onSkip)
-                        .buttonStyle(.borderless)
-                        .keyboardShortcut(.cancelAction)
-                }
+            VStack(spacing: 8) {
+                Text(Self.greetingTitle)
+                    .font(.system(size: 24, weight: .bold, design: .rounded))
+                    .multilineTextAlignment(.center)
+                Text(Theme.Copy.tagline)
+                    .font(.title3)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
             }
-            .padding(.vertical, 32)
-            .padding(.horizontal, 28)
-            .frame(width: 480, height: 540)
 
-            if showConfetti {
-                ConfettiBurst()
-                    .allowsHitTesting(false)
-                    .task {
-                        // Outlast the longest particle trajectory so
-                        // every piece arcs back down before the layer
-                        // unmounts. After this, the ZStack collapses
-                        // and no animations keep ticking.
-                        try? await Task.sleep(for: .seconds(3.2))
-                        showConfetti = false
-                    }
+            Spacer(minLength: 0)
+
+            VStack(spacing: 10) {
+                Button(action: onAddProfile) {
+                    Text("Add Your First Location")
+                        .frame(minWidth: 220)
+                        .padding(.vertical, 4)
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.large)
+                .keyboardShortcut(.defaultAction)
+
+                Button("Skip — I'll set up later", action: onSkip)
+                    .buttonStyle(.borderless)
+                    .keyboardShortcut(.cancelAction)
             }
         }
+        .padding(.vertical, 32)
+        .padding(.horizontal, 28)
+        .frame(width: 480, height: 540)
+        .oneShotConfetti(isPresented: $showConfetti)
         .background(.background)
         .dialogWindowChrome()
         .centeredOnScreen()

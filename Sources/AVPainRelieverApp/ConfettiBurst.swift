@@ -160,3 +160,27 @@ private struct ConfettiParticle: View {
         }
     }
 }
+
+extension View {
+    /// Overlay a one-shot `ConfettiBurst` when `isPresented` is true.
+    /// After `duration` the binding flips back to false so the overlay
+    /// unmounts and no animations keep ticking. Default duration
+    /// outlasts the longest particle trajectory (≈ 2.4s rise + fall).
+    /// Used by the About + Welcome dialogs to keep the celebratory
+    /// burst self-contained — the caller just toggles the flag.
+    func oneShotConfetti(
+        isPresented: Binding<Bool>,
+        duration: Duration = .seconds(3.2)
+    ) -> some View {
+        overlay {
+            if isPresented.wrappedValue {
+                ConfettiBurst()
+                    .allowsHitTesting(false)
+                    .task {
+                        try? await Task.sleep(for: duration)
+                        isPresented.wrappedValue = false
+                    }
+            }
+        }
+    }
+}

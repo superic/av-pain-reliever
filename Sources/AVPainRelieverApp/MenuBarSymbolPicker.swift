@@ -5,12 +5,12 @@ import SwiftUI
 /// updates the binding and dismisses the popover.
 ///
 /// Visual sibling of `IconPickerView` (the wizard's per-profile
-/// picker) — same tile size, same selection-highlight treatment, so
-/// the two pickers read as one component family. The reason this is
-/// a separate view instead of generalising `IconPickerView`: the
-/// wizard picker has an "Auto" affordance keyed to a profile slug,
-/// which makes no sense for a global menu-bar default. A standalone
-/// view keeps both call sites simple.
+/// picker) — same tile size, same selection-highlight treatment via
+/// the shared `IconTile`, so the two pickers read as one component
+/// family. The reason this is a separate view instead of generalising
+/// `IconPickerView`: the wizard picker has an "Auto" affordance keyed
+/// to a profile slug, which makes no sense for a global menu-bar
+/// default. A standalone view keeps both call sites simple.
 struct MenuBarSymbolPicker: View {
     /// User's current pick. Non-optional because the menu bar always
     /// has a fallback symbol — `nil` would have no useful meaning.
@@ -24,31 +24,10 @@ struct MenuBarSymbolPicker: View {
     var body: some View {
         LazyVGrid(columns: columns, spacing: 6) {
             ForEach(MenuBarIcon.catalog, id: \.self) { symbol in
-                Button {
+                IconTile(symbol: symbol, isSelected: selection == symbol) {
                     selection = symbol
                     onPick()
-                } label: {
-                    Image(systemName: symbol)
-                        .font(.body)
-                        .frame(width: 36, height: 36)
-                        .background(
-                            RoundedRectangle(cornerRadius: 6, style: .continuous)
-                                .fill(selection == symbol
-                                      ? Color.accentColor.opacity(0.18)
-                                      : Color.clear)
-                        )
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 6, style: .continuous)
-                                .strokeBorder(
-                                    selection == symbol
-                                        ? Color.accentColor
-                                        : Color.clear,
-                                    lineWidth: 1
-                                )
-                        )
                 }
-                .buttonStyle(.plain)
-                .help(symbol)
             }
         }
         .padding(12)

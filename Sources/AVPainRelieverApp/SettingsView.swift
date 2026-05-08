@@ -173,7 +173,7 @@ private struct CameraSettingsTab: View {
                     .foregroundStyle(.white)
                     .padding(.horizontal, 6)
                     .padding(.vertical, 2)
-                    .background(Color.orange, in: Capsule())
+                    .background(Theme.Color.warn, in: Capsule())
             }
         }
         .padding(.vertical, 2)
@@ -181,9 +181,9 @@ private struct CameraSettingsTab: View {
 
     private var statusColor: Color {
         switch activator.state {
-        case .on: return .green
-        case .activating, .needsApproval: return .orange
-        case .failed, .requiresRelaunch: return .red
+        case .on: return Theme.Color.success
+        case .activating, .needsApproval: return Theme.Color.warn
+        case .failed, .requiresRelaunch: return Theme.Color.error
         case .off: return .secondary
         }
     }
@@ -489,7 +489,7 @@ private struct ProfileRow: View {
                             .foregroundStyle(.white)
                             .padding(.horizontal, 6)
                             .padding(.vertical, 2)
-                            .background(Color.green, in: Capsule())
+                            .background(Theme.Color.success, in: Capsule())
                     }
                 }
                 // Vertical device list — each device on its own row
@@ -605,7 +605,7 @@ private struct StatsSettingsTab: View {
                         resetConfirmationVisible = true
                     } label: {
                         Text("Reset stats…")
-                            .foregroundStyle(.red)
+                            .foregroundStyle(Theme.Color.error)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .contentShape(Rectangle())
                     }
