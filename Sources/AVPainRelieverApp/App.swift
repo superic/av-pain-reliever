@@ -17,7 +17,7 @@ struct AVPainRelieverApp: SwiftUI.App {
         // @Published property changes. View-level dependency tracking
         // is what makes the live update work.
         MenuBarExtra {
-            MenuContentView(delegate: appDelegate, settings: appDelegate.settings)
+            MenuContentView(delegate: appDelegate)
             // Hidden helpers — observe AppDelegate flags and open the
             // matching window. Live inside MenuBarExtra so SwiftUI's
             // openWindow environment is available; menu items render
@@ -169,20 +169,12 @@ private struct MenuLabelView: View {
 
 private struct MenuContentView: View {
     @ObservedObject var delegate: AppDelegate
-    @ObservedObject var settings: SettingsStore
     @Environment(\.openWindow) private var openWindow
     /// macOS 14+ way to programmatically open the SwiftUI Settings
     /// scene. The AppKit-selector approach (showSettingsWindow:)
     /// silently no-ops for LSUIElement apps because there's no
     /// responder chain to route the action through.
     @Environment(\.openSettings) private var openSettings
-    /// One-shot easter egg: when the user holds Option while the menu
-    /// opens (clicks anywhere then peeks the menu — close enough), an
-    /// extra "stats" line shows up. The flag flips back to false when
-    /// the menu closes (next reopen needs another modifier press),
-    /// which the SwiftUI scene resets automatically by reconstructing
-    /// the view.
-    @State private var showStats: Bool = false
 
     var body: some View {
         // No persistent header. The active profile name is already
@@ -192,12 +184,6 @@ private struct MenuContentView: View {
         // keeps the menu focused on actions and avoids fighting the
         // disabled-NSMenuItem dim treatment that comes with non-
         // interactive items in NSMenu.
-        if showStats || NSEvent.modifierFlags.contains(.option) {
-            Text(StatsCopy.line(for: settings.profileSwitchCount))
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            Divider()
-        }
         bodyActions
     }
 
@@ -342,20 +328,10 @@ private struct MenuContentView: View {
             override: profile.icon
         )
         Button {
-            // Modifier-aware action: ⌥-click opens the wizard pre-
-            // filled for editing this profile (single-affordance,
-            // discoverable via the "Hold ⌥ to edit" hint at the top
-            // of the submenu); a normal click switches to the profile
-            // immediately. NSEvent.modifierFlags reads the live
-            // modifier state at the moment the action fires, which is
-            // accurate for menu-driven clicks.
-            if NSEvent.modifierFlags.contains(.option) {
-                delegate.beginEditingProfile(profile)
-                openWindow(id: addProfileWindowID)
-                NSApp.activate(ignoringOtherApps: true)
-            } else {
-                delegate.applyManually(profile)
-            }
+            // Click switches to the profile immediately. Editing
+            // lives in Settings → Profiles (and the menu's
+            // `Edit Profiles…` shortcut routes there directly).
+            delegate.applyManually(profile)
         } label: {
             // Per-profile SF Symbol in NSMenu's image column; the
             // AttributedString in the title carries the per-run
