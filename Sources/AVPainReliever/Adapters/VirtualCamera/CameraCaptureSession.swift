@@ -1,7 +1,6 @@
 import Foundation
 import AVFoundation
 import CoreVideo
-import AVPainReliever
 import os.log
 
 private let logger = Logger(
@@ -30,7 +29,7 @@ private let logger = Logger(
 /// the session keeps running across the swap — the only gap is the
 /// ~500 ms it takes the new device to start delivering frames. The
 /// extension covers that gap by holding the last frame.
-final class CameraCaptureSession: NSObject {
+public final class CameraCaptureSession: NSObject {
     private let session = AVCaptureSession()
     private let captureQueue = DispatchQueue(
         label: "com.ericwillis.avpainreliever.host.capture",
@@ -54,7 +53,7 @@ final class CameraCaptureSession: NSObject {
     /// would create a self-source feedback loop.
     private let initialSourceName: String?
 
-    init(sink: CMIOSinkWriter, initialSourceName: String? = nil) {
+    public init(sink: CMIOSinkWriter, initialSourceName: String? = nil) {
         self.sink = sink
         self.initialSourceName = initialSourceName
         super.init()
@@ -83,13 +82,13 @@ final class CameraCaptureSession: NSObject {
 
     /// Boots up capture asynchronously. Returns immediately.
     /// Failures are logged; the menu bar doesn't surface them today.
-    func start() {
+    public func start() {
         captureQueue.async { [weak self] in
             self?.bootIfAuthorized()
         }
     }
 
-    func stop() {
+    public func stop() {
         captureQueue.async { [weak self] in
             guard let self else { return }
             self.session.stopRunning()
@@ -220,7 +219,7 @@ final class CameraCaptureSession: NSObject {
     /// camera. Used to keep the host from ever opening its own
     /// output as a capture source.
     private static func isVirtualCamera(_ device: AVCaptureDevice) -> Bool {
-        device.uniqueID == VirtualCameraActivator.virtualCameraUID
+        device.uniqueID == VirtualCameraIdentity.deviceUID
     }
 
     /// Add an `AVCaptureDeviceInput` for `device` to the session.
@@ -328,7 +327,7 @@ final class CameraCaptureSession: NSObject {
 }
 
 extension CameraCaptureSession: AVCaptureVideoDataOutputSampleBufferDelegate {
-    func captureOutput(
+    public func captureOutput(
         _ output: AVCaptureOutput,
         didOutput sampleBuffer: CMSampleBuffer,
         from connection: AVCaptureConnection
@@ -370,7 +369,7 @@ extension CameraCaptureSession: AVCaptureVideoDataOutputSampleBufferDelegate {
 }
 
 extension CameraCaptureSession: VirtualCameraSourceController {
-    func setSource(named: String) -> CameraApplyResult {
+    public func setSource(named: String) -> CameraApplyResult {
         guard Self.findDevice(named: named) != nil else {
             return .notFound
         }

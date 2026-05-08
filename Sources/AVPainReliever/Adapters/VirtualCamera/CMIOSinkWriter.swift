@@ -24,7 +24,7 @@ private let logger = Logger(
 ///
 /// Mirrors the pattern OBS uses in its mac-virtualcam plugin
 /// (referenced for architecture, not code).
-final class CMIOSinkWriter {
+public final class CMIOSinkWriter {
     private let deviceUID: String
     private var deviceID: CMIODeviceID = 0
     private var streamID: CMIOStreamID = 0
@@ -69,7 +69,7 @@ final class CMIOSinkWriter {
     private static let outputHeight: Int = 720
     private static let outputFormat: OSType = kCVPixelFormatType_32BGRA
 
-    init(deviceUID: String) {
+    public init(deviceUID: String) {
         self.deviceUID = deviceUID
     }
 
