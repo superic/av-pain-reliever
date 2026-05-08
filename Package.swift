@@ -50,6 +50,16 @@ let package = Package(
         .package(url: "https://github.com/sparkle-project/Sparkle.git", .upToNextMinor(from: "2.9.0")),
     ],
     targets: [
+        // Pure-Swift constants shared between the host app and the
+        // Camera Extension binary. No platform APIs, no third-party
+        // deps — keeps the linkage inert so the extension can pull
+        // it in without dragging anything else into its sandbox /
+        // signing scope. Lives in its own target rather than inside
+        // `AVPainReliever` because the extension target deliberately
+        // doesn't depend on the engine library.
+        .target(
+            name: "AVPainRelieverSharedConstants"
+        ),
         .target(
             name: "AVPainReliever",
             dependencies: ["TOMLKit"]
@@ -58,6 +68,7 @@ let package = Package(
             name: "AVPainRelieverApp",
             dependencies: [
                 "AVPainReliever",
+                "AVPainRelieverSharedConstants",
                 .product(name: "Sparkle", package: "Sparkle"),
             ]
         ),
@@ -76,10 +87,14 @@ let package = Package(
         // Camera Extension binary. Imports CoreMediaIO directly; no
         // dependency on AVPainReliever or AVPainRelieverApp — the
         // extension runs in its own process with a clean boundary.
+        // Pulls in `AVPainRelieverSharedConstants` so the host and
+        // extension can share the Darwin-notification name strings
+        // they exchange without hand-mirroring.
         // The compiled binary is wrapped in a .systemextension bundle
         // by scripts/make-app-with-virtual-camera.sh.
         .executableTarget(
-            name: "AVPainRelieverCameraExtension"
+            name: "AVPainRelieverCameraExtension",
+            dependencies: ["AVPainRelieverSharedConstants"]
         ),
     ]
 )
