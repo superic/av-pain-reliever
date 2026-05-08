@@ -49,8 +49,7 @@ public struct NamedUSBDevice: Hashable, Sendable, Identifiable {
 /// The engine re-enumerates fresh on every evaluation rather than
 /// trusting an internal cache — USB events can race, duplicate, or be
 /// dropped, so a confirmed snapshot at evaluation time is safer than
-/// trying to maintain incremental state. This mirrors how the
-/// Hammerspoon engine uses `hs.usb.attachedDevices()`.
+/// trying to maintain incremental state.
 public protocol USBWatcher {
     /// Fresh snapshot of the currently-attached USB devices. Cheap
     /// (microseconds on modern Macs); call as often as needed.

@@ -52,9 +52,8 @@ av-pain-reliever-mac/
 │   │   ├── OBSController.swift       # obs-cmd Process wrapper
 │   │   └── Notifier.swift            # UserNotifications wrapper
 │   ├── Config/
-│   │   ├── Profile.swift             # Codable struct mirroring profiles.lua schema
-│   │   ├── ConfigLoader.swift        # reads ~/Library/Application Support/...
-│   │   └── ConfigImporter.swift      # one-shot import from existing profiles.lua
+│   │   ├── Profile.swift             # Codable struct for the profiles.toml schema
+│   │   └── ConfigLoader.swift        # reads ~/Library/Application Support/...
 │   ├── UI/
 │   │   ├── PreferencesWindow.swift   # SwiftUI preferences (profile editor)
 │   │   ├── FirstRunWizard.swift      # SwiftUI first-run flow
@@ -369,35 +368,8 @@ plan for `AudioController`.
 
 ## Real-launch findings (post-first-run)
 
-The first real launch surfaced two bugs and one behavior gap. All
-three fixed in the same commit.
-
-### Bug: unconfigured wizard stubs shadowing `laptop` alphabetically
-
-**Symptom**: Undocking caused the menu-bar title to flip to
-"Conference Room" instead of "Laptop".
-
-**Root cause**: The Phase 1 wizard generates `profiles.lua` with
-four template profiles (laptop, home-office, work-office,
-conference-room). The latter two have empty fingerprints and
-`audioInput = "FILL ME IN"` placeholders the user is supposed to
-fill in. With three profiles all having empty fingerprints
-(specificity 0), the resolver's alphabetical tiebreak picks the
-first one — `conference-room`. The Hammerspoon engine has the same
-bug; user just hadn't noticed because they're usually docked.
-
-**Fix**: `ConfigImporter.parse` now drops any profile whose
-audioInput or audioOutput equals the literal string `"FILL ME IN"`.
-A new `parseAll` method preserves the unfiltered behavior for
-diagnostic tools and tests. Three new tests in
-`ConfigImporterTests` cover the filter, including the half-
-configured case (one field FILL ME IN, the other real). The
-real-world `profiles.lua` test was updated to expect filtered
-output.
-
-Also cleaned the user's actual `profiles.lua` to remove the two
-stubs entirely, since they were never going to be filled in (the
-user only operates from home-office and undocked-laptop).
+The first real launch surfaced one behavior gap that was fixed in
+the same commit.
 
 ### Feature gap: no signal when user docks somewhere unfamiliar
 

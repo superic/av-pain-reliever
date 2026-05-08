@@ -1,17 +1,13 @@
 import Foundation
 
 /// Discovers an existing profiles config or bootstraps a new one for
-/// fresh installs. Wraps the read / import / seed dance the host's
-/// first launch performs:
+/// fresh installs. Wraps the read / seed dance the host's first
+/// launch performs:
 ///
 ///   1. `~/Library/Application Support/AVPainReliever/profiles.toml` —
 ///      the canonical Swift-app config; load it directly.
-///   2. `~/.hammerspoon/profiles.lua` — auto-migrate users coming from
-///      the Phase 1 Hammerspoon prototype. Imported profiles get
-///      written to the canonical TOML so future edits and the
-///      Add-Profile wizard operate on the same file.
-///   3. Neither file exists — write a starter `profiles.toml` so the
-///      engine has a working "laptop" fallback to apply on first
+///   2. The file doesn't exist — write a starter `profiles.toml` so
+///      the engine has a working "laptop" fallback to apply on first
 ///      launch instead of running idle.
 ///
 /// Lives in the engine library so the host AppDelegate can stay a
@@ -29,16 +25,14 @@ public struct ProfileBootstrapper {
                 "Library/Application Support/AVPainReliever/profiles.toml"
             )
 
-    /// Load profiles from the canonical TOML, falling through to
-    /// Hammerspoon migration, falling through to a starter config
-    /// write. Logs each branch via `ApplierLogger` so the host's
-    /// console pipeline gets a uniform audit trail. Returns an empty
-    /// array only when every fallback failed; the engine then runs
-    /// idle until the user creates a config.
+    /// Load profiles from the canonical TOML, falling through to a
+    /// starter-config write if the file doesn't exist. Logs each
+    /// branch via `ApplierLogger` so the host's console pipeline gets
+    /// a uniform audit trail. Returns an empty array only when every
+    /// fallback failed; the engine then runs idle until the user
+    /// creates a config.
     public func loadOrBootstrap(logger: ApplierLogger) -> [Profile] {
         let tomlURL = Self.canonicalTOMLURL
-        let luaURL = URL(fileURLWithPath: NSHomeDirectory())
-            .appendingPathComponent(".hammerspoon/profiles.lua")
 
         if FileManager.default.fileExists(atPath: tomlURL.path) {
             do {
@@ -50,39 +44,10 @@ public struct ProfileBootstrapper {
             }
         }
 
-        if FileManager.default.fileExists(atPath: luaURL.path) {
-            do {
-                let lua = try String(contentsOf: luaURL, encoding: .utf8)
-                let importer = ConfigImporter()
-                let profiles = try importer.parse(lua)
-                // One-shot migration: write the imported profiles to
-                // the canonical TOML location so future launches AND
-                // the Add-Profile wizard work against the same file.
-                // Without this, the first wizard save creates a TOML
-                // containing only the new profile, silently shadowing
-                // everything in profiles.lua.
-                do {
-                    let toml = try importer.convertToTOML(lua)
-                    try FileManager.default.createDirectory(
-                        at: tomlURL.deletingLastPathComponent(),
-                        withIntermediateDirectories: true
-                    )
-                    try toml.write(to: tomlURL, atomically: true, encoding: .utf8)
-                    logger.info("migrated \(profiles.count) profiles from \(luaURL.path) (Hammerspoon) → \(tomlURL.path); future edits should go to the TOML file")
-                } catch {
-                    logger.warn("loaded \(profiles.count) profiles from \(luaURL.path) but migration to \(tomlURL.path) failed: \(error). Wizard saves won't include these until migration succeeds.")
-                }
-                return profiles
-            } catch {
-                logger.warn("failed to import \(luaURL.path): \(error)")
-            }
-        }
-
-        // Fresh user with no Hammerspoon and no Swift-app config:
-        // bootstrap a starter `profiles.toml` so the app does
-        // something useful on first launch (apply MacBook audio
-        // defaults when undocked) instead of staring blankly until
-        // the user creates a config.
+        // Fresh user with no Swift-app config: bootstrap a starter
+        // `profiles.toml` so the app does something useful on first
+        // launch (apply MacBook audio defaults when undocked) instead
+        // of staring blankly until the user creates a config.
         do {
             try writeStarterConfig(at: tomlURL)
             let profiles = try ConfigLoader().loadProfiles(from: tomlURL)
@@ -95,10 +60,9 @@ public struct ProfileBootstrapper {
     }
 
     /// Default `profiles.toml` content, written on first launch when
-    /// neither an existing TOML nor a Hammerspoon `profiles.lua`
-    /// exists. Includes one always-matches "laptop" profile with
-    /// modern-Mac defaults plus inline comments showing the user how
-    /// to add docked locations.
+    /// no existing config is present. Includes one always-matches
+    /// "laptop" profile with modern-Mac defaults plus inline comments
+    /// showing the user how to add docked locations.
     static let starterConfig = """
     # AV Pain Reliever — profile config.
     # Each [profiles.<name>] section defines a location.

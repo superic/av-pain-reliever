@@ -3,15 +3,15 @@ import AppKit
 
 /// AV Pain Reliever's small brand surface — kept narrow on purpose.
 ///
-/// Earlier iterations carried a CLI-style palette (magenta primary,
-/// cyan highlight) borrowed from the Hammerspoon TUI. The user
-/// reverted that direction (2026-05-02): the app should look like a
-/// plain native macOS utility, no custom accent colors. So this
-/// namespace exposes a small set of semantic system colors —
-/// success / warn / error for status pills and banner-style errors,
-/// plus muted for low-volume informational pills. Everything else
-/// (headers, captions, links, button tints) uses SwiftUI's defaults
-/// — `.primary` for body text, `.secondary` for hints, the system
+/// An earlier iteration carried a saturated CLI-style palette
+/// (magenta primary, cyan highlight); the user reverted that
+/// direction (2026-05-02): the app should look like a plain native
+/// macOS utility, no custom accent colors. So this namespace exposes
+/// a small set of semantic system colors — success / warn / error
+/// for status pills and banner-style errors, plus muted for
+/// low-volume informational pills. Everything else (headers,
+/// captions, links, button tints) uses SwiftUI's defaults —
+/// `.primary` for body text, `.secondary` for hints, the system
 /// accent for prominent buttons.
 ///
 /// `Theme.Symbol` and `Theme.Copy` stay as before — those are

@@ -1,8 +1,8 @@
 import Foundation
 
-/// Two-level logger interface for engine components. Production wires
-/// this to `os.Logger` + the on-disk log file (matching the Hammerspoon
-/// engine's behavior); tests use a recording mock.
+/// Two-level logger interface for engine components. Production
+/// wires this to `os.Logger` (Apple's unified logging); tests use a
+/// recording mock.
 public protocol ApplierLogger {
     func info(_ message: String)
     func warn(_ message: String)

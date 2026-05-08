@@ -23,7 +23,6 @@ Never put the cert name, team ID, or anything personal-credential-shaped into pu
 | Architecture, IOKit/CoreAudio findings, real-launch bugs | `docs/architecture.md` |
 | Visual rules (chrome, colors, accent policy) | `docs/visual-identity.md` |
 | Virtual camera (V2 CMIO extension) — design + impl journal | `docs/virtual-camera.md` |
-| Phase-1 Hammerspoon→Swift port history | `docs/port-history.md` |
 | Project journal (newest-first) | `CHANGELOG.md` |
 | Release process (cutting a release, secrets setup) | `docs/releasing.md` |
 | Self-hosted CI runner setup + lockstep rule | `docs/self-hosted-runner.md` |
@@ -67,7 +66,7 @@ Indexed arrays, process substitution, `[[ ]]`, and parameter expansion (`${var:-
 
 - **Plain native macOS look.** Use SwiftUI defaults — `.primary` / `.secondary` for text, system accent for `.borderedProminent` buttons. **No custom accent colors**, no `.tint(...)` on prominent buttons, no brand palette. The earlier CLI-derived magenta/cyan palette was retired 2026-05-02; do not reintroduce.
 - **Status colors are the only `Theme.Color` entries.** `.green` (success), `.orange` (warn), `.red` (error). System colors only.
-- **Self-contained.** The app must NOT mention Hammerspoon, OBS, or any third-party tool in its UI or in user-facing docs (including README). The Hammerspoon prototype is archived at `prototypes/`; that's it.
+- **Self-contained.** The app must NOT mention any third-party tool (no OBS, no Hammerspoon, no Camo, etc.) in its UI or in user-facing docs (including README). It reads as its own product.
 
 ### Release notes
 

@@ -22,8 +22,8 @@ The earlier plan was to recommend OBS Virtual Camera as the bridge:
 configure OBS once with a per-scene camera, point Zoom/Slack at "OBS
 Virtual Camera," and let OBS scene-switching handle the rest. That
 plan was retired on 2026-05-04 — OBS is a third-party dependency
-and the project mandate is "self-contained" (no Hammerspoon, no OBS,
-neither in the UI nor in the docs).
+and the project mandate is "self-contained" (no third-party tools in
+the UI or in the docs).
 
 The V2 path: ship a native macOS Camera Extension (CoreMedia I/O,
 macOS 13+) bundled inside the app. Zoom/Slack/Teams see "AV Pain
