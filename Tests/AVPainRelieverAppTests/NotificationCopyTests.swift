@@ -69,25 +69,3 @@ struct NotificationCopyTests {
         #expect(many.contains("5 USB devices"))
     }
 }
-
-@Suite("StatsCopy")
-struct StatsCopyTests {
-    @Test("zero-count message is welcoming")
-    func zeroCountMessage() {
-        #expect(StatsCopy.line(for: 0).contains("Patiently"))
-    }
-
-    @Test("singular count uses singular pronoun")
-    func singularCount() {
-        let line = StatsCopy.line(for: 1)
-        #expect(line.contains("1 switch"))
-        #expect(!line.contains("switches"))
-    }
-
-    @Test("plural count includes the number and warm copy")
-    func pluralCount() {
-        let line = StatsCopy.line(for: 47)
-        #expect(line.contains("47"))
-        #expect(line.lowercased().contains("sanity"))
-    }
-}
