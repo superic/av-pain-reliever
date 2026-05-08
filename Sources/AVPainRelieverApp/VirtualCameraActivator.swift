@@ -55,18 +55,15 @@ final class VirtualCameraActivator: NSObject, ObservableObject,
     static let extensionBundleID = "com.ericwillis.avpainreliever.CameraExtension"
     static let envVar = "AVPR_ACTIVATE_VIRTUAL_CAMERA"
 
-    /// Stable UUID matching the extension's
-    /// `CameraExtensionDeviceSource.deviceUUID`. The host uses this
-    /// to find the virtual camera in the CMIO device list.
-    static let virtualCameraUID = "B45B7E4D-3F4E-4F4D-9C2A-1B2C3D4E5F60"
-
-    /// Localized name the extension registers — also what
-    /// AVFoundation reports for the virtual camera's
-    /// `localizedName`. Used as the value of
-    /// `preferredCameraOverride` so `ProfileApplier` can set the
-    /// system-wide preferred camera to "AV Pain Reliever" when the
-    /// virtual camera is live, mirroring what users set in Zoom.
-    static let virtualCameraDisplayName = "AV Pain Reliever"
+    /// Re-exports of `VirtualCameraIdentity` so existing call sites
+    /// (`AddProfileViewModel`, internal references below) keep their
+    /// `VirtualCameraActivator.virtualCameraUID` /
+    /// `VirtualCameraActivator.virtualCameraDisplayName` spellings.
+    /// The single source of truth lives in the engine library
+    /// alongside the host-side capture adapters that need to compare
+    /// against it without depending on the app target.
+    static let virtualCameraUID = VirtualCameraIdentity.deviceUID
+    static let virtualCameraDisplayName = VirtualCameraIdentity.displayName
 
     /// Mirror of the extension's notification names. Kept in sync by
     /// hand — both targets are sandboxed-vs-not separate executables
