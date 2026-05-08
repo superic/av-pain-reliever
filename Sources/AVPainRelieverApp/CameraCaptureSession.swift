@@ -267,12 +267,29 @@ final class CameraCaptureSession: NSObject {
         logger.info("switchSource: '\(self.currentDeviceUniqueID ?? "<none>", privacy: .public)' → '\(device.uniqueID, privacy: .public)' (\(name, privacy: .public))")
 
         session.beginConfiguration()
-        if let currentInput {
-            session.removeInput(currentInput)
+        // Stash the previous input so we can put it back if the new
+        // device fails to install. Without this fallback a transient
+        // failure (device unplugged between findDevice and
+        // AVCaptureDeviceInput init, format incompatibility surfacing
+        // late) leaves the session with no input and frames silently
+        // stop — the previous-input restore keeps the pipeline flowing.
+        let previousInput = currentInput
+        let previousUID = currentDeviceUniqueID
+        if let previousInput {
+            session.removeInput(previousInput)
             self.currentInput = nil
             self.currentDeviceUniqueID = nil
         }
-        _ = installInput(device: device)
+        if !installInput(device: device) {
+            if let previousInput, session.canAddInput(previousInput) {
+                session.addInput(previousInput)
+                self.currentInput = previousInput
+                self.currentDeviceUniqueID = previousUID
+                logger.warning("switchSource: install failed; restored previous source '\(previousUID ?? "<none>", privacy: .public)'")
+            } else {
+                logger.error("switchSource: install failed and no previous source could be restored — session has no input")
+            }
+        }
         session.commitConfiguration()
 
         if !session.isRunning {
