@@ -47,17 +47,4 @@ enum LaunchAtLogin {
             logger.warning("login-item update failed (enabled=\(enabled)): \(error.localizedDescription, privacy: .public)")
         }
     }
-
-    /// Best-effort read of whether the system currently considers us
-    /// a login item. Useful for surfacing the truth in Settings if a
-    /// register call silently failed (e.g. unsigned dev binary).
-    /// Returns nil when SMAppService can't tell.
-    static func isRegistered() -> Bool? {
-        let status = SMAppService.mainApp.status
-        switch status {
-        case .enabled: return true
-        case .notRegistered, .notFound, .requiresApproval: return false
-        @unknown default: return nil
-        }
-    }
 }

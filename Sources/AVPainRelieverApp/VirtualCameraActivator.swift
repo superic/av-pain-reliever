@@ -50,13 +50,6 @@ final class VirtualCameraActivator: NSObject, ObservableObject,
         /// in-session deactivation; resolved by relaunching the
         /// app from a fresh process.
         case requiresRelaunch
-
-        var isLive: Bool {
-            switch self {
-            case .activating, .needsApproval, .on: return true
-            case .off, .failed, .requiresRelaunch: return false
-            }
-        }
     }
 
     static let extensionBundleID = "com.ericwillis.avpainreliever.CameraExtension"
