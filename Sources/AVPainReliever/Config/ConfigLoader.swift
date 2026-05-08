@@ -43,10 +43,8 @@ public enum ConfigError: Error, Equatable {
 ///
 /// All body fields are optional. Inside a fingerprint entry, `vendorID`
 /// and `productID` are required; `name` is for human reading and is
-/// ignored at match time. Unknown fields (including legacy
-/// `obsScene` entries left behind by an earlier OBS-routing
-/// experiment) are silently ignored, so V1 reads V2-and-beyond TOML
-/// cleanly minus features it doesn't know.
+/// ignored at match time. Unknown fields are silently ignored, so V1
+/// reads V2-and-beyond TOML cleanly minus features it doesn't know.
 ///
 /// The top-level `[profiles.<name>]` namespace reserves the file's top
 /// level for future settings (debounce override, log path, etc.) without

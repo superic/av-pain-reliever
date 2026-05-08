@@ -35,14 +35,14 @@ public struct CameraSummary: Hashable, Sendable, Identifiable {
 ///   "preferred default camera." AVFoundation-modern apps (FaceTime,
 ///   browser `getUserMedia`, native AVCapture clients) pick it up
 ///   automatically.
-/// - Apps with their own camera-selection UI (Zoom, Slack, Teams,
-///   OBS) maintain their OWN selection independently. The engine
+/// - Apps with their own camera-selection UI (Zoom, Slack, Teams)
+///   maintain their OWN selection independently. The engine
 ///   intentionally does NOT try to drive those — no plist hacks, no
-///   UI scripting. For users who need Zoom/Slack to follow the
-///   profile too, V2's OBS support will let them route through OBS
-///   Virtual Camera (configure OBS once with a per-scene camera,
-///   point Zoom/Slack at OBS Virtual Camera once, OBS scene switch
-///   handles the rest).
+///   UI scripting. For those, the V2 native virtual camera
+///   (`VirtualCameraSourceController` below) is the bridge: the user
+///   selects "AV Pain Reliever" once in each app's picker, and the
+///   active profile drives which real camera the virtual camera
+///   streams from.
 public protocol CameraController {
     /// Set the system's `userPreferredCamera` to the camera with the
     /// given `localizedName`. Returns `.notFound` if no such camera
