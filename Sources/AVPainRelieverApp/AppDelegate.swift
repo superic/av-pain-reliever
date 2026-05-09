@@ -417,7 +417,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
             title: "New location detected",
             body: NotificationCopy.unknownLocationBody(deviceCount: devices.count),
             iconSymbol: "questionmark.circle",
-            actionTitle: "Open Wizard",
             onAction: { [weak self] in
                 // UN delivers the action callback on the main queue
                 // already, so no extra hop is needed. Toggle the
