@@ -216,6 +216,14 @@ public final class IOKitUSBWatcher: USBWatcher {
 
     public func stop() {
         guard let port = notifyPort else { return }
+        // Release the iterators returned by IOServiceAddMatchingNotification
+        // before destroying the port. Per Apple's IOKitLib.h
+        // documentation, those iterators "should be released by the
+        // caller when the notification is to be destroyed", and
+        // IONotificationPortDestroy only releases the port + its
+        // mach_ports + CFRunLoopSources — not the iterators themselves.
+        if addedIter != 0 { IOObjectRelease(addedIter) }
+        if removedIter != 0 { IOObjectRelease(removedIter) }
         IONotificationPortDestroy(port)
         notifyPort = nil
         addedIter = 0
