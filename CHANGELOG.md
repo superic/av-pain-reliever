@@ -777,6 +777,78 @@ classification.
 PR: TBD (this commit), shipped without a tag. Next release inherits
 the new behavior automatically.
 
+### Slop-review program, engine + app target (2026-05-09)
+
+Two-pass `code-quality:slop-review` against the SPM workspace, run as
+two campaigns: engine library first (`Sources/AVPainReliever`, ~17
+files), then the app target (`Sources/AVPainRelieverApp`, ~28 files).
+16 PRs merged on 2026-05-09 across the range #50–#66; PR #55 was a
+working artifact closed without merge.
+
+**Engine pass (#50–#65, 15 merged).** High-leverage moves:
+
+- `Notifier` protocol and implementations moved from the engine
+  library to the app target (#54, #57). Engine no longer carries
+  surface that only the app target consumed; better layering.
+- `CameraCaptureSession` refactors: drop redundant
+  `VirtualCameraSourceController` conformance (#61), reshape
+  observers as closure tokens (#64). Two follow-ups that landed
+  cleanly because the file's responsibilities were already clear.
+- `IOKit` notification iterators are now released in
+  `USBWatcher.stop()` (#60). Real bug, low blast radius (only fires
+  on app teardown), worth fixing once the slop pass surfaced it.
+- Audio/CameraController split into `Applier` + `Inventory` seams
+  (#59). Same code, narrower surfaces, easier to reason about which
+  half is being injected at each call site.
+- Restart now uses `open -n` to force a new app instance (#53).
+  `open` alone deduped the launch when the previous process was
+  still tearing down, leaving the user staring at an unrestarted
+  app. M2 lesson at line 100 had foreshadowed this; the slop review
+  found the actual bite.
+- Idiomatic-Swift cleanups in engine adapters (#58), ProfileWriter
+  regex fix for hand-edited TOML (#65), engine doc sweep + named
+  log-rate constants (#50), small helpers extracted (#51), logger
+  threading + `ApplierLogger.error` (#52).
+
+**App target pass (PR #66, single consolidated cleanup).** Six
+behavior-preserving items: drop `AppDelegate.currentCameraDisplay`
+(dead `@Published`), drop `DevicePortability.isLikelyPortable` +
+its keyword list (dead duplicate), move `VersionInfo` from
+`SettingsView.swift` to `AboutView.swift`, rewrite the stale
+`profileSwitchCount` doc, drop `Theme.Color.muted` (CLAUDE.md says
+status colors are the only `Theme.Color` entries), extract
+`StatusPill` and migrate the three inline pill chromes. Net
+`-127 / +60` across 8 modified + 1 new file. The `StatusPill`
+extraction also fixed a real dark-mode contrast issue: wizard pills
+had hardcoded `.black` foreground on a 0.85-opacity tint, dimming
+to muddy in Dark appearance. Unifying on white-on-tint matches the
+two existing settings sites and reads cleanly in both modes.
+
+**Meta-iatrogenic rate stayed visible.** Two of the engine PRs
+(#62, #63) fixed slop introduced by the slop-fixes themselves
+("slop-fix slop"): doc comments rewritten in the first pass that
+referenced removed symbols, a regex helper that was clearer in
+isolation but worse at the call site. Both were caught by running
+the review a second time after the first round of fixes landed.
+Worth keeping that discipline: the second pass is where the
+fix-the-fix cases surface.
+
+**Deliberately deferred.** The app-target plan flagged a borderline
+backlog (F2 `AppDelegate` lifecycle/composition-root split, F5
+`VirtualCameraActivator` carve-up, F6 `SettingsStore` property
+wrapper + stats-store split, F7 `AddProfileViewModel` split) that
+is explicitly skip-unless-touching-the-file. Several have real
+state-coordination cost across the proposed carve points. Working
+plan files for both passes are kept in `tools/` (gitignored) so
+future passes inherit the calibrated verdicts instead of re-running
+from cold.
+
+Lesson: a second slop pass after the fixes land earns its keep.
+Fix-the-fix rate was non-zero (2 of 15 engine PRs); without the
+second pass those would have been merged as silent regressions in
+prose accuracy. Cheap to run, mechanical to address, demonstrably
+catches drift the first pass introduced.
+
 - **When we ship a Phase 1 fix or feature**, ask: does this teach us
   something about the Swift port? If yes, add to "Lessons learned."
 - **When the user gives feedback or hits a bug**, ask: should this be
