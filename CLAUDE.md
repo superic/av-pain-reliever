@@ -88,15 +88,15 @@ Shared SF Symbol names live in `Theme.Symbol` enum. Don't sprinkle string litera
 
 ### Avoiding slop
 
-Lessons from the slop-review program (PRs #50 to #66 on the engine + app target, then #68, #70, #71, #72 as follow-ups). Read once per session when starting non-trivial work; the patterns repeat and the cost of catching them at write time is much less than re-litigating in a post-merge review.
+Patterns to watch when writing code. Detailed history lives in CHANGELOG.
 
-- **Sweep for orphans when you remove a use site.** Deleting a caller? Grep for unused `@Published` fields, unused parameters, helpers that now have a single inlined caller. PR #66 dropped a dead `AppDelegate.currentCameraDisplay` (a `@Published` with zero readers) and `DevicePortability.isLikelyPortable` (live code uses different functions). PR #68 dropped a dead `profile` parameter on `App.swift`'s `menuLabel`. The same hand that adds code is rarely the one that revisits when the need goes away, so accretion is the default. Counter it deliberately.
-- **Doc rot during refactor.** When you rename or remove a symbol, `git grep` the old name and update doc comments along with code. PRs #62 and #63 were entirely "slop-fix slop": doc comments rewritten in pass 1 that still referenced removed symbols.
-- **Place a type in the file of its primary consumer.** `VersionInfo` lived in `SettingsView.swift` but was only used by `AboutView`; PR #66 moved it. If a type's only caller is in another file, move the type before adding more code that references it.
-- **Don't expand API surface ahead of need.** If a parameter would need `_ = (param)` to silence unused warnings, it doesn't belong in the API. PR #72 dropped `Notifier.notify`'s `actionTitle: String?` because both backends silently ignored it and the only caller passed exactly the value the registered UN category already rendered.
-- **Shared visual idioms get a component, not three near-copies.** Three inline pill chromes had drifted enough that one rendered `.black` foreground (broken contrast in Dark mode); PR #66 extracted `StatusPill`. The duplication was what let the bug hide. If two-or-three views render the same chrome, extract before the third call site lands.
+- **Sweep for orphans when you remove a use site.** Grep for unused `@Published` fields, unused parameters, and helpers with a single inlined caller.
+- **Update doc comments when you rename or remove a symbol.** `git grep` the old name and fix the prose along with the code.
+- **Put a type in the file of its primary consumer.** If a type's only caller is in another file, move the type before adding more references.
+- **Don't expand API surface ahead of need.** If a parameter would need `_ = (param)` to silence unused warnings, it doesn't belong in the API.
+- **Shared visual idioms get a component, not three near-copies.** When two or three views render the same chrome, extract before the third call site lands. Drift between near-copies is where dark-mode and contrast bugs hide.
 - **No defensive code for paths that can't fire.** Trust internal guarantees and framework invariants. Validate at system boundaries (user input, external APIs, file IO), not between functions you control.
-- **Pre-PR slop pass on non-trivial work.** Before pushing a feature or a shape-changing refactor, run `/code-quality:slop` on the diff and address findings inline. Mechanical cleanups, doc-only, test-only, and one-line bugfixes don't need it. Catching findings while the context is fresh is much cheaper than a follow-up PR landing days later.
+- **Pre-PR `/code-quality:slop` on non-trivial work.** Run it on the diff before pushing a feature or shape-changing refactor. Mechanical cleanups, doc-only, and test-only changes don't need it.
 
 ## What the dev environment expects
 
