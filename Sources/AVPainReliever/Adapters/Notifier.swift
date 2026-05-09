@@ -274,15 +274,19 @@ public final class UserNotificationsNotifier: NSObject, Notifier, UNUserNotifica
 }
 #endif
 
-/// Production notifier that shells out to `osascript` to display a
-/// notification. Works without a bundle identifier — `osascript`
-/// posts as itself, which the user has already approved (or will be
-/// prompted to approve once) for notifications.
+/// `swift run` dev fallback notifier that shells out to `osascript`
+/// to display a notification. Works without a bundle identifier —
+/// `osascript` posts as itself, which the user has already approved
+/// (or will be prompted to approve once) for notifications.
 ///
-/// We'll replace this with `UNUserNotificationCenter` when the menu-
-/// bar app ships as a signed `.app` with a `CFBundleIdentifier`.
-/// Until then, this gets us "Switched to X" toasts during dev
-/// without the bundle/auth dance.
+/// `UNUserNotificationCenter` (the production path in
+/// `UserNotificationsNotifier` above) requires a bundle id, so it
+/// rejects unbundled processes outright. AppDelegate picks this
+/// implementation when `Bundle.main.bundleIdentifier` is nil — i.e.
+/// the `swift run AVPainRelieverApp` dev-loop case. The signed
+/// `.app` always uses `UserNotificationsNotifier`. Action buttons,
+/// custom icons, and `onAction` callbacks aren't supported here —
+/// `osascript` only renders title + body.
 public struct AppleScriptNotifier: Notifier {
     public init() {}
 

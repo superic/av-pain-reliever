@@ -17,10 +17,6 @@ public protocol ApplierLogger {
 /// responsible for resolving the right profile (`ProfileResolver`),
 /// debouncing USB bursts (`Debouncer`), and choosing a fallback when
 /// no profile matches. The applier just executes the side effects.
-///
-/// OBS scene-switching is intentionally not part of V1; planned for
-/// V2. When it lands, it'll arrive as a separate optional injectable
-/// alongside `AudioController` and `CameraController`.
 public final class ProfileApplier {
     private let audio: AudioController
     private let camera: CameraController?
@@ -95,9 +91,9 @@ public final class ProfileApplier {
 
     private func applyCamera(_ name: String) {
         // No CameraController configured (e.g., older macOS, or
-        // construction-time decision). Same convention as the V1
-        // OBS removal: the configuration layer announces the
-        // limitation; per-profile we silently skip.
+        // construction-time decision). Per-profile we silently skip;
+        // the configuration layer is responsible for announcing the
+        // limitation if it matters.
         guard let camera else { return }
         switch camera.setPreferred(named: name) {
         case .ok:

@@ -3,10 +3,7 @@ import Foundation
 /// A location profile — a named set of USB devices (the "fingerprint")
 /// that, when all simultaneously attached, identifies the location,
 /// plus the audio + camera settings the engine should apply when that
-/// profile wins.
-///
-/// All apply-time fields are optional. OBS scene-switching is
-/// intentionally omitted from V1; planned for V2.
+/// profile wins. All apply-time fields are optional.
 public struct Profile: Hashable, Sendable {
     /// The slug-cased profile name, e.g. `"home-office"`. Pretty-cased
     /// to "Home Office" at notification time, not here.
@@ -30,11 +27,11 @@ public struct Profile: Hashable, Sendable {
     /// or nil to leave camera selection untouched. AVFoundation-modern
     /// apps (FaceTime, browser getUserMedia, native AVCapture clients)
     /// pick this up automatically; apps with their own camera UI
-    /// (Zoom, Slack) maintain their own selection independently — the
-    /// engine intentionally does NOT try to drive those (no plist
-    /// hacks, no UI-scripting). For users who want Zoom/Slack to
-    /// follow the profile too, V2's planned OBS support will let them
-    /// route through OBS Virtual Camera.
+    /// (Zoom, Slack) maintain their own selection independently. For
+    /// those, the V2 native virtual camera (`VirtualCameraSourceController`)
+    /// covers them — they select "AV Pain Reliever" once and the
+    /// active profile drives which real camera the virtual one
+    /// streams from.
     public let camera: String?
 
     /// User-picked SF Symbol name to display next to this profile's

@@ -42,6 +42,12 @@ public final class CameraCaptureSession: NSObject {
     private var currentInput: AVCaptureDeviceInput?
     private var currentDeviceUniqueID: String?
 
+    /// Log-rate-limit cadence for the "sink writer still not ready"
+    /// retry path. Capture is steady-state at 30 fps, so every Nth
+    /// frame is roughly one log line per N/30 seconds while the
+    /// extension is missing — informative without flooding.
+    private static let sinkRetryLogStride: UInt64 = 90
+
     /// Camera the active profile wanted as the source at session-
     /// boot time. The activator remembers the most recent
     /// `setSource(named:)` request and passes it here so that when
@@ -353,7 +359,7 @@ extension CameraCaptureSession: AVCaptureVideoDataOutputSampleBufferDelegate {
             sinkStarted = sink.start()
             if sinkStarted {
                 logger.info("Sink writer connected on retry (after \(self.capturedFrameCount, privacy: .public) frames)")
-            } else if capturedFrameCount % 90 == 1 {
+            } else if capturedFrameCount % Self.sinkRetryLogStride == 1 {
                 logger.error("Sink writer still not ready after \(self.capturedFrameCount, privacy: .public) frames")
             }
             if !sinkStarted { return }

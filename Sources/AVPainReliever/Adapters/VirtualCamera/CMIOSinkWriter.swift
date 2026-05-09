@@ -69,6 +69,14 @@ public final class CMIOSinkWriter {
     private static let outputHeight: Int = 720
     private static let outputFormat: OSType = kCVPixelFormatType_32BGRA
 
+    /// Log-rate-limit cadences. Heartbeat fires every Nth successful
+    /// enqueue so the log shows the pipeline is alive without one
+    /// line per frame; reject cadence fires every Nth rejected
+    /// enqueue so a steady-state queue-full pattern is visible
+    /// without flooding.
+    private static let enqueueHeartbeatStride: UInt64 = 60
+    private static let enqueueRejectStride: UInt64 = 30
+
     public init(deviceUID: String) {
         self.deviceUID = deviceUID
     }
@@ -180,7 +188,7 @@ public final class CMIOSinkWriter {
             // we just gave it so the buffer doesn't leak.
             Unmanaged<CMSampleBuffer>.fromOpaque(retained).release()
             enqueueRejectCount += 1
-            if enqueueRejectCount % 30 == 1 {
+            if enqueueRejectCount % Self.enqueueRejectStride == 1 {
                 logger.error(
                     "CMSimpleQueueEnqueue rejected (rejects=\(self.enqueueRejectCount)/\(self.enqueueCount), status=\(enqueueStatus))"
                 )
@@ -189,7 +197,7 @@ public final class CMIOSinkWriter {
         }
 
         enqueueCount += 1
-        if enqueueCount == 1 || enqueueCount % 60 == 0 {
+        if enqueueCount == 1 || enqueueCount % Self.enqueueHeartbeatStride == 0 {
             logger.info(
                 "Enqueued frame #\(self.enqueueCount, privacy: .public) (rejects=\(self.enqueueRejectCount, privacy: .public))"
             )
