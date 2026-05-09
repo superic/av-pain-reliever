@@ -908,6 +908,12 @@ Restructured: dropped the "Most-used location" highlight row entirely, moved eve
 
 `StatsSettingsTab.topProfile` and `StatsSettingsTab.otherProfiles` collapsed into a single `rankedProfiles` computed prop. Updated the doc comment on `SettingsStore.perProfileCounts` to drop the stale "most-used location highlight" reference.
 
+### CLAUDE.md: codify the "docs that move with the code" rules (2026-05-09)
+
+Added a "Docs that move with the code" subsection to CLAUDE.md under "Project-wide conventions" so the CHANGELOG-on-every-PR and README-when-user-visible-changes rules are part of the auto-loaded operational ruleset, not just personal memory. Without this, only sessions that happen to carry the right memory entries would know to keep the journal current and the README in sync; codifying it in CLAUDE.md means every fresh agent session in this repo inherits the rule.
+
+The triggers are explicit: CHANGELOG gets a dated H3 entry on every non-mechanical PR; README updates only when a PR changes user-visible behavior (a new setting, renamed menu item, removed feature, install-flow change). Internal refactors, doc-only edits, and test-only changes don't touch README — an executive reader wouldn't notice them. Same operational-rule shape as the other CLAUDE.md subsections, ~6 lines added.
+
 - **When we ship a Phase 1 fix or feature**, ask: does this teach us
   something about the Swift port? If yes, add to "Lessons learned."
 - **When the user gives feedback or hits a bug**, ask: should this be
