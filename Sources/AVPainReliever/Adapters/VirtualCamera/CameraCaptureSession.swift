@@ -354,7 +354,15 @@ extension CameraCaptureSession: AVCaptureVideoDataOutputSampleBufferDelegate {
     }
 }
 
-extension CameraCaptureSession: VirtualCameraSourceController {
+// MARK: - Engine-facing source swap
+
+extension CameraCaptureSession {
+    /// Swap the running session's input to the camera with the given
+    /// `localizedName`. The `VirtualCameraSourceController` plumbed
+    /// into `ProfileApplier` is the host's activator (it gates on the
+    /// extension's lifecycle); it forwards into this method when the
+    /// virtual camera is live. Returns `.notFound` if no such camera
+    /// is currently visible, `.ok` otherwise.
     public func setSource(named: String) -> CameraApplyResult {
         guard Self.findDevice(named: named) != nil else {
             return .notFound
