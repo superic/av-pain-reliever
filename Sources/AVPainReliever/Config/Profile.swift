@@ -75,11 +75,12 @@ public struct Profile: Hashable, Sendable {
         self.fingerprintNames = fingerprintNames
     }
 
-    // Manual Hashable / Equatable that excludes `fingerprintNames`.
-    // The names are display-only metadata; a profile loaded from a
-    // TOML with `name = "..."` annotations should compare equal to
-    // the same profile loaded without them, so existing tests + any
-    // semantic identity check stays unaffected by this addition.
+    // Manual Hashable / Equatable that excludes both
+    // `fingerprintNames` and `icon`. They're display-only metadata,
+    // so two semantically-identical profiles compare equal whether
+    // or not one carries names or a custom icon. Per-field rationale
+    // lives on each field's own doc comment; the operator just
+    // mirrors that policy.
     public static func == (lhs: Self, rhs: Self) -> Bool {
         lhs.name == rhs.name
             && lhs.fingerprint == rhs.fingerprint

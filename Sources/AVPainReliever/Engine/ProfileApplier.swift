@@ -63,12 +63,20 @@ public final class ProfileApplier {
         if let cameraName = profile.camera {
             // When the virtual camera is the active routing layer,
             // the *system-wide* preferred camera should point at the
-            // virtual camera itself — that's what FaceTime / Safari
-            // / any AVFoundation-modern client picks up, mirroring
+            // virtual camera itself: that's what FaceTime, Safari,
+            // and any AVFoundation-modern client picks up, mirroring
             // what Zoom/Slack/Teams see once the user has manually
             // selected "AV Pain Reliever". The profile's literal
             // camera name still drives the virtual camera's *source*
             // (the real webcam frames feed in there).
+            //
+            // Failure-mode note: if `setSource` returns `.notFound`
+            // (transient unplug between override-publish and source-
+            // apply), the system preference still points at the
+            // virtual camera while the virtual camera has no live
+            // source. The Camera Extension holds the last frame, so
+            // the symptom is a frozen frame rather than no video.
+            // Next `apply()` cycle re-resolves and recovers.
             let preferredName = virtualCameraSource?.preferredCameraOverride
                 ?? cameraName
             applyCamera(preferredName)
@@ -101,10 +109,10 @@ public final class ProfileApplier {
     }
 
     private func applyCamera(_ name: String) {
-        // No CameraController configured (e.g., older macOS, or
-        // construction-time decision). Per-profile we silently skip;
-        // the configuration layer is responsible for announcing the
-        // limitation if it matters.
+        // CameraApplier is optional in the init: callers can wire
+        // the engine without one (audio-only configurations).
+        // Per-profile we silently skip; the configuration layer is
+        // responsible for announcing the limitation if it matters.
         guard let camera else { return }
         switch camera.setPreferred(named: name) {
         case .ok:
