@@ -338,7 +338,7 @@ private struct MenuContentView: View {
             // weight (semibold when active) that NSMenuItem honours
             // via `attributedTitle`.
             Label {
-                Text(menuLabel(for: profile, pretty: pretty, isActive: isActive))
+                Text(menuLabel(pretty: pretty, isActive: isActive))
             } icon: {
                 Image(systemName: iconSymbol)
             }
@@ -353,7 +353,6 @@ private struct MenuContentView: View {
     /// Alignment with `Edit Profiles…` is handled by the menu's image
     /// column (see `profileMenuEntry`).
     private func menuLabel(
-        for profile: Profile,
         pretty: String,
         isActive: Bool
     ) -> AttributedString {
