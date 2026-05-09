@@ -336,7 +336,7 @@ struct AddProfileView: View {
                                     // when they're away from that
                                     // location. Yellow pill makes
                                     // the unavailable state obvious.
-                                    pill(text: "Not connected", tint: Theme.Color.warn)
+                                    StatusPill(text: "Not connected", tint: Theme.Color.warn)
                                 } else if DevicePortability
                                     .portabilityCategory(deviceName: entry.name) != nil {
                                     // Muted gray "Travels with you"
@@ -348,7 +348,7 @@ struct AddProfileView: View {
                                     // informational, explaining why
                                     // the row is shown unticked. Tone
                                     // is descriptive, not directive.
-                                    pill(text: "Travels with you", tint: Theme.Color.muted)
+                                    StatusPill(text: "Travels with you", tint: .gray)
                                 } else if let category = DevicePortability
                                     .importantCategory(deviceName: entry.name) {
                                     // Green "Important" pill on the
@@ -362,7 +362,7 @@ struct AddProfileView: View {
                                     // exclusive with "Travels with you"
                                     // by classifier construction
                                     // (their keywords don't overlap).
-                                    pill(text: "Important: \(category)", tint: Theme.Color.success)
+                                    StatusPill(text: "Important: \(category)", tint: Theme.Color.success)
                                 }
                             }
                             Text(idLine(for: entry.device))
@@ -444,18 +444,6 @@ struct AddProfileView: View {
                 Text(device.name).tag(String?.some(device.name))
             }
         }
-    }
-
-    /// One-stop pill builder used by both the "Not connected" badge
-    /// and the "Suggested: untick" hint. Single source of truth for
-    /// the wizard's small status pills.
-    private func pill(text: String, tint: Color) -> some View {
-        Text(text)
-            .font(.caption2.weight(.semibold))
-            .foregroundStyle(.black)
-            .padding(.horizontal, 6)
-            .padding(.vertical, 2)
-            .background(tint.opacity(0.85), in: Capsule())
     }
 
     /// Caption line under each device row. Shows vid/pid and the

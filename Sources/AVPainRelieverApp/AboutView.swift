@@ -2,6 +2,26 @@ import SwiftUI
 
 let aboutWindowID = "about-window"
 
+/// Renders the version string shown in About and Settings. Falls
+/// back to "Dev build" when the binary isn't bundled (the SPM
+/// build path).
+///
+/// Format: matches Apple's standard About-panel phrasing
+/// ("Version X.Y.Z"). Drops the app name (the title above the
+/// version line already shows it) and drops the parenthesized
+/// build number (we set CFBundleVersion == CFBundleShortVersionString,
+/// so showing both was redundant).
+enum VersionInfo {
+    static var short: String {
+        let info = Bundle.main.infoDictionary
+        let shortVersion = info?["CFBundleShortVersionString"] as? String
+        switch shortVersion {
+        case let v?: return "Version \(v)"
+        default:     return "Dev build"
+        }
+    }
+}
+
 /// About scene shown via the menu item and the standard ⌘? path.
 /// Replaces `NSApp.orderFrontStandardAboutPanel`. Layout: app icon
 /// (with a slow scale-pulse), the name, the version, a small

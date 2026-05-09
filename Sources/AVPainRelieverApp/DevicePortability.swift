@@ -21,21 +21,6 @@ import Foundation
 /// Anything that smells like a dock, monitor, microphone, audio
 /// interface, webcam, or display = location-specific, don't flag.
 enum DevicePortability {
-    /// True if the device's name suggests it's a portable peripheral
-    /// the user probably carries between locations. Returns false
-    /// when uncertain.
-    static func isLikelyPortable(deviceName: String?) -> Bool {
-        guard let name = deviceName?.lowercased(), !name.isEmpty else {
-            // Unnamed devices (hub legs) are stable parts of a dock,
-            // not portable peripherals. Don't flag.
-            return false
-        }
-        for keyword in portableKeywords {
-            if name.contains(keyword) { return true }
-        }
-        return false
-    }
-
     /// Short label shown next to a flagged row to hint why we
     /// suggest unticking it. Returns nil when the device isn't
     /// flagged. Phrased as a category, not an instruction — the
@@ -64,19 +49,6 @@ enum DevicePortability {
         }
         return nil
     }
-
-    /// Lowercased substrings that mark a device as "probably travels
-    /// with you". Order doesn't matter — first match wins.
-    private static let portableKeywords: [String] = [
-        // Pointing devices
-        "magic mouse", "magic trackpad", "trackpad", "mouse",
-        // Keyboards
-        "keyboard", "magic keyboard",
-        // Phones / tablets
-        "iphone", "ipad", "android", "pixel",
-        // Wearables
-        "airpods", "watch", "headphones", "headset", "earbuds", "buds",
-    ]
 
     /// Short label for "headline hardware" — the standalone,
     /// dedicated devices a user is most likely to pick as their
