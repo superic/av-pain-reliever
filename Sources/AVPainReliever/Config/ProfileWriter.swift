@@ -91,9 +91,16 @@ public struct ProfileWriter {
 
     /// Render a single profile as its TOML section. Public for tests
     /// and for the in-memory "preview the TOML" step the wizard could
-    /// surface later.
-    public func render(profile: Profile, deviceNames: [USBDevice: String?] = [:]) -> String {
-        Self.render(profile: profile, deviceNames: deviceNames)
+    /// surface later. Throws `ProfileWriteError.invalidName` if the
+    /// profile's name fails the same validation `append` / `replace`
+    /// apply, so a preview can never produce a TOML string the
+    /// write-path would reject.
+    public func render(
+        profile: Profile,
+        deviceNames: [USBDevice: String?] = [:]
+    ) throws -> String {
+        _ = try Self.validateName(profile.name)
+        return Self.render(profile: profile, deviceNames: deviceNames)
     }
 
     /// True if a `[profiles.<name>]` section already exists in the
@@ -228,15 +235,19 @@ public struct ProfileWriter {
         return name
     }
 
+    /// Compiled regex matching `[profiles.<name>]` at the start of a
+    /// line, allowing surrounding whitespace. Comments (preceded by
+    /// `#`) don't count; a `#`-prefixed line isn't a real section
+    /// header. Shared by `containsProfile` and `sectionRange` so the
+    /// pattern lives in one place.
+    private static func headerRegex(for name: String) -> NSRegularExpression? {
+        let pattern = "(?m)^[[:space:]]*\\[profiles\\.\(NSRegularExpression.escapedPattern(for: name))\\][[:space:]]*$"
+        return try? NSRegularExpression(pattern: pattern)
+    }
+
     private static func containsProfile(named: String, in toml: String) -> Bool {
-        // Match `[profiles.<name>]` at the start of a line, allowing
-        // surrounding whitespace. Comments (preceded by `#`) don't
-        // count; a #-prefixed line isn't a real section header.
-        let pattern = "(?m)^[[:space:]]*\\[profiles\\.\(NSRegularExpression.escapedPattern(for: named))\\][[:space:]]*$"
+        guard let regex = headerRegex(for: named) else { return false }
         let range = NSRange(toml.startIndex..., in: toml)
-        guard let regex = try? NSRegularExpression(pattern: pattern) else {
-            return false
-        }
         return regex.firstMatch(in: toml, range: range) != nil
     }
 
@@ -245,9 +256,8 @@ public struct ProfileWriter {
     /// the next `[...]` line (or to end of file). Returns nil if no
     /// matching section is found.
     private static func sectionRange(named: String, in toml: String) -> Range<String.Index>? {
-        let headerPattern = "(?m)^[[:space:]]*\\[profiles\\.\(NSRegularExpression.escapedPattern(for: named))\\][[:space:]]*$"
         let nsRange = NSRange(toml.startIndex..., in: toml)
-        guard let headerRegex = try? NSRegularExpression(pattern: headerPattern),
+        guard let headerRegex = headerRegex(for: named),
               let headerMatch = headerRegex.firstMatch(in: toml, range: nsRange),
               let headerRange = Range(headerMatch.range, in: toml) else {
             return nil
