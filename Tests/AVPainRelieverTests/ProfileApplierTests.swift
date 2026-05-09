@@ -7,7 +7,7 @@ struct ProfileApplierTests {
 
     // MARK: - Mocks
 
-    final class MockAudio: AudioController {
+    final class MockAudio: AudioApplier {
         struct Call: Equatable {
             let name: String
             let role: AudioDeviceRole
@@ -15,40 +15,25 @@ struct ProfileApplierTests {
         private(set) var calls: [Call] = []
         var resultsByName: [String: AudioApplyResult] = [:]
         var defaultResult: AudioApplyResult = .ok
-        var availableDevicesStub: [AudioDeviceSummary] = []
-        var currentDefaultsStub: AudioDefaults = .init(inputName: nil, outputName: nil)
 
         func setDefault(named: String, role: AudioDeviceRole) -> AudioApplyResult {
             calls.append(Call(name: named, role: role))
             return resultsByName[named] ?? defaultResult
         }
-
-        func availableDevices() -> [AudioDeviceSummary] {
-            availableDevicesStub
-        }
-
-        func currentDefaults() -> AudioDefaults {
-            currentDefaultsStub
-        }
     }
 
-    final class MockCamera: CameraController {
+    final class MockCamera: CameraApplier {
         struct Call: Equatable {
             let name: String
         }
         private(set) var calls: [Call] = []
         var resultsByName: [String: CameraApplyResult] = [:]
         var defaultResult: CameraApplyResult = .ok
-        var availableCamerasStub: [CameraSummary] = []
-        var currentPreferredNameStub: String? = nil
 
         func setPreferred(named: String) -> CameraApplyResult {
             calls.append(Call(name: named))
             return resultsByName[named] ?? defaultResult
         }
-
-        func availableCameras() -> [CameraSummary] { availableCamerasStub }
-        func currentPreferredName() -> String? { currentPreferredNameStub }
     }
 
     final class MockVirtualCameraSource: VirtualCameraSourceController {

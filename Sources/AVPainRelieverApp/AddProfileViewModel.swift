@@ -117,8 +117,8 @@ final class AddProfileViewModel: ObservableObject {
     // MARK: - Dependencies
 
     private let watcher: USBWatcher
-    private let audioController: AudioController
-    private let cameraController: CameraController
+    private let audioController: AudioInventory
+    private let cameraController: CameraInventory
     private let configURL: URL
     private let onSaved: () -> Void
     private let editingSlug: String?
@@ -153,8 +153,8 @@ final class AddProfileViewModel: ObservableObject {
 
     init(
         watcher: USBWatcher,
-        audioController: AudioController,
-        cameraController: CameraController,
+        audioController: AudioInventory,
+        cameraController: CameraInventory,
         configURL: URL,
         editing: Profile? = nil,
         existingProfileSlugs: Set<String> = [],
