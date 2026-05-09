@@ -12,6 +12,14 @@ struct AddProfileView: View {
     /// Drives the icon-picker popover anchored to the icon button.
     @State private var showIconPicker = false
 
+    /// Programmatic focus on the name field. SwiftUI's Window scene
+    /// keeps the same NSWindow across open/dismiss cycles, and the
+    /// macOS first-responder is preserved across the `.id`-driven
+    /// view rebuild — so the second-and-later wizard opens land
+    /// without any field focused. Pushing focus on `.onAppear` makes
+    /// every open feel like the first.
+    @FocusState private var nameFieldFocused: Bool
+
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             Form {
@@ -25,6 +33,7 @@ struct AddProfileView: View {
                             TextField("e.g. Home Office", text: $viewModel.name)
                                 .textFieldStyle(.roundedBorder)
                                 .labelsHidden()
+                                .focused($nameFieldFocused)
                                 .frame(maxWidth: .infinity)
                             // Tappable icon preview — defaults to the
                             // slug-driven auto-pick, but clicking opens
@@ -203,6 +212,16 @@ struct AddProfileView: View {
         // dynamically so the title bar tracks Add vs Edit mode.
         .navigationTitle(viewModel.editingExisting ? "Edit Profile" : "Add Profile")
         .centeredOnScreen()
+        .onAppear {
+            // Defer one runloop tick so the TextField's underlying
+            // NSResponder exists by the time we ask for focus —
+            // setting `nameFieldFocused = true` synchronously inside
+            // `.onAppear` no-ops on macOS 14 because the field's
+            // first-responder isn't wired up yet at that point.
+            DispatchQueue.main.async {
+                nameFieldFocused = true
+            }
+        }
         .onChange(of: viewModel.didSave) { _, saved in
             // Brief save-success window (~0.45 s) so the green check
             // and "Saved" affordance read as a beat of feedback rather
