@@ -297,6 +297,44 @@ struct ProfileWriterTests {
         }
     }
 
+    @Test("delete spans hand-edited content with `[`-prefixed lines that aren't headers")
+    func deletePreservesNonHeaderBracketLines() throws {
+        let url = tempTOMLURL()
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        // A user has hand-edited extra TOML inside `home-office`
+        // that has `[`-prefixed lines at column 1 (a nested array
+        // value split across lines). The old loose section pattern
+        // would have terminated the section at one of those lines,
+        // leaving orphaned content + the next real section bleeding
+        // into the deleted slot.
+        let prior = """
+        [profiles.home-office]
+        audioInput = "Yeti Stereo Microphone"
+        nested_array = [
+        [1, 2],
+        [3, 4],
+        ]
+        fingerprint = [
+          { vendorID = 0x2188, productID = 0x6533 },
+        ]
+
+        [profiles.studio]
+        audioInput = "Shure MV7"
+        """
+        try prior.write(to: url, atomically: true, encoding: .utf8)
+
+        try writer.delete(named: "home-office", in: url)
+
+        let after = try String(contentsOf: url, encoding: .utf8)
+        #expect(!after.contains("[profiles.home-office]"))
+        #expect(!after.contains("nested_array"))
+        #expect(!after.contains("[1, 2]"))
+        #expect(!after.contains("[3, 4]"))
+        #expect(after.contains("[profiles.studio]"))
+        #expect(after.contains("Shure MV7"))
+    }
+
     @Test("delete on a missing file raises writeFailed")
     func deleteOnMissingFileThrows() throws {
         let url = tempTOMLURL()

@@ -249,6 +249,22 @@ public struct ProfileWriter {
         return try? NSRegularExpression(pattern: pattern)
     }
 
+    /// Compiled regex matching the start of any TOML section header
+    /// (`[name]`, `[name.subname]`, or `[[array.name]]`) at column 1.
+    /// Used by `sectionRange` to find where the targeted section
+    /// ends. Cached because the pattern has no per-call parameters.
+    ///
+    /// We require the bracket to enclose one or more TOML bare-key
+    /// characters and a closing `]` so a hand-edited array value
+    /// like `[1, 2],` at column 1 is not mistaken for a section
+    /// start. Quoted-key sections (`["x.y"]`) are not matched, but
+    /// the writer never produces them and they're rare in user files.
+    private static let nextSectionRegex: NSRegularExpression? = {
+        try? NSRegularExpression(
+            pattern: "(?m)^[[:space:]]*\\[\\[?[A-Za-z0-9_.\\-]+\\]\\]?"
+        )
+    }()
+
     private static func containsProfile(named: String, in toml: String) -> Bool {
         guard let regex = headerRegex(for: named) else { return false }
         let range = NSRange(toml.startIndex..., in: toml)
@@ -266,13 +282,14 @@ public struct ProfileWriter {
               let headerRange = Range(headerMatch.range, in: toml) else {
             return nil
         }
-        // Scan from after the header line for the next line that
-        // starts with `[`. That's the start of the next section, OR
-        // end of file.
+        // Scan from after the header line for the next TOML section
+        // header. The pattern lives on `nextSectionRegex` and is
+        // strict about what it counts as a header so hand-edited
+        // files with multi-line array continuations don't terminate
+        // the section early.
         let afterHeader = headerRange.upperBound
         let afterRange = NSRange(afterHeader..<toml.endIndex, in: toml)
-        let nextSectionPattern = "(?m)^[[:space:]]*\\["
-        if let nextRegex = try? NSRegularExpression(pattern: nextSectionPattern),
+        if let nextRegex = Self.nextSectionRegex,
            let nextMatch = nextRegex.firstMatch(in: toml, range: afterRange),
            let nextRange = Range(nextMatch.range, in: toml) {
             return headerRange.lowerBound..<nextRange.lowerBound
