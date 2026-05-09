@@ -328,6 +328,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         let logger = ConsoleLogger()
         let profiles = ProfileBootstrapper().loadOrBootstrap(logger: logger)
         availableProfiles = profiles
+        // Self-heal stats orphaned by anything that bypassed
+        // `forgetProfile` (hand-edits to profiles.toml, or migration
+        // from a build that predates the delete-time hook).
+        settings.reconcileProfiles(currentSlugs: Set(profiles.map(\.name)))
         let engine = buildEngine(profiles: profiles, logger: logger)
         engine.onProfileApplied = { [weak self] profile in
             // Engine fires onProfileApplied on the same thread the
@@ -566,6 +570,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         let pretty = PrettyName.format(profile.name)
         do {
             try ProfileWriter().delete(named: profile.name, in: ProfileBootstrapper.canonicalTOMLURL)
+            settings.forgetProfile(slug: profile.name)
             reloadConfig()
         } catch {
             let failure = NSAlert()
