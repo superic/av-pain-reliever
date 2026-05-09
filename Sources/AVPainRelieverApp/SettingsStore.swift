@@ -38,14 +38,14 @@ final class SettingsStore: ObservableObject {
     /// is the whole point. Users running back-to-back location changes
     /// or doing demos sometimes want to mute it.
     @Published var notificationsEnabled: Bool {
-        didSet { defaults.set(notificationsEnabled, forKey: Key.notificationsEnabled) }
+        didSet { write(notificationsEnabled, forKey: Key.notificationsEnabled) }
     }
 
     /// USB debounce window in seconds. 1.5s is the validated default
     /// (see docs/decisions.md → Validated decisions). Slider exposes
     /// a 0.5–5.0 range; persisted as Double for the UI.
     @Published var debounceInterval: Double {
-        didSet { defaults.set(debounceInterval, forKey: Key.debounceInterval) }
+        didSet { write(debounceInterval, forKey: Key.debounceInterval) }
     }
 
     /// Show the active profile name next to the menu bar pill icon.
@@ -53,7 +53,7 @@ final class SettingsStore: ObservableObject {
     /// without opening the menu. Off renders just the icon for a
     /// minimal status item.
     @Published var showProfileNameInMenuBar: Bool {
-        didSet { defaults.set(showProfileNameInMenuBar, forKey: Key.showProfileNameInMenuBar) }
+        didSet { write(showProfileNameInMenuBar, forKey: Key.showProfileNameInMenuBar) }
     }
 
     /// Swap the menu bar's `pills.fill` glyph for the active profile's
@@ -62,7 +62,7 @@ final class SettingsStore: ObservableObject {
     /// glance, so opting in is what users do when they want the menu
     /// bar to track location instead.
     @Published var showProfileIconInMenuBar: Bool {
-        didSet { defaults.set(showProfileIconInMenuBar, forKey: Key.showProfileIconInMenuBar) }
+        didSet { write(showProfileIconInMenuBar, forKey: Key.showProfileIconInMenuBar) }
     }
 
     /// SF Symbol used in the menu bar when no per-profile icon is
@@ -70,7 +70,7 @@ final class SettingsStore: ObservableObject {
     /// on but no profile has been resolved yet). Default is
     /// `MenuBarIcon.defaultSymbol` so existing installs see no change.
     @Published var menuBarIconSymbol: String {
-        didSet { defaults.set(menuBarIconSymbol, forKey: Key.menuBarIconSymbol) }
+        didSet { write(menuBarIconSymbol, forKey: Key.menuBarIconSymbol) }
     }
 
     /// Lifetime count of profile applications. Surfaced as the
@@ -79,14 +79,14 @@ final class SettingsStore: ObservableObject {
     /// (the initial evaluation on launch is intentionally not counted;
     /// see `lastNotifiedName` gating there).
     @Published var profileSwitchCount: Int {
-        didSet { defaults.set(profileSwitchCount, forKey: Key.profileSwitchCount) }
+        didSet { write(profileSwitchCount, forKey: Key.profileSwitchCount) }
     }
 
     /// Set to true the first time the user dismisses the welcome
     /// window OR adds their first profile. Prevents the welcome from
     /// reappearing on subsequent launches.
     @Published var suppressedWelcome: Bool {
-        didSet { defaults.set(suppressedWelcome, forKey: Key.suppressedWelcome) }
+        didSet { write(suppressedWelcome, forKey: Key.suppressedWelcome) }
     }
 
     /// Whether the app should auto-launch at login. Default off so a
@@ -95,7 +95,7 @@ final class SettingsStore: ObservableObject {
     /// system's launch services.
     @Published var launchAtLogin: Bool {
         didSet {
-            defaults.set(launchAtLogin, forKey: Key.launchAtLogin)
+            write(launchAtLogin, forKey: Key.launchAtLogin)
             LaunchAtLogin.apply(enabled: launchAtLogin)
         }
     }
@@ -110,7 +110,7 @@ final class SettingsStore: ObservableObject {
     /// changes; `AppDelegate.applyVirtualCameraEnabled(_:)` mediates
     /// the actual state transitions.
     @Published var virtualCameraEnabled: Bool {
-        didSet { defaults.set(virtualCameraEnabled, forKey: Key.virtualCameraEnabled) }
+        didSet { write(virtualCameraEnabled, forKey: Key.virtualCameraEnabled) }
     }
 
     /// Opt-in to updates from the `experimental` Sparkle channel.
@@ -122,7 +122,7 @@ final class SettingsStore: ObservableObject {
     /// builds behind a deliberate user choice while the feature is
     /// still maturing.
     @Published var experimentalUpdates: Bool {
-        didSet { defaults.set(experimentalUpdates, forKey: Key.experimentalUpdates) }
+        didSet { write(experimentalUpdates, forKey: Key.experimentalUpdates) }
     }
 
     /// Master gate for usage-stats tracking. **Default: off.** With
@@ -133,7 +133,7 @@ final class SettingsStore: ObservableObject {
     /// what was already collected). Surfaced in Settings → Advanced.
     @Published var statsTrackingEnabled: Bool {
         didSet {
-            defaults.set(statsTrackingEnabled, forKey: Key.statsTrackingEnabled)
+            write(statsTrackingEnabled, forKey: Key.statsTrackingEnabled)
             // Stamp the start date the *first* time the user opts in.
             // Off → on → off → on must NOT reset it; the user's
             // intent is "I started keeping notes a while back" and
@@ -147,28 +147,28 @@ final class SettingsStore: ObservableObject {
     /// Captured the first time the user enables `statsTrackingEnabled`.
     /// Drives the "Tracking since N days ago" line in Advanced.
     @Published var statsStartDate: Date? {
-        didSet { defaults.set(statsStartDate, forKey: Key.statsStartDate) }
+        didSet { write(statsStartDate, forKey: Key.statsStartDate) }
     }
 
     /// Count of how many times each profile (by slug) has been
     /// applied since tracking was enabled. Powers the "Switches by
     /// location" rankings in the Stats tab.
     @Published var perProfileCounts: [String: Int] {
-        didSet { defaults.set(perProfileCounts, forKey: Key.perProfileCounts) }
+        didSet { write(perProfileCounts, forKey: Key.perProfileCounts) }
     }
 
     /// Slug of the most recently applied profile (set alongside
     /// `lastSwitchDate`). Renders as "Last switched 2h ago to Home
     /// Office" in Advanced.
     @Published var lastSwitchSlug: String? {
-        didSet { defaults.set(lastSwitchSlug, forKey: Key.lastSwitchSlug) }
+        didSet { write(lastSwitchSlug, forKey: Key.lastSwitchSlug) }
     }
 
     /// Wall-clock time of the most recent recorded switch. Used to
     /// drive the relative-time rendering AND the streak / activeDays
     /// day-bucket math.
     @Published var lastSwitchDate: Date? {
-        didSet { defaults.set(lastSwitchDate, forKey: Key.lastSwitchDate) }
+        didSet { write(lastSwitchDate, forKey: Key.lastSwitchDate) }
     }
 
     /// How many times the user has forced a profile from the menu's
@@ -177,19 +177,19 @@ final class SettingsStore: ObservableObject {
     /// the user's profiles aren't quite matching reality and might
     /// want adjustment.
     @Published var manualOverrideCount: Int {
-        didSet { defaults.set(manualOverrideCount, forKey: Key.manualOverrideCount) }
+        didSet { write(manualOverrideCount, forKey: Key.manualOverrideCount) }
     }
 
     /// Consecutive calendar days with at least one recorded switch,
     /// counting today (or the day of the most recent switch).
     @Published var currentStreakDays: Int {
-        didSet { defaults.set(currentStreakDays, forKey: Key.currentStreakDays) }
+        didSet { write(currentStreakDays, forKey: Key.currentStreakDays) }
     }
 
     /// All-time maximum value `currentStreakDays` has reached. Never
     /// decreases except via `resetStats()`.
     @Published var longestStreakDays: Int {
-        didSet { defaults.set(longestStreakDays, forKey: Key.longestStreakDays) }
+        didSet { write(longestStreakDays, forKey: Key.longestStreakDays) }
     }
 
     /// Total count of distinct calendar days on which at least one
@@ -198,7 +198,7 @@ final class SettingsStore: ObservableObject {
     /// streak still has activeDays = 50 even if the current streak
     /// is back to 1.
     @Published var activeDaysCount: Int {
-        didSet { defaults.set(activeDaysCount, forKey: Key.activeDaysCount) }
+        didSet { write(activeDaysCount, forKey: Key.activeDaysCount) }
     }
 
     /// Backing storage for the unique-device set. Each entry is the
@@ -207,7 +207,7 @@ final class SettingsStore: ObservableObject {
     /// without custom encoding. Surfaced as
     /// `uniqueDevicesSeenCount` for the UI.
     @Published var uniqueDeviceFingerprints: [String] {
-        didSet { defaults.set(uniqueDeviceFingerprints, forKey: Key.uniqueDeviceFingerprints) }
+        didSet { write(uniqueDeviceFingerprints, forKey: Key.uniqueDeviceFingerprints) }
     }
 
     /// Convenience for the Advanced view — the count is what the UI
@@ -234,6 +234,24 @@ final class SettingsStore: ObservableObject {
     }
 
     private let defaults: UserDefaults
+
+    /// Static `ConsoleLogger` for SettingsStore writes. Static so the
+    /// init signature stays unchanged (tests still pass a bare
+    /// `UserDefaults`). Routes through the same seam as every other
+    /// production logger so categories stay filterable in
+    /// `log stream`. All writes go via `write(_:forKey:)`.
+    private static let logger = ConsoleLogger(category: "settings")
+
+    /// Persist `value` for `key` and emit a debug log line. Centralizes
+    /// the `defaults.set` + `.debug` pattern so each `@Published`
+    /// `didSet` body stays a single line. Unwraps optionals when
+    /// rendering the value so the log line reads `value=2026-05-09`
+    /// instead of `value=Optional(2026-05-09)`.
+    private func write(_ value: Any?, forKey key: String) {
+        defaults.set(value, forKey: key)
+        let rendered = value.map { String(describing: $0) } ?? "nil"
+        Self.logger.debug("wrote key=\(key) value=\(rendered)")
+    }
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults

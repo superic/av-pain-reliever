@@ -374,7 +374,9 @@ extension CameraCaptureSession {
     /// virtual camera is live. Returns `.notFound` if no such camera
     /// is currently visible, `.ok` otherwise.
     public func setSource(named: String) -> CameraApplyResult {
+        logger.debug("CameraCaptureSession.setSource(named: \(named))")
         guard Self.findDevice(named: named) != nil else {
+            logger.debug("CameraCaptureSession.setSource: \(named) not visible, returning .notFound")
             return .notFound
         }
         switchSource(toLocalizedName: named)

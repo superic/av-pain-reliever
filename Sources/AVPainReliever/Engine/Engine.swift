@@ -90,14 +90,17 @@ public final class Engine {
         started = true
 
         let debouncer = Debouncer(interval: debounceInterval, clock: clock) { [weak self] in
+            self?.logger.debug("engine: debounce window elapsed, firing evaluation")
             self?.evaluateAndApply()
         }
         self.debouncer = debouncer
 
         watcher.start { [weak self] in
+            self?.logger.debug("engine: USB change observed, bumping debouncer")
             self?.debouncer?.bump()
         }
 
+        logger.debug("engine: started (debounce=\(debounceInterval)s)")
         evaluateAndApply()
     }
 
@@ -105,6 +108,7 @@ public final class Engine {
     /// Idempotent; safe to call from a parent's `deinit`.
     public func stop() {
         guard started else { return }
+        logger.debug("engine: stopping")
         started = false
         debouncer?.cancel()
         debouncer = nil
@@ -154,8 +158,9 @@ public final class Engine {
 
     private func evaluateAndApply() {
         let attached = watcher.currentDevices()
+        logger.debug("engine: evaluateAndApply attached=\(attached.count) devices")
         onDevicesEvaluated?(attached)
-        guard let profile = resolver.resolve(attached: attached) else {
+        guard let profile = resolver.resolve(attached: attached, logger: logger) else {
             logger.warn("no profile matched the current USB state — skipping apply")
             return
         }
@@ -167,6 +172,7 @@ public final class Engine {
         // "user is at a dock we don't have a profile for". See
         // `onUnknownLocation` doc comment.
         if profile.fingerprint.isEmpty && !attached.isEmpty {
+            logger.debug("engine: unknown-location signal (fallback profile + \(attached.count) attached)")
             onUnknownLocation?(attached)
         }
     }

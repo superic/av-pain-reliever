@@ -23,7 +23,12 @@ public struct ProfileResolver: Sendable {
     /// profile matches. Callers (e.g. the production `Engine`) layer
     /// their own fallback policy on top — `init.lua` falls back to a
     /// hardcoded `"laptop"` name when nothing matches.
-    public func resolve(attached: Set<USBDevice>) -> Profile? {
+    ///
+    /// `logger`, when supplied, receives `.debug` lines describing the
+    /// candidate set and the winner. Useful when diagnosing
+    /// "why did THAT profile win?" reports. Default `nil` keeps the
+    /// existing call sites source-compatible and tests quiet.
+    public func resolve(attached: Set<USBDevice>, logger: ApplierLogger? = nil) -> Profile? {
         // Iterate alphabetically so ties resolve to the
         // earlier-by-name profile (`>` instead of `>=` below makes the
         // first encountered specificity win on ties).
@@ -38,12 +43,18 @@ public struct ProfileResolver: Sendable {
             let matches = profile.fingerprint.allSatisfy { entry in
                 attached.contains { device in entry.matchesAttachedDevice(device) }
             }
-            guard matches else { continue }
             let specificity = profile.fingerprint.count
+            logger?.debug("resolver: candidate \(profile.name) specificity=\(specificity) matches=\(matches)")
+            guard matches else { continue }
             if specificity > bestSpecificity {
                 best = profile
                 bestSpecificity = specificity
             }
+        }
+        if let best {
+            logger?.debug("resolver: winner=\(best.name) specificity=\(bestSpecificity)")
+        } else {
+            logger?.debug("resolver: no profile matched (\(profiles.count) candidates considered)")
         }
         return best
     }

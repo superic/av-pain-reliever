@@ -86,7 +86,14 @@ final class VirtualCameraActivator: NSObject, ObservableObject,
     /// hangup and the next ring.
     private static let stopGraceSeconds: TimeInterval = 30
 
-    @Published private(set) var state: State = .off
+    @Published private(set) var state: State = .off {
+        didSet {
+            // Skip logging the no-change case. Many call sites
+            // re-assign the same value to trigger downstream sinks.
+            guard oldValue != state else { return }
+            logger.debug("state: \(String(describing: oldValue), privacy: .public) → \(String(describing: self.state), privacy: .public)")
+        }
+    }
 
     /// True when the env var override forced enable on launch.
     /// Settings UI hides the toggle's persistence-driven semantics
@@ -277,6 +284,7 @@ final class VirtualCameraActivator: NSObject, ObservableObject,
     }
 
     func setSource(named: String) -> CameraApplyResult {
+        logger.debug("setSource(named: \(named, privacy: .public)) state=\(String(describing: self.state), privacy: .public) captureSession=\(self.captureSession == nil ? "nil" : "live", privacy: .public)")
         // Always remember — even when the capture pipeline isn't
         // running yet — so a consumer that connects later opens the
         // right camera as its initial source instead of falling

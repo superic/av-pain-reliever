@@ -98,6 +98,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
     /// menu both read from this.
     let settings = SettingsStore()
 
+    private let logger = ConsoleLogger(category: "app-delegate")
+
     /// Profile currently slated for editing. Set by
     /// `beginEditingProfile(_:)` before opening the wizard window;
     /// cleared once the wizard finishes. Reading this when building
@@ -354,6 +356,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
     }
 
     private func handleProfileApplied(_ profile: Profile) {
+        logger.debug("handleProfileApplied: profile=\(profile.name) lastNotified=\(lastNotifiedName ?? "<nil>") pendingForceApply=\(pendingForceApplyName ?? "<nil>")")
         // If a `Save as new` is in flight, `reloadConfig()` will fire
         // this once with the resolver's pick (which loses to the
         // colliding sibling on alphabetical tiebreak). Swallow that
@@ -361,7 +364,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         // profile land — one toast, one switch counter increment,
         // one menu-bar title update.
         if let pending = pendingForceApplyName {
-            if profile.name != pending { return }
+            if profile.name != pending {
+                logger.debug("handleProfileApplied: swallowed (resolver picked \(profile.name), waiting for \(pending))")
+                return
+            }
             pendingForceApplyName = nil
         }
         let pretty = PrettyName.format(profile.name)
@@ -375,6 +381,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         // just be noise. Settings.notificationsEnabled gates the
         // toast (default on; users can mute from Preferences).
         if let last = lastNotifiedName, last != profile.name {
+            logger.debug("handleProfileApplied: real switch \(last) → \(profile.name); recording stats + maybe toasting")
             settings.incrementSwitchCount()
             settings.recordSwitch(toSlug: profile.name)
             if settings.notificationsEnabled {
@@ -443,6 +450,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
     /// something the watcher missed, or just sanity-checking what the
     /// engine resolves to right now).
     func reevaluate() {
+        logger.debug("reevaluate")
         engine?.evaluate()
     }
 
@@ -451,6 +459,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
     /// this after editing profiles.toml (or .lua) and wants the
     /// changes picked up without a full app restart.
     func reloadConfig() {
+        logger.debug("reloadConfig")
         bootEngine()
     }
 
@@ -461,6 +470,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
     /// configuration or apply a "wrong-for-now" profile (e.g. set
     /// home-office audio defaults while undocked).
     func applyManually(_ profile: Profile) {
+        logger.debug("applyManually \(profile.name)")
         // Stats: every menu-driven force-apply increments the
         // manual-override counter. The engine still goes on to fire
         // `onProfileApplied`, which counts this as a regular switch
@@ -568,6 +578,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
     /// here.
     func deleteProfile(_ profile: Profile) {
         let pretty = PrettyName.format(profile.name)
+        logger.debug("deleteProfile \(profile.name)")
         do {
             try ProfileWriter().delete(named: profile.name, in: ProfileBootstrapper.canonicalTOMLURL)
             settings.forgetProfile(slug: profile.name)
@@ -585,7 +596,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
     // MARK: - Bootstrap
 
     private func buildEngine(profiles: [Profile], logger: ApplierLogger) -> Engine {
-        let watcher = IOKitUSBWatcher()
+        let watcher = IOKitUSBWatcher(logger: ConsoleLogger(category: "usb-watcher"))
         let resolver = ProfileResolver(profiles: profiles)
         let audio = CoreAudioController()
         let camera = AVFoundationCameraController()

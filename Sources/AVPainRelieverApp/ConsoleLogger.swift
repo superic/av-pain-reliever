@@ -9,6 +9,13 @@ import AVPainReliever
 /// log stream --predicate 'subsystem CONTAINS "ericwillis.avpainreliever"' --info --style compact
 /// ```
 ///
+/// For chatty per-event diagnostic output (`.debug` calls), bump the
+/// stream's level filter:
+///
+/// ```sh
+/// log stream --predicate 'subsystem CONTAINS "ericwillis.avpainreliever"' --level debug --style compact
+/// ```
+///
 /// Each instance carries its own `os.Logger` category so different
 /// engine adapters log under filterable categories ("engine",
 /// "CMIOSinkWriter", "CameraCaptureSession", etc.). The category
@@ -24,6 +31,12 @@ struct ConsoleLogger: ApplierLogger {
             category: category
         )
         self.category = category
+    }
+
+    func debug(_ message: String) {
+        logger.debug("\(message, privacy: .public)")
+        // No stderr mirror for debug. Too chatty for `swift run`;
+        // use `log stream --level debug` to consume.
     }
 
     func info(_ message: String) {
