@@ -278,7 +278,7 @@ struct ProfileWriterTests {
         #expect(Set(loaded.map(\.name)) == ["laptop", "studio"])
     }
 
-    @Test("delete on a missing section raises duplicateProfile")
+    @Test("delete on a missing section raises missingProfile")
     func deleteOnMissingSectionThrows() throws {
         let url = tempTOMLURL()
         defer { try? FileManager.default.removeItem(at: url) }
@@ -289,11 +289,11 @@ struct ProfileWriterTests {
 
         do {
             try writer.delete(named: "home-office", in: url)
-            Issue.record("expected duplicateProfile for missing section")
-        } catch ProfileWriteError.duplicateProfile {
-            // expected
+            Issue.record("expected missingProfile for missing section")
+        } catch let ProfileWriteError.missingProfile(name) {
+            #expect(name == "home-office")
         } catch {
-            Issue.record("expected duplicateProfile, got \(error)")
+            Issue.record("expected missingProfile, got \(error)")
         }
     }
 

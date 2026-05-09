@@ -217,7 +217,7 @@ public final class CameraCaptureSession: NSObject {
         {
             return system
         }
-        return Self.discoverySession().devices
+        return CameraDiscovery.session().devices
             .first { !Self.isVirtualCamera($0) }
     }
 
@@ -313,22 +313,9 @@ public final class CameraCaptureSession: NSObject {
     }
 
     private static func findDevice(named name: String) -> AVCaptureDevice? {
-        discoverySession().devices.first {
+        CameraDiscovery.session().devices.first {
             $0.localizedName == name && !isVirtualCamera($0)
         }
-    }
-
-    private static func discoverySession() -> AVCaptureDevice.DiscoverySession {
-        AVCaptureDevice.DiscoverySession(
-            deviceTypes: [
-                .builtInWideAngleCamera,
-                .external,
-                .continuityCamera,
-                .deskViewCamera,
-            ],
-            mediaType: .video,
-            position: .unspecified
-        )
     }
 }
 
@@ -342,14 +329,7 @@ extension CameraCaptureSession: AVCaptureVideoDataOutputSampleBufferDelegate {
         if capturedFrameCount == 1, let pb = CMSampleBufferGetImageBuffer(sampleBuffer) {
             let w = CVPixelBufferGetWidth(pb)
             let h = CVPixelBufferGetHeight(pb)
-            let pf = CVPixelBufferGetPixelFormatType(pb)
-            // Pretty-print FourCC
-            let fourcc = String(bytes: [
-                UInt8((pf >> 24) & 0xFF),
-                UInt8((pf >> 16) & 0xFF),
-                UInt8((pf >> 8) & 0xFF),
-                UInt8(pf & 0xFF)
-            ], encoding: .ascii) ?? "????"
+            let fourcc = FourCC.pretty(CVPixelBufferGetPixelFormatType(pb))
             logger.info("First frame from webcam: \(w, privacy: .public)x\(h, privacy: .public) format=\(fourcc, privacy: .public)")
         }
 

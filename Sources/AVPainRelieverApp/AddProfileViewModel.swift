@@ -520,6 +520,11 @@ final class AddProfileViewModel: ObservableObject {
             // Race: collision check passed but the file changed
             // before write. Surface it.
             lastError = "Couldn't save: profile \"\(PrettyName.format(name))\" already exists."
+        } catch let ProfileWriteError.missingProfile(name) {
+            // Race: replace expected the section to be there but
+            // someone (the user editing the TOML by hand, another
+            // tool) removed it between collision check and write.
+            lastError = "Couldn't save: profile \"\(PrettyName.format(name))\" is no longer in the config — try Add Profile instead."
         } catch let ProfileWriteError.invalidName(name) {
             lastError = "Couldn't save: \"\(name)\" isn't a valid profile name."
         } catch let ProfileWriteError.writeFailed(reason) {

@@ -437,12 +437,7 @@ public final class CMIOSinkWriter {
         )
         if signature == lastLoggedInputSignature { return }
         lastLoggedInputSignature = signature
-        let fourcc = String(bytes: [
-            UInt8((signature.0 >> 24) & 0xFF),
-            UInt8((signature.0 >> 16) & 0xFF),
-            UInt8((signature.0 >> 8) & 0xFF),
-            UInt8(signature.0 & 0xFF),
-        ], encoding: .ascii) ?? "????"
+        let fourcc = FourCC.pretty(signature.0)
         let needsConversion = signature.0 != Self.outputFormat
             || signature.1 != Self.outputWidth
             || signature.2 != Self.outputHeight
