@@ -297,6 +297,81 @@ struct SettingsStoreTests {
         #expect(store.lastSwitchSlug == "home-office")
     }
 
+    @Test("reconcileProfiles drops stats for slugs not in the current set")
+    func reconcileProfilesDropsOrphans() {
+        let store = SettingsStore(defaults: makeSuite())
+        store.statsTrackingEnabled = true
+        store.recordSwitch(toSlug: "home-office")
+        store.recordSwitch(toSlug: "conference-room")
+        store.recordSwitch(toSlug: "ghost-from-old-build")
+
+        let aggregateBefore = store.profileSwitchCount
+        store.reconcileProfiles(currentSlugs: ["home-office", "conference-room"])
+
+        #expect(store.perProfileCounts["home-office"] == 1)
+        #expect(store.perProfileCounts["conference-room"] == 1)
+        #expect(store.perProfileCounts["ghost-from-old-build"] == nil)
+        // Aggregates untouched by reconcile, just like forgetProfile.
+        #expect(store.profileSwitchCount == aggregateBefore)
+    }
+
+    @Test("reconcileProfiles clears lastSwitch fields when the slug is orphaned")
+    func reconcileProfilesClearsOrphanedLastSwitch() {
+        let store = SettingsStore(defaults: makeSuite())
+        store.statsTrackingEnabled = true
+        store.recordSwitch(toSlug: "home-office")
+        store.recordSwitch(toSlug: "ghost")
+        // ghost is the most recent.
+        #expect(store.lastSwitchSlug == "ghost")
+
+        store.reconcileProfiles(currentSlugs: ["home-office"])
+        #expect(store.lastSwitchSlug == nil)
+        #expect(store.lastSwitchDate == nil)
+    }
+
+    @Test("reconcileProfiles preserves lastSwitch fields when the slug is still present")
+    func reconcileProfilesPreservesLiveLastSwitch() {
+        let store = SettingsStore(defaults: makeSuite())
+        store.statsTrackingEnabled = true
+        store.recordSwitch(toSlug: "ghost")
+        store.recordSwitch(toSlug: "home-office")
+        #expect(store.lastSwitchSlug == "home-office")
+
+        store.reconcileProfiles(currentSlugs: ["home-office"])
+        #expect(store.lastSwitchSlug == "home-office")
+        #expect(store.lastSwitchDate != nil)
+    }
+
+    @Test("reconcileProfiles is a no-op when every slug is still present")
+    func reconcileProfilesAllPresent() {
+        let store = SettingsStore(defaults: makeSuite())
+        store.statsTrackingEnabled = true
+        store.recordSwitch(toSlug: "home-office")
+        store.recordSwitch(toSlug: "conference-room")
+        let snapshot = store.perProfileCounts
+
+        store.reconcileProfiles(currentSlugs: ["home-office", "conference-room", "unused-extra"])
+        #expect(store.perProfileCounts == snapshot)
+        #expect(store.lastSwitchSlug == "conference-room")
+    }
+
+    @Test("reconcileProfiles with an empty set drops everything per-slug, leaves aggregates")
+    func reconcileProfilesEmptySet() {
+        let store = SettingsStore(defaults: makeSuite())
+        store.statsTrackingEnabled = true
+        store.recordSwitch(toSlug: "home-office")
+        store.recordSwitch(toSlug: "conference-room")
+        let aggregateBefore = store.profileSwitchCount
+        let streakBefore = store.currentStreakDays
+
+        store.reconcileProfiles(currentSlugs: [])
+        #expect(store.perProfileCounts.isEmpty)
+        #expect(store.lastSwitchSlug == nil)
+        #expect(store.lastSwitchDate == nil)
+        #expect(store.profileSwitchCount == aggregateBefore)
+        #expect(store.currentStreakDays == streakBefore)
+    }
+
     @Test("resetStats wipes counters; tracking flag is preserved")
     func resetStatsWipes() {
         let defaults = makeSuite()

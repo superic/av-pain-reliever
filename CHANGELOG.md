@@ -896,6 +896,8 @@ Deleting a profile now also drops its per-slug stats. Before this, the Stats tab
 
 Wired from `AppDelegate.deleteProfile`, after the on-disk TOML delete succeeds. If the disk delete fails, the stats stay (no orphaning created).
 
+A second method, `SettingsStore.reconcileProfiles(currentSlugs:)`, runs on every config load (inside `AppDelegate.bootEngine`) and drops per-slug stats whose profile no longer exists. This serves two roles: it self-heals stats orphaned by anything that bypassed the delete-time hook (a hand-edit of `profiles.toml`), and it acts as a one-shot migration for users on a build that predates `forgetProfile`. No-op (no disk write) when nothing is orphaned, so it doesn't churn UserDefaults on every reload. Same scope as `forgetProfile`: per-slug data only, never aggregates.
+
 - **When we ship a Phase 1 fix or feature**, ask: does this teach us
   something about the Swift port? If yes, add to "Lessons learned."
 - **When the user gives feedback or hits a bug**, ask: should this be
