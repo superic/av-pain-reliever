@@ -1,4 +1,4 @@
-import CoreVideo
+import Foundation
 
 /// Pretty-print helper for `OSType` four-character codes
 /// (`kCVPixelFormatType_*`, FourCC media tags, etc.). The host's
