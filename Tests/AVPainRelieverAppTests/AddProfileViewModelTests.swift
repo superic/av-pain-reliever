@@ -667,6 +667,84 @@ struct AddProfileViewModelTests {
         #expect(receivedForceApplySlug == newSlug)
     }
 
+    @Test("no-collision new-profile save asks the host to force-apply the new slug")
+    func newProfileSaveSignalsForceApply() throws {
+        // Regression for the same alphabetical-tiebreak class as the
+        // collision Save-as-new bug, but on the no-collision append
+        // path: when the user adds multiple profiles in a row, each
+        // fingerprinting the same dock devices, the second-and-later
+        // profiles share specificity with the first and lose the
+        // alphabetical tiebreak. The view model now passes the new
+        // slug to onSaved so the host can force-apply it.
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("vm-newprofile-\(UUID()).toml")
+        defer { try? FileManager.default.removeItem(at: url) }
+        try """
+        [profiles.alpha-dock]
+        audioInput = "Yeti"
+        """.write(to: url, atomically: true, encoding: .utf8)
+
+        var receivedForceApplySlug: String? = nil
+        let vm = AddProfileViewModel(
+            watcher: FakeWatcher(),
+            audioController: FakeAudio(devices: ["Yeti"]),
+            cameraController: FakeCamera(cameras: []),
+            configURL: url,
+            existingProfileSlugs: ["alpha-dock"],
+            onSaved: { forceApplySlug in
+                receivedForceApplySlug = forceApplySlug
+            }
+        )
+        vm.name = "Beta Dock"
+        vm.audioInput = "Yeti"
+        vm.save()
+
+        #expect(vm.didSave == true)
+        #expect(vm.lastError == nil)
+        #expect(receivedForceApplySlug == "beta-dock")
+    }
+
+    @Test("collision Update-existing asks the host to force-apply the existing slug")
+    func confirmReplaceSignalsForceApply() throws {
+        // Mirror of saveAsNewSignalsForceApply for the other collision
+        // path: when the user picks "Update existing", the merged
+        // profile's settings change but the resolver might still
+        // alphabetical-tiebreak away from it (or, more commonly in
+        // edit-rename, the previously-active editing profile is now
+        // gone and a different sibling could win the resolver). The
+        // view model passes the existing slug so the host can pin it.
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("vm-replace-\(UUID()).toml")
+        defer { try? FileManager.default.removeItem(at: url) }
+        try """
+        [profiles.home-office]
+        audioInput  = "Existing Mic"
+        audioOutput = "Existing Out"
+        """.write(to: url, atomically: true, encoding: .utf8)
+
+        var receivedForceApplySlug: String? = nil
+        let vm = AddProfileViewModel(
+            watcher: FakeWatcher(),
+            audioController: FakeAudio(devices: ["New Mic"]),
+            cameraController: FakeCamera(cameras: []),
+            configURL: url,
+            existingProfileSlugs: ["home-office"],
+            onSaved: { forceApplySlug in
+                receivedForceApplySlug = forceApplySlug
+            }
+        )
+        vm.name = "home-office"
+        vm.audioInput = "New Mic"
+        vm.save()
+        #expect(vm.pendingCollision != nil)
+
+        vm.confirmReplace()
+
+        #expect(vm.didSave == true)
+        #expect(vm.lastError == nil)
+        #expect(receivedForceApplySlug == "home-office")
+    }
+
     @Test("currentPreferredName fallback skips the virtual camera")
     func preFillSkipsVirtualCamera() {
         // Mirrors a real machine where userPreferredCamera was set

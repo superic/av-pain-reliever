@@ -438,26 +438,41 @@ final class AddProfileViewModel: ObservableObject {
             )
             return
         }
-        performSave(slug: slug, mode: .append)
+        // Reaching here means we're either creating a fresh profile
+        // (editingSlug == nil) or renaming an existing one to a free
+        // slug. Force-apply only the fresh-profile case so the new
+        // slug wins `ProfileResolver`'s alphabetical tiebreak — the
+        // user just declared "this profile is active now." Edit-
+        // renames stay deliberately resolver-driven: if the user
+        // renames a profile they aren't currently on, the host
+        // shouldn't force-switch them; the resolver will keep them
+        // where they were.
+        performSave(slug: slug, mode: .append, forceApply: editingSlug == nil)
     }
 
     /// User picked "Update existing" in the collision dialog — replace
-    /// the prior profile's section with our current selections.
+    /// the prior profile's section with our current selections. Force-
+    /// applies only when this came from new-profile creation (no
+    /// editing context). In edit-rename-collision the user might not
+    /// have been on the edited profile, so force-applying could yank
+    /// them onto the merge target unexpectedly; let the resolver run.
     func confirmReplace() {
         guard let collision = pendingCollision else { return }
         pendingCollision = nil
-        performSave(slug: collision.existingSlug, mode: .replace)
+        performSave(slug: collision.existingSlug, mode: .replace, forceApply: editingSlug == nil)
     }
 
     /// User picked "Save as new" in the collision dialog — append
-    /// under the auto-suggested suffixed slug. Force-applies the
-    /// new profile after save so it wins over the colliding sibling
-    /// (which would otherwise win `ProfileResolver`'s alphabetical
-    /// tiebreak when the two share a fingerprint).
+    /// under the auto-suggested suffixed slug. Force-applies only
+    /// when this came from new-profile creation (no editing context).
+    /// In edit-rename-collision Save-as-new the user might not have
+    /// been on the edited profile, so force-applying the suffixed
+    /// sibling could yank them onto it unexpectedly; let the resolver
+    /// run instead.
     func confirmSaveAsNew() {
         guard let collision = pendingCollision else { return }
         pendingCollision = nil
-        performSave(slug: collision.newSlug, mode: .append, forceApply: true)
+        performSave(slug: collision.newSlug, mode: .append, forceApply: editingSlug == nil)
     }
 
     /// User picked "Cancel" — drop the collision state and let them
