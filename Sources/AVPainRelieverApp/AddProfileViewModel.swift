@@ -120,7 +120,15 @@ final class AddProfileViewModel: ObservableObject {
     private let audioController: AudioInventory
     private let cameraController: CameraInventory
     private let configURL: URL
-    private let onSaved: () -> Void
+    /// Notifies the host that the wizard wrote a profile to disk.
+    /// `forceApplySlug` is the slug the host should explicitly apply
+    /// after reloading — non-nil for the collision "Save as new" path,
+    /// where the new profile shares its fingerprint with the colliding
+    /// sibling and would lose `ProfileResolver`'s alphabetical
+    /// tiebreak. Nil for every other save path (no-collision append,
+    /// in-place edit, rename, collision update-existing) — those let
+    /// the resolver pick normally.
+    private let onSaved: (_ forceApplySlug: String?) -> Void
     private let editingSlug: String?
     /// Slugs of all profiles that already exist in the user's
     /// config. The wizard consults this to suppress
@@ -159,7 +167,7 @@ final class AddProfileViewModel: ObservableObject {
         editing: Profile? = nil,
         existingProfileSlugs: Set<String> = [],
         virtualCameraEnabled: Bool = false,
-        onSaved: @escaping () -> Void
+        onSaved: @escaping (_ forceApplySlug: String?) -> Void
     ) {
         self.watcher = watcher
         self.audioController = audioController
@@ -442,11 +450,14 @@ final class AddProfileViewModel: ObservableObject {
     }
 
     /// User picked "Save as new" in the collision dialog — append
-    /// under the auto-suggested suffixed slug.
+    /// under the auto-suggested suffixed slug. Force-applies the
+    /// new profile after save so it wins over the colliding sibling
+    /// (which would otherwise win `ProfileResolver`'s alphabetical
+    /// tiebreak when the two share a fingerprint).
     func confirmSaveAsNew() {
         guard let collision = pendingCollision else { return }
         pendingCollision = nil
-        performSave(slug: collision.newSlug, mode: .append)
+        performSave(slug: collision.newSlug, mode: .append, forceApply: true)
     }
 
     /// User picked "Cancel" — drop the collision state and let them
@@ -462,7 +473,7 @@ final class AddProfileViewModel: ObservableObject {
         case replace
     }
 
-    private func performSave(slug: String, mode: SaveMode) {
+    private func performSave(slug: String, mode: SaveMode, forceApply: Bool = false) {
         isSaving = true
         lastError = nil
         defer { isSaving = false }
@@ -515,7 +526,7 @@ final class AddProfileViewModel: ObservableObject {
                 }
             }
             didSave = true
-            onSaved()
+            onSaved(forceApply ? slug : nil)
         } catch let ProfileWriteError.duplicateProfile(name) {
             // Race: collision check passed but the file changed
             // before write. Surface it.
