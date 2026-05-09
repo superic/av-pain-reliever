@@ -80,6 +80,11 @@ Shared SF Symbol names live in `Theme.Symbol` enum. Don't sprinkle string litera
 - Repo-root meta files (`README.md`, `LICENSE`, `CHANGELOG.md`, `CLAUDE.md`) → UPPERCASE.
 - Content under `docs/` → lowercase-hyphenated.
 
+### Docs that move with the code
+
+- **CHANGELOG.md**: every non-mechanical PR adds a dated H3 entry. Internal design notes are plain prose; user-facing release notes use the Vince Vaughn voice (see Release notes above).
+- **README.md**: update when a PR changes user-visible behavior — a new setting, renamed menu item, removed feature, install-flow change. Skip for internal refactors, doc-only edits, and test-only changes (an executive reader wouldn't notice them).
+
 ### Avoiding slop
 
 Patterns to watch when writing code. Detailed history lives in CHANGELOG.
