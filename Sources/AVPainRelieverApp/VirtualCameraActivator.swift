@@ -231,9 +231,17 @@ final class VirtualCameraActivator: NSObject, ObservableObject,
 
     private func startCapturePipeline() {
         guard captureSession == nil else { return }
-        let writer = CMIOSinkWriter(deviceUID: Self.virtualCameraUID)
+        // Per-adapter ConsoleLogger instances so `os.log`'s category
+        // filter (`log stream --predicate 'category == "CMIOSinkWriter"'`)
+        // still works even though both adapters now go through the
+        // engine library's `ApplierLogger` protocol seam.
+        let writer = CMIOSinkWriter(
+            deviceUID: Self.virtualCameraUID,
+            logger: ConsoleLogger(category: "CMIOSinkWriter")
+        )
         let session = CameraCaptureSession(
             sink: writer,
+            logger: ConsoleLogger(category: "CameraCaptureSession"),
             initialSourceName: pendingSourceName
         )
         session.start()

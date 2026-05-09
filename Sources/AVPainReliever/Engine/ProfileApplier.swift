@@ -1,11 +1,22 @@
 import Foundation
 
-/// Two-level logger interface for engine components. Production
+/// Three-level logger interface for engine components. Production
 /// wires this to `os.Logger` (Apple's unified logging); tests use a
-/// recording mock.
+/// recording mock. `error` exists for unrecoverable failures
+/// (CMIO/AVFoundation hard errors); `warn` for recoverable issues
+/// the engine logged-and-continued through.
 public protocol ApplierLogger {
     func info(_ message: String)
     func warn(_ message: String)
+    func error(_ message: String)
+}
+
+public extension ApplierLogger {
+    /// Default routes `error` to `warn` so existing two-level
+    /// conformers stay source-compatible. Conformers that can
+    /// distinguish severities (the production `ConsoleLogger`)
+    /// implement `error` directly.
+    func error(_ message: String) { warn(message) }
 }
 
 /// Applies a resolved profile: switches default audio in/out and the

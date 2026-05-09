@@ -1,12 +1,6 @@
 import Foundation
 import AVFoundation
 import CoreVideo
-import os.log
-
-private let logger = Logger(
-    subsystem: "com.ericwillis.avpainreliever",
-    category: "CameraCaptureSession"
-)
 
 /// Captures from a webcam and hands each frame to `CMIOSinkWriter`,
 /// which enqueues it on the virtual camera's sink stream. The host
@@ -36,6 +30,7 @@ public final class CameraCaptureSession: NSObject {
         qos: .userInteractive
     )
     private let sink: CMIOSinkWriter
+    private let logger: ApplierLogger
     private var sinkStarted = false
     private var capturedFrameCount: UInt64 = 0
     private var output: AVCaptureVideoDataOutput?
@@ -59,8 +54,13 @@ public final class CameraCaptureSession: NSObject {
     /// would create a self-source feedback loop.
     private let initialSourceName: String?
 
-    public init(sink: CMIOSinkWriter, initialSourceName: String? = nil) {
+    public init(
+        sink: CMIOSinkWriter,
+        logger: ApplierLogger,
+        initialSourceName: String? = nil
+    ) {
         self.sink = sink
+        self.logger = logger
         self.initialSourceName = initialSourceName
         super.init()
         NotificationCenter.default.addObserver(
@@ -79,7 +79,7 @@ public final class CameraCaptureSession: NSObject {
 
     @objc private func handleRuntimeError(_ notification: Notification) {
         let error = notification.userInfo?[AVCaptureSessionErrorKey] as? Error
-        logger.error("AVCaptureSession runtime error: \(error?.localizedDescription ?? "unknown", privacy: .public)")
+        logger.error("AVCaptureSession runtime error: \(error?.localizedDescription ?? "unknown")")
     }
 
     @objc private func handleSessionStarted(_ notification: Notification) {
@@ -107,18 +107,18 @@ public final class CameraCaptureSession: NSObject {
 
     private func bootIfAuthorized() {
         let status = AVCaptureDevice.authorizationStatus(for: .video)
-        logger.info("Camera authorization status: \(status.rawValue, privacy: .public) (0=notDetermined 1=restricted 2=denied 3=authorized)")
+        logger.info("Camera authorization status: \(status.rawValue) (0=notDetermined 1=restricted 2=denied 3=authorized)")
         switch status {
         case .authorized:
             installAndStart()
         case .notDetermined:
             AVCaptureDevice.requestAccess(for: .video) { [weak self] granted in
-                logger.info("Camera access request: granted=\(granted, privacy: .public)")
+                self?.logger.info("Camera access request: granted=\(granted)")
                 self?.captureQueue.async {
                     if granted {
                         self?.installAndStart()
                     } else {
-                        logger.error("Camera access denied; virtual camera will see no frames")
+                        self?.logger.error("Camera access denied; virtual camera will see no frames")
                     }
                 }
             }
@@ -139,7 +139,7 @@ public final class CameraCaptureSession: NSObject {
             logger.error("No video capture devices available")
             return
         }
-        logger.info("Initial capture device: \(device.localizedName, privacy: .public) (\(device.uniqueID, privacy: .public))")
+        logger.info("Initial capture device: \(device.localizedName) (\(device.uniqueID))")
 
         session.beginConfiguration()
         session.sessionPreset = .hd1280x720
@@ -179,10 +179,10 @@ public final class CameraCaptureSession: NSObject {
 
         logger.info("Calling session.startRunning()")
         session.startRunning()
-        logger.info("session.isRunning=\(self.session.isRunning, privacy: .public)")
+        logger.info("session.isRunning=\(self.session.isRunning)")
 
         sinkStarted = sink.start()
-        logger.info("sink.start() returned \(self.sinkStarted, privacy: .public)")
+        logger.info("sink.start() returned \(self.sinkStarted)")
     }
 
     /// Initial source pick. Priority:
@@ -236,7 +236,7 @@ public final class CameraCaptureSession: NSObject {
         do {
             let input = try AVCaptureDeviceInput(device: device)
             guard session.canAddInput(input) else {
-                logger.error("Cannot add input for \(device.localizedName, privacy: .public)")
+                logger.error("Cannot add input for \(device.localizedName)")
                 return false
             }
             session.addInput(input)
@@ -244,7 +244,7 @@ public final class CameraCaptureSession: NSObject {
             currentDeviceUniqueID = device.uniqueID
             return true
         } catch {
-            logger.error("AVCaptureDeviceInput failed for \(device.localizedName, privacy: .public): \(error.localizedDescription, privacy: .public)")
+            logger.error("AVCaptureDeviceInput failed for \(device.localizedName): \(error.localizedDescription)")
             return false
         }
     }
@@ -261,15 +261,15 @@ public final class CameraCaptureSession: NSObject {
 
     private func swapInputLocked(toLocalizedName name: String) {
         guard let device = Self.findDevice(named: name) else {
-            logger.error("switchSource: no camera with localizedName '\(name, privacy: .public)' — skipping")
+            logger.error("switchSource: no camera with localizedName '\(name)' — skipping")
             return
         }
         if device.uniqueID == currentDeviceUniqueID {
-            logger.info("switchSource: already on '\(name, privacy: .public)' — no-op")
+            logger.info("switchSource: already on '\(name)' — no-op")
             return
         }
 
-        logger.info("switchSource: '\(self.currentDeviceUniqueID ?? "<none>", privacy: .public)' → '\(device.uniqueID, privacy: .public)' (\(name, privacy: .public))")
+        logger.info("switchSource: '\(self.currentDeviceUniqueID ?? "<none>")' → '\(device.uniqueID)' (\(name))")
 
         session.beginConfiguration()
         // Stash the previous input so we can put it back if the new
@@ -290,7 +290,7 @@ public final class CameraCaptureSession: NSObject {
                 session.addInput(previousInput)
                 self.currentInput = previousInput
                 self.currentDeviceUniqueID = previousUID
-                logger.warning("switchSource: install failed; restored previous source '\(previousUID ?? "<none>", privacy: .public)'")
+                logger.warn("switchSource: install failed; restored previous source '\(previousUID ?? "<none>")'")
             } else {
                 logger.error("switchSource: install failed and no previous source could be restored — session has no input")
             }
@@ -330,7 +330,7 @@ extension CameraCaptureSession: AVCaptureVideoDataOutputSampleBufferDelegate {
             let w = CVPixelBufferGetWidth(pb)
             let h = CVPixelBufferGetHeight(pb)
             let fourcc = FourCC.pretty(CVPixelBufferGetPixelFormatType(pb))
-            logger.info("First frame from webcam: \(w, privacy: .public)x\(h, privacy: .public) format=\(fourcc, privacy: .public)")
+            logger.info("First frame from webcam: \(w)x\(h) format=\(fourcc)")
         }
 
         // If sink wasn't ready when capture started (extension not
@@ -338,9 +338,9 @@ extension CameraCaptureSession: AVCaptureVideoDataOutputSampleBufferDelegate {
         if !sinkStarted {
             sinkStarted = sink.start()
             if sinkStarted {
-                logger.info("Sink writer connected on retry (after \(self.capturedFrameCount, privacy: .public) frames)")
+                logger.info("Sink writer connected on retry (after \(self.capturedFrameCount) frames)")
             } else if capturedFrameCount % Self.sinkRetryLogStride == 1 {
-                logger.error("Sink writer still not ready after \(self.capturedFrameCount, privacy: .public) frames")
+                logger.error("Sink writer still not ready after \(self.capturedFrameCount) frames")
             }
             if !sinkStarted { return }
         }
