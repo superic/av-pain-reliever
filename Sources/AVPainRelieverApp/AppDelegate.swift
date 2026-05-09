@@ -566,6 +566,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         let pretty = PrettyName.format(profile.name)
         do {
             try ProfileWriter().delete(named: profile.name, in: ProfileBootstrapper.canonicalTOMLURL)
+            settings.forgetProfile(slug: profile.name)
             reloadConfig()
         } catch {
             let failure = NSAlert()

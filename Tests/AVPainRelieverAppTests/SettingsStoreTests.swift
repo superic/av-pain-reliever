@@ -246,6 +246,57 @@ struct SettingsStoreTests {
         #expect(store.uniqueDevicesSeenCount == 2)
     }
 
+    @Test("forgetProfile drops per-slug count and clears last-switch fields if they match")
+    func forgetProfileClearsPerSlugData() {
+        let store = SettingsStore(defaults: makeSuite())
+        store.statsTrackingEnabled = true
+        store.recordSwitch(toSlug: "home-office")
+        store.recordSwitch(toSlug: "home-office")
+        store.recordSwitch(toSlug: "conference-room")
+
+        // Aggregates that should NOT be touched by a per-profile delete.
+        let totalBefore = store.profileSwitchCount
+        let activeDaysBefore = store.activeDaysCount
+        let streakBefore = store.currentStreakDays
+
+        store.forgetProfile(slug: "home-office")
+
+        #expect(store.perProfileCounts["home-office"] == nil)
+        #expect(store.perProfileCounts["conference-room"] == 1)
+        #expect(store.profileSwitchCount == totalBefore)
+        #expect(store.activeDaysCount == activeDaysBefore)
+        #expect(store.currentStreakDays == streakBefore)
+    }
+
+    @Test("forgetProfile clears lastSwitchSlug only when it matches the deleted slug")
+    func forgetProfilePreservesUnrelatedLastSwitch() {
+        let store = SettingsStore(defaults: makeSuite())
+        store.statsTrackingEnabled = true
+        store.recordSwitch(toSlug: "home-office")
+        store.recordSwitch(toSlug: "conference-room")
+        // conference-room was the most recent switch.
+        #expect(store.lastSwitchSlug == "conference-room")
+
+        store.forgetProfile(slug: "home-office")
+        // Unrelated last-switch is untouched.
+        #expect(store.lastSwitchSlug == "conference-room")
+        #expect(store.lastSwitchDate != nil)
+
+        store.forgetProfile(slug: "conference-room")
+        #expect(store.lastSwitchSlug == nil)
+        #expect(store.lastSwitchDate == nil)
+    }
+
+    @Test("forgetProfile is a no-op for an unknown slug")
+    func forgetProfileUnknownSlug() {
+        let store = SettingsStore(defaults: makeSuite())
+        store.statsTrackingEnabled = true
+        store.recordSwitch(toSlug: "home-office")
+        store.forgetProfile(slug: "never-existed")
+        #expect(store.perProfileCounts["home-office"] == 1)
+        #expect(store.lastSwitchSlug == "home-office")
+    }
+
     @Test("resetStats wipes counters; tracking flag is preserved")
     func resetStatsWipes() {
         let defaults = makeSuite()

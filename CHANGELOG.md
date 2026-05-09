@@ -888,6 +888,14 @@ Lessons:
 
 PRs: #68 (`9b8f50f`), #69 (`a2856d3`), #70 (`f7abc81`), #71 (`6d4cba3`), #72 (`4d61c8c`), #73 (`a69b1e0`). All on `main` as of 2026-05-09.
 
+### Stats forget deleted profiles (2026-05-09)
+
+Deleting a profile now also drops its per-slug stats. Before this, the Stats tab kept rendering ghost rows for profiles the user had explicitly removed: orphaned `perProfileCounts` entries, plus a stale "Last switched … to <ghost>" line. Stats are local-only and the slug is the only key, so a deleted-then-recreated profile would just start a new count anyway. There's no honest reconciliation to do, so dropping the entries on delete is the correct shape.
+
+`SettingsStore.forgetProfile(slug:)` removes the slug's count and clears `lastSwitchSlug` / `lastSwitchDate` only when they match (so deleting an unrelated profile doesn't blank out the relative-time line). Aggregate counters (`profileSwitchCount`, streaks, active days, unique devices) are deliberately untouched: they reflect overall app usage, not which profile won each switch.
+
+Wired from `AppDelegate.deleteProfile`, after the on-disk TOML delete succeeds. If the disk delete fails, the stats stay (no orphaning created).
+
 - **When we ship a Phase 1 fix or feature**, ask: does this teach us
   something about the Swift port? If yes, add to "Lessons learned."
 - **When the user gives feedback or hits a bug**, ask: should this be

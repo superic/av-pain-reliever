@@ -340,6 +340,26 @@ final class SettingsStore: ObservableObject {
         }
     }
 
+    /// Drop a profile's per-slug stats when the profile itself is
+    /// deleted. Removes its `perProfileCounts` entry, and clears
+    /// `lastSwitchSlug` / `lastSwitchDate` if the deleted profile was
+    /// the most recent one applied. Without that, the Stats tab would
+    /// keep rendering "Last switched 3h ago to <ghost>".
+    ///
+    /// Aggregate counters (`profileSwitchCount`, streaks, active
+    /// days, unique devices) are intentionally left alone: they
+    /// reflect overall app usage, not which profile happened to win
+    /// each switch.
+    func forgetProfile(slug: String) {
+        if perProfileCounts[slug] != nil {
+            perProfileCounts.removeValue(forKey: slug)
+        }
+        if lastSwitchSlug == slug {
+            lastSwitchSlug = nil
+            lastSwitchDate = nil
+        }
+    }
+
     /// Wipe every stats counter / dictionary / last-switched field.
     /// Does NOT touch `statsTrackingEnabled` — that's a separate
     /// privacy choice. If tracking is currently on, `statsStartDate`
