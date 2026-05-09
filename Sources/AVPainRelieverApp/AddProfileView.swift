@@ -229,7 +229,11 @@ struct AddProfileView: View {
                 viewModel.cancelCollision()
             }
         } message: { collision in
-            Text("There's already a profile called “\(collision.existingPrettyName)”. Did you mean to update it with the devices and audio you've selected, or is this a different location?")
+            if let editingName = collision.editingPrettyName {
+                Text("There's already a profile called “\(collision.existingPrettyName)”. Updating replaces “\(collision.existingPrettyName)” and deletes “\(editingName)” (the one you're editing). Saving as new renames “\(editingName)” to “\(collision.newPrettyName)” instead.")
+            } else {
+                Text("There's already a profile called “\(collision.existingPrettyName)”. Did you mean to update it with the devices and audio you've selected, or is this a different location?")
+            }
         }
     }
 
