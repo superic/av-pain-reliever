@@ -151,8 +151,8 @@ final class SettingsStore: ObservableObject {
     }
 
     /// Count of how many times each profile (by slug) has been
-    /// applied since tracking was enabled. Powers the "most-used
-    /// location" highlight + the per-profile rankings.
+    /// applied since tracking was enabled. Powers the "Switches by
+    /// location" rankings in the Stats tab.
     @Published var perProfileCounts: [String: Int] {
         didSet { defaults.set(perProfileCounts, forKey: Key.perProfileCounts) }
     }

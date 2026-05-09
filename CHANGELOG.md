@@ -898,6 +898,16 @@ Wired from `AppDelegate.deleteProfile`, after the on-disk TOML delete succeeds. 
 
 A second method, `SettingsStore.reconcileProfiles(currentSlugs:)`, runs on every config load (inside `AppDelegate.bootEngine`) and drops per-slug stats whose profile no longer exists. This serves two roles: it self-heals stats orphaned by anything that bypassed the delete-time hook (a hand-edit of `profiles.toml`), and it acts as a one-shot migration for users on a build that predates `forgetProfile`. No-op (no disk write) when nothing is orphaned, so it doesn't churn UserDefaults on every reload. Same scope as `forgetProfile`: per-slug data only, never aggregates.
 
+PR: #75 (`ea69f58`).
+
+### Stats: per-profile rankings as their own Section (2026-05-09)
+
+The Stats tab's per-profile breakdown was visually confusing: the most-used profile rendered as a `LabeledContent("Most-used location", value: "Laptop (36)")` with the profile name on the *right*, while the runner-up rows rendered as `LabeledContent("Home Office", value: "18")` with the profile name on the *left*. Same data, two columns, broken eye-scan. The "Most-used location" row also lived inside the Tracking section, sandwiched between unrelated rows like "Manual overrides" and "Active days" — the section interleaved profile rankings with global counters.
+
+Restructured: dropped the "Most-used location" highlight row entirely, moved every per-profile entry into its own Form `Section` with header `Label("Switches by location", systemImage: "list.number")`, sorted by descending count. The first row IS the most-used by definition — sort order carries the meaning, no separate winner callout needed. Matches Apple's pattern for similar surfaces (Settings → Battery, Settings → General → Storage, iOS Settings → Privacy → Tracking): show a sorted list, trust the user to read the top entry as the leader.
+
+`StatsSettingsTab.topProfile` and `StatsSettingsTab.otherProfiles` collapsed into a single `rankedProfiles` computed prop. Updated the doc comment on `SettingsStore.perProfileCounts` to drop the stale "most-used location highlight" reference.
+
 - **When we ship a Phase 1 fix or feature**, ask: does this teach us
   something about the Swift port? If yes, add to "Lessons learned."
 - **When the user gives feedback or hits a bug**, ask: should this be
