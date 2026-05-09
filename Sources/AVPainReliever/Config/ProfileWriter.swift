@@ -6,6 +6,11 @@ public enum ProfileWriteError: Error, Equatable {
     /// target file. Caller decides whether to ask the user to pick a
     /// new name or replace.
     case duplicateProfile(name: String)
+    /// `delete` or `replace` was called for a section the caller
+    /// expected to be present, but it wasn't found in the file. In
+    /// practice this means a concurrent edit removed the section
+    /// between the caller's collision check and the write.
+    case missingProfile(name: String)
     /// The new profile's `name` isn't a legal TOML bare key
     /// (alphanumerics, hyphen, underscore only). Quoting would work
     /// but we keep names simple so they look clean in the file AND in
@@ -123,10 +128,9 @@ public struct ProfileWriter {
     /// `url`. The section header line through everything before the
     /// next `[...]` section (or end of file) is excised; surrounding
     /// content (other profiles, header banner, comments) is preserved.
-    /// Throws `.duplicateProfile` (re-using the "expected this section
-    /// to be present, it wasn't" code path) when the section is
-    /// missing — the caller has already established it's there, so
-    /// missing means a concurrent edit raced us.
+    /// Throws `.missingProfile` when the section isn't found — the
+    /// caller has already established it's there, so missing means a
+    /// concurrent edit raced us.
     public func delete(named name: String, in url: URL) throws {
         let validatedName = try Self.validateName(name)
         guard FileManager.default.fileExists(atPath: url.path) else {
@@ -141,7 +145,7 @@ public struct ProfileWriter {
             )
         }
         guard let span = Self.sectionRange(named: validatedName, in: existing) else {
-            throw ProfileWriteError.duplicateProfile(name: validatedName)
+            throw ProfileWriteError.missingProfile(name: validatedName)
         }
         var output = existing
         output.replaceSubrange(span, with: "")
@@ -167,8 +171,9 @@ public struct ProfileWriter {
     ///
     /// `profile.name` must equal the existing section's name — the
     /// caller has already established this is the section to replace.
-    /// Throws `.duplicateProfile` if no matching section is found
-    /// (use `append` for the new-profile case).
+    /// Throws `.missingProfile` if no matching section is found —
+    /// in practice this means a concurrent edit raced the caller's
+    /// collision check (use `append` for the genuine new-profile case).
     public func replace(
         profile: Profile,
         deviceNames: [USBDevice: String?] = [:],
@@ -188,11 +193,12 @@ public struct ProfileWriter {
         }
         guard let span = Self.sectionRange(named: validatedName, in: existing) else {
             // Caller invariant: replace assumes the section is there.
-            // Surface this as duplicateProfile-shaped because the
-            // higher-level wizard already routed here based on a
-            // collision check; if the file changed under us, fall
-            // back to caller-handled flow.
-            throw ProfileWriteError.duplicateProfile(name: validatedName)
+            // If the file changed under us between the higher-level
+            // collision check and this write, surface that as
+            // .missingProfile so the wizard's catch site can route
+            // to the "section disappeared, ask the user what to do"
+            // recovery flow.
+            throw ProfileWriteError.missingProfile(name: validatedName)
         }
         let rendered = Self.render(profile: profile, deviceNames: deviceNames)
         var output = existing

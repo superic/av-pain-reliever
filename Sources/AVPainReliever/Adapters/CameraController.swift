@@ -117,7 +117,7 @@ public struct AVFoundationCameraController: CameraController {
     public init() {}
 
     public func setPreferred(named: String) -> CameraApplyResult {
-        let devices = Self.discoverySession().devices
+        let devices = CameraDiscovery.session().devices
         guard let device = devices.first(where: { $0.localizedName == named }) else {
             return .notFound
         }
@@ -126,7 +126,7 @@ public struct AVFoundationCameraController: CameraController {
     }
 
     public func availableCameras() -> [CameraSummary] {
-        Self.discoverySession()
+        CameraDiscovery.session()
             .devices
             .map { CameraSummary(name: $0.localizedName) }
             .sorted { $0.name < $1.name }
@@ -153,26 +153,6 @@ public struct AVFoundationCameraController: CameraController {
         if let system = AVCaptureDevice.systemPreferredCamera {
             return system.localizedName
         }
-        return Self.discoverySession().devices.first?.localizedName
-    }
-
-    private static func discoverySession() -> AVCaptureDevice.DiscoverySession {
-        // Include every camera type that surfaces on macOS 14+:
-        //   - builtInWideAngleCamera: the Mac's own webcam
-        //   - external: USB / Thunderbolt cameras (LG UltraFine,
-        //     capture cards routed as cameras, etc.)
-        //   - continuityCamera: iPhone-as-webcam
-        //   - deskViewCamera: Apple's perspective-corrected
-        //     ultra-wide variant
-        AVCaptureDevice.DiscoverySession(
-            deviceTypes: [
-                .builtInWideAngleCamera,
-                .external,
-                .continuityCamera,
-                .deskViewCamera,
-            ],
-            mediaType: .video,
-            position: .unspecified
-        )
+        return CameraDiscovery.session().devices.first?.localizedName
     }
 }
