@@ -888,6 +888,18 @@ Lessons:
 
 PRs: #68 (`9b8f50f`), #69 (`a2856d3`), #70 (`f7abc81`), #71 (`6d4cba3`), #72 (`4d61c8c`), #73 (`a69b1e0`). All on `main` as of 2026-05-09.
 
+### Stats forget deleted profiles (2026-05-09)
+
+Deleting a profile now also drops its per-slug stats. Before this, the Stats tab kept rendering ghost rows for profiles the user had explicitly removed: orphaned `perProfileCounts` entries, plus a stale "Last switched … to <ghost>" line. Stats are local-only and the slug is the only key, so a deleted-then-recreated profile would just start a new count anyway. There's no honest reconciliation to do, so dropping the entries on delete is the correct shape.
+
+`SettingsStore.forgetProfile(slug:)` removes the slug's count and clears `lastSwitchSlug` / `lastSwitchDate` only when they match (so deleting an unrelated profile doesn't blank out the relative-time line). Aggregate counters (`profileSwitchCount`, streaks, active days, unique devices) are deliberately untouched: they reflect overall app usage, not which profile won each switch.
+
+Wired from `AppDelegate.deleteProfile`, after the on-disk TOML delete succeeds. If the disk delete fails, the stats stay (no orphaning created).
+
+A second method, `SettingsStore.reconcileProfiles(currentSlugs:)`, runs on every config load (inside `AppDelegate.bootEngine`) and drops per-slug stats whose profile no longer exists. This serves two roles: it self-heals stats orphaned by anything that bypassed the delete-time hook (a hand-edit of `profiles.toml`), and it acts as a one-shot migration for users on a build that predates `forgetProfile`. No-op (no disk write) when nothing is orphaned, so it doesn't churn UserDefaults on every reload. Same scope as `forgetProfile`: per-slug data only, never aggregates.
+
+PR: #75 (`ea69f58`).
+
 ### Stats: per-profile rankings as their own Section (2026-05-09)
 
 The Stats tab's per-profile breakdown was visually confusing: the most-used profile rendered as a `LabeledContent("Most-used location", value: "Laptop (36)")` with the profile name on the *right*, while the runner-up rows rendered as `LabeledContent("Home Office", value: "18")` with the profile name on the *left*. Same data, two columns, broken eye-scan. The "Most-used location" row also lived inside the Tracking section, sandwiched between unrelated rows like "Manual overrides" and "Active days" — the section interleaved profile rankings with global counters.

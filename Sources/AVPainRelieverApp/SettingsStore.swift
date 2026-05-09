@@ -340,6 +340,45 @@ final class SettingsStore: ObservableObject {
         }
     }
 
+    /// Drop a profile's per-slug stats when the profile itself is
+    /// deleted. Removes its `perProfileCounts` entry, and clears
+    /// `lastSwitchSlug` / `lastSwitchDate` if the deleted profile was
+    /// the most recent one applied. Without that, the Stats tab would
+    /// keep rendering "Last switched 3h ago to <ghost>".
+    ///
+    /// Aggregate counters (`profileSwitchCount`, streaks, active
+    /// days, unique devices) are intentionally left alone: they
+    /// reflect overall app usage, not which profile happened to win
+    /// each switch.
+    func forgetProfile(slug: String) {
+        if perProfileCounts[slug] != nil {
+            perProfileCounts.removeValue(forKey: slug)
+        }
+        if lastSwitchSlug == slug {
+            lastSwitchSlug = nil
+            lastSwitchDate = nil
+        }
+    }
+
+    /// Drop per-slug stats whose profile no longer exists. Called on
+    /// every config load so any stats orphaned by an out-of-band path
+    /// (a hand-edit of profiles.toml, a migration from a build before
+    /// `forgetProfile` existed) self-heal on next launch. Same shape
+    /// as `forgetProfile`: only per-slug data, never aggregates.
+    /// No-op (no disk write) when nothing is orphaned.
+    func reconcileProfiles(currentSlugs: Set<String>) {
+        let staleKeys = perProfileCounts.keys.filter { !currentSlugs.contains($0) }
+        if !staleKeys.isEmpty {
+            var trimmed = perProfileCounts
+            for key in staleKeys { trimmed.removeValue(forKey: key) }
+            perProfileCounts = trimmed
+        }
+        if let last = lastSwitchSlug, !currentSlugs.contains(last) {
+            lastSwitchSlug = nil
+            lastSwitchDate = nil
+        }
+    }
+
     /// Wipe every stats counter / dictionary / last-switched field.
     /// Does NOT touch `statsTrackingEnabled` — that's a separate
     /// privacy choice. If tracking is currently on, `statsStartDate`
