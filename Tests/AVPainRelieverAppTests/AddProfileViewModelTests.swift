@@ -37,7 +37,7 @@ struct AddProfileViewModelTests {
             cameraController: camera,
             configURL: url,
             editing: editing,
-            onSaved: {}
+            onSaved: { _ in }
         )
 
         #expect(vm.name == "Home Office")
@@ -65,7 +65,7 @@ struct AddProfileViewModelTests {
             cameraController: FakeCamera(cameras: []),
             configURL: URL(fileURLWithPath: "/tmp/x.toml"),
             editing: editing,
-            onSaved: {}
+            onSaved: { _ in }
         )
         #expect(vm.icon == "music.mic")
     }
@@ -84,7 +84,7 @@ struct AddProfileViewModelTests {
             audioController: FakeAudio(devices: []),
             cameraController: FakeCamera(cameras: []),
             configURL: URL(fileURLWithPath: "/tmp/x.toml"),
-            onSaved: {}
+            onSaved: { _ in }
         )
         #expect(vm.name == "Home Office")
     }
@@ -103,7 +103,7 @@ struct AddProfileViewModelTests {
             audioController: FakeAudio(devices: []),
             cameraController: FakeCamera(cameras: []),
             configURL: URL(fileURLWithPath: "/tmp/x.toml"),
-            onSaved: {}
+            onSaved: { _ in }
         )
         #expect(vm.name == "")
     }
@@ -137,7 +137,7 @@ struct AddProfileViewModelTests {
             cameraController: camera,
             configURL: url,
             editing: editing,
-            onSaved: { saved = true }
+            onSaved: { _ in saved = true }
         )
         // User changes the input and hits save — the in-place replace
         // path should run.
@@ -182,7 +182,7 @@ struct AddProfileViewModelTests {
             cameraController: FakeCamera(cameras: ["FaceTime HD"]),
             configURL: URL(fileURLWithPath: "/tmp/x.toml"),
             editing: editing,
-            onSaved: {}
+            onSaved: { _ in }
         )
 
         // Both saved devices appear in the form even though neither is
@@ -237,7 +237,7 @@ struct AddProfileViewModelTests {
             cameraController: FakeCamera(cameras: []),
             configURL: url,
             editing: editing,
-            onSaved: {}
+            onSaved: { _ in }
         )
         // User edits something trivial (audio input) and saves.
         vm.audioInput = "Yeti Stereo Microphone"
@@ -284,7 +284,7 @@ struct AddProfileViewModelTests {
             cameraController: FakeCamera(cameras: []),
             configURL: url,
             editing: editing,
-            onSaved: {}
+            onSaved: { _ in }
         )
         // User unticks the monitor while undocked. The save should
         // drop it from the fingerprint just like unticking an
@@ -319,7 +319,7 @@ struct AddProfileViewModelTests {
             cameraController: FakeCamera(cameras: []),
             configURL: url,
             editing: editing,
-            onSaved: {}
+            onSaved: { _ in }
         )
         vm.name = "Home Studio"
         vm.save()
@@ -375,7 +375,7 @@ struct AddProfileViewModelTests {
             cameraController: FakeCamera(cameras: []),
             configURL: URL(fileURLWithPath: "/tmp/tier.toml"),
             editing: nil,
-            onSaved: {}
+            onSaved: { _ in }
         )
         let displayNames = vm.attachedDevices.map(\.displayName)
         #expect(displayNames == [
@@ -413,7 +413,7 @@ struct AddProfileViewModelTests {
             configURL: URL(fileURLWithPath: "/tmp/coll.toml"),
             editing: nil,
             existingProfileSlugs: ["home-office"],
-            onSaved: {}
+            onSaved: { _ in }
         )
         #expect(vm.name == "")
         #expect(vm.nameWasAutoSuggested == false)
@@ -434,7 +434,7 @@ struct AddProfileViewModelTests {
             cameraController: FakeCamera(cameras: []),
             configURL: URL(fileURLWithPath: "/tmp/sug.toml"),
             editing: nil,
-            onSaved: {}
+            onSaved: { _ in }
         )
         // CalDigit triggers the "home-office" suggestion in
         // ProfileIcon.suggestedName.
@@ -457,7 +457,7 @@ struct AddProfileViewModelTests {
             cameraController: FakeCamera(cameras: []),
             configURL: URL(fileURLWithPath: "/tmp/edit.toml"),
             editing: nil,
-            onSaved: {}
+            onSaved: { _ in }
         )
         #expect(vm.nameWasAutoSuggested == true)
         vm.name = "Custom Name"
@@ -483,7 +483,7 @@ struct AddProfileViewModelTests {
             cameraController: FakeCamera(cameras: []),
             configURL: url,
             editing: nil,
-            onSaved: {}
+            onSaved: { _ in }
         )
         // With one auto-ticked Important device, willMatchAnywhere
         // is false.
@@ -522,7 +522,7 @@ struct AddProfileViewModelTests {
             cameraController: FakeCamera(cameras: []),
             configURL: URL(fileURLWithPath: "/tmp/auto.toml"),
             editing: nil,
-            onSaved: {}
+            onSaved: { _ in }
         )
         // Only the Important device is auto-ticked. The portable
         // and neutral devices appear in the list (visible to the
@@ -551,7 +551,7 @@ struct AddProfileViewModelTests {
             cameraController: FakeCamera(cameras: []),
             configURL: URL(fileURLWithPath: "/tmp/empty.toml"),
             editing: nil,
-            onSaved: {}
+            onSaved: { _ in }
         )
         // No Important hardware → nothing auto-ticks → the
         // wizard's "Fallback profile" hint kicks in via
@@ -575,7 +575,7 @@ struct AddProfileViewModelTests {
             cameraController: camera,
             configURL: URL(fileURLWithPath: "/tmp/x.toml"),
             virtualCameraEnabled: true,
-            onSaved: {}
+            onSaved: { _ in }
         )
         let names = vm.cameras.map(\.name)
         // The virtual camera is an *output*; the per-profile picker
@@ -599,10 +599,209 @@ struct AddProfileViewModelTests {
             configURL: URL(fileURLWithPath: "/tmp/x.toml"),
             editing: editing,
             virtualCameraEnabled: true,
-            onSaved: {}
+            onSaved: { _ in }
         )
         // Legacy profile shouldn't pre-fill a now-hidden value.
         #expect(vm.camera == nil)
+    }
+
+    @Test("collision Save-as-new asks the host to force-apply the new slug")
+    func saveAsNewSignalsForceApply() throws {
+        // Regression for the alphabetical-tiebreak bug: when the
+        // wizard's collision path saves a sibling that shares its
+        // fingerprint with the existing profile, ProfileResolver
+        // would pick the older sibling on reload. The view model
+        // signals the host (via onSaved's forceApplySlug parameter)
+        // to explicitly apply the just-saved profile, bypassing the
+        // resolver's tiebreak.
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("vm-saveasnew-\(UUID()).toml")
+        defer { try? FileManager.default.removeItem(at: url) }
+        try """
+        [profiles.home-office]
+        audioInput  = "Existing Mic"
+        audioOutput = "Existing Out"
+        """.write(to: url, atomically: true, encoding: .utf8)
+
+        var receivedForceApplySlug: String? = nil
+        var sawNonForceApplyCallback = false
+        let vm = AddProfileViewModel(
+            watcher: FakeWatcher(),
+            audioController: FakeAudio(devices: ["New Mic"]),
+            cameraController: FakeCamera(cameras: []),
+            configURL: url,
+            existingProfileSlugs: ["home-office"],
+            onSaved: { forceApplySlug in
+                if let slug = forceApplySlug {
+                    receivedForceApplySlug = slug
+                } else {
+                    sawNonForceApplyCallback = true
+                }
+            }
+        )
+        // User types the colliding name and hits Save → wizard
+        // surfaces the collision dialog instead of writing.
+        vm.name = "home-office"
+        vm.audioInput = "New Mic"
+        vm.save()
+        #expect(vm.pendingCollision != nil)
+
+        // User picks "Save as new" → wizard writes under the
+        // suffixed slug AND signals force-apply on that slug.
+        vm.confirmSaveAsNew()
+
+        #expect(vm.didSave == true)
+        #expect(vm.lastError == nil)
+        #expect(receivedForceApplySlug != nil)
+        #expect(sawNonForceApplyCallback == false)
+
+        // The saved profile lands under the auto-suggested
+        // suffixed slug (whatever ProfileWriter picked); the
+        // forceApplySlug must match what landed on disk.
+        let loaded = try ConfigLoader().loadProfiles(from: url)
+        let savedNames = loaded.map(\.name).sorted()
+        #expect(savedNames.contains("home-office"))
+        #expect(savedNames.count == 2)
+        let newSlug = savedNames.first { $0 != "home-office" }
+        #expect(newSlug != nil)
+        #expect(receivedForceApplySlug == newSlug)
+    }
+
+    @Test("no-collision new-profile save asks the host to force-apply the new slug")
+    func newProfileSaveSignalsForceApply() throws {
+        // Regression for the same alphabetical-tiebreak class as the
+        // collision Save-as-new bug, but on the no-collision append
+        // path: when the user adds multiple profiles in a row, each
+        // fingerprinting the same dock devices, the second-and-later
+        // profiles share specificity with the first and lose the
+        // alphabetical tiebreak. The view model now passes the new
+        // slug to onSaved so the host can force-apply it.
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("vm-newprofile-\(UUID()).toml")
+        defer { try? FileManager.default.removeItem(at: url) }
+        try """
+        [profiles.alpha-dock]
+        audioInput = "Yeti"
+        """.write(to: url, atomically: true, encoding: .utf8)
+
+        var receivedForceApplySlug: String? = nil
+        let vm = AddProfileViewModel(
+            watcher: FakeWatcher(),
+            audioController: FakeAudio(devices: ["Yeti"]),
+            cameraController: FakeCamera(cameras: []),
+            configURL: url,
+            existingProfileSlugs: ["alpha-dock"],
+            onSaved: { forceApplySlug in
+                receivedForceApplySlug = forceApplySlug
+            }
+        )
+        vm.name = "Beta Dock"
+        vm.audioInput = "Yeti"
+        vm.save()
+
+        #expect(vm.didSave == true)
+        #expect(vm.lastError == nil)
+        #expect(receivedForceApplySlug == "beta-dock")
+    }
+
+    @Test("edit-rename + collision Save-as-new still force-applies the new slug")
+    func editRenameSaveAsNewStillForceApplies() throws {
+        // Regression for a bug found while testing this branch:
+        // when the user is editing profile A and renames it to B
+        // (collision), then picks "Save as B-2", the wizard must
+        // still pin them to B-2. The earlier scoping that gated
+        // force-apply on `editingSlug == nil` was wrong for the
+        // collision-dialog buttons — clicking a button there is an
+        // explicit "land me on this" signal regardless of whether
+        // the user got to the dialog from create-new or edit-rename.
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("vm-editrename-saveasnew-\(UUID()).toml")
+        defer { try? FileManager.default.removeItem(at: url) }
+        try """
+        [profiles.eric]
+        audioInput = "Eric Mic"
+
+        [profiles.studio]
+        audioInput = "Studio Mic"
+        """.write(to: url, atomically: true, encoding: .utf8)
+
+        let editing = Profile(
+            name: "studio",
+            fingerprint: [],
+            audioInput: "Studio Mic"
+        )
+        var receivedForceApplySlug: String? = nil
+        let vm = AddProfileViewModel(
+            watcher: FakeWatcher(),
+            audioController: FakeAudio(devices: ["Studio Mic"]),
+            cameraController: FakeCamera(cameras: []),
+            configURL: url,
+            editing: editing,
+            existingProfileSlugs: ["eric", "studio"],
+            onSaved: { forceApplySlug in
+                receivedForceApplySlug = forceApplySlug
+            }
+        )
+        vm.name = "eric"
+        vm.save()
+        #expect(vm.pendingCollision != nil)
+
+        vm.confirmSaveAsNew()
+
+        #expect(vm.didSave == true)
+        #expect(vm.lastError == nil)
+        // Force-apply must fire regardless of editing context — the
+        // user explicitly picked "Save as new" in the dialog.
+        #expect(receivedForceApplySlug != nil)
+        let loaded = try ConfigLoader().loadProfiles(from: url)
+        let savedNames = Set(loaded.map(\.name))
+        // `studio` is gone (renamed), `eric` is unchanged, the
+        // suffixed sibling exists with studio's edits.
+        #expect(savedNames.contains("eric"))
+        #expect(!savedNames.contains("studio"))
+        let newSlug = savedNames.first { $0 != "eric" }
+        #expect(receivedForceApplySlug == newSlug)
+    }
+
+    @Test("collision Update-existing asks the host to force-apply the existing slug")
+    func confirmReplaceSignalsForceApply() throws {
+        // Mirror of saveAsNewSignalsForceApply for the other collision
+        // path: when the user picks "Update existing", the merged
+        // profile's settings change but the resolver might still
+        // alphabetical-tiebreak away from it (or, more commonly in
+        // edit-rename, the previously-active editing profile is now
+        // gone and a different sibling could win the resolver). The
+        // view model passes the existing slug so the host can pin it.
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("vm-replace-\(UUID()).toml")
+        defer { try? FileManager.default.removeItem(at: url) }
+        try """
+        [profiles.home-office]
+        audioInput  = "Existing Mic"
+        audioOutput = "Existing Out"
+        """.write(to: url, atomically: true, encoding: .utf8)
+
+        var receivedForceApplySlug: String? = nil
+        let vm = AddProfileViewModel(
+            watcher: FakeWatcher(),
+            audioController: FakeAudio(devices: ["New Mic"]),
+            cameraController: FakeCamera(cameras: []),
+            configURL: url,
+            existingProfileSlugs: ["home-office"],
+            onSaved: { forceApplySlug in
+                receivedForceApplySlug = forceApplySlug
+            }
+        )
+        vm.name = "home-office"
+        vm.audioInput = "New Mic"
+        vm.save()
+        #expect(vm.pendingCollision != nil)
+
+        vm.confirmReplace()
+
+        #expect(vm.didSave == true)
+        #expect(vm.lastError == nil)
+        #expect(receivedForceApplySlug == "home-office")
     }
 
     @Test("currentPreferredName fallback skips the virtual camera")
@@ -620,7 +819,7 @@ struct AddProfileViewModelTests {
             cameraController: camera,
             configURL: URL(fileURLWithPath: "/tmp/x.toml"),
             virtualCameraEnabled: true,
-            onSaved: {}
+            onSaved: { _ in }
         )
         // Pre-fill should land on nil (the picker's "Don't change"
         // entry) rather than auto-selecting a value the user can't

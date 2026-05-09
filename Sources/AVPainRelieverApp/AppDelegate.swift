@@ -28,7 +28,7 @@ struct AddProfileDependencies {
     /// virtual camera is hidden from the list) and the helper text
     /// that explains the per-profile camera setting under each mode.
     let virtualCameraEnabled: Bool
-    let onSaved: () -> Void
+    let onSaved: (_ forceApplySlug: String?) -> Void
 }
 
 final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
@@ -178,6 +178,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
     /// new unconfigured place after configuring one re-arms the
     /// notification.
     private var notifiedUnknownLocation = false
+
+    /// Slug we're about to force-apply via `engine.applyManually`.
+    /// Set right before `reloadConfig()` on the wizard's collision
+    /// "Save as new" path; cleared once `handleProfileApplied` sees
+    /// the matching name. While set, `handleProfileApplied` swallows
+    /// firings that don't match — that suppresses the spurious
+    /// resolver-pick toast/counter when the colliding sibling wins
+    /// the alphabetical tiebreak. The user perceives one switch
+    /// (resolver pick suppressed → force-apply fires through) instead
+    /// of two.
+    private var pendingForceApplyName: String?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Hide the Dock icon programmatically. The eventual signed
@@ -339,6 +350,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
     }
 
     private func handleProfileApplied(_ profile: Profile) {
+        // If a `Save as new` is in flight, `reloadConfig()` will fire
+        // this once with the resolver's pick (which loses to the
+        // colliding sibling on alphabetical tiebreak). Swallow that
+        // fire entirely so the user only sees the force-applied
+        // profile land — one toast, one switch counter increment,
+        // one menu-bar title update.
+        if let pending = pendingForceApplyName {
+            if profile.name != pending { return }
+            pendingForceApplyName = nil
+        }
         let pretty = PrettyName.format(profile.name)
         currentProfileTitle = pretty
         activeProfileSlug = profile.name
@@ -476,12 +497,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
             editing: editing,
             existingProfileSlugs: existing,
             virtualCameraEnabled: virtualCameraActivator.state == .on,
-            onSaved: { [weak self] in
+            onSaved: { [weak self] forceApplySlug in
                 // Saving any profile is taken as the user being
                 // committed — no need to keep showing the welcome
                 // window if it was queued.
-                self?.dismissWelcome()
-                self?.reloadConfig()
+                guard let self else { return }
+                self.dismissWelcome()
+
+                // For the wizard's collision "Save as new" path,
+                // the new profile shares its fingerprint with the
+                // colliding sibling, so `ProfileResolver`'s
+                // alphabetical tiebreak would pick the older sibling
+                // and the user-visible audio/camera state wouldn't
+                // change. Set the suppression flag, reload (which
+                // fires the resolver's wrong pick — swallowed), then
+                // explicitly apply the new profile.
+                if let slug = forceApplySlug {
+                    self.pendingForceApplyName = slug
+                    self.reloadConfig()
+                    if let profile = self.availableProfiles.first(where: { $0.name == slug }) {
+                        self.engine?.applyManually(profile)
+                    } else {
+                        // Lookup failed (config race / disk error).
+                        // Clear the gate so future evaluations aren't
+                        // dropped.
+                        self.pendingForceApplyName = nil
+                    }
+                } else {
+                    self.reloadConfig()
+                }
             }
         )
     }
