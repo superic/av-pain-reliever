@@ -704,6 +704,65 @@ struct AddProfileViewModelTests {
         #expect(receivedForceApplySlug == "beta-dock")
     }
 
+    @Test("edit-rename + collision Save-as-new still force-applies the new slug")
+    func editRenameSaveAsNewStillForceApplies() throws {
+        // Regression for a bug found while testing this branch:
+        // when the user is editing profile A and renames it to B
+        // (collision), then picks "Save as B-2", the wizard must
+        // still pin them to B-2. The earlier scoping that gated
+        // force-apply on `editingSlug == nil` was wrong for the
+        // collision-dialog buttons — clicking a button there is an
+        // explicit "land me on this" signal regardless of whether
+        // the user got to the dialog from create-new or edit-rename.
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("vm-editrename-saveasnew-\(UUID()).toml")
+        defer { try? FileManager.default.removeItem(at: url) }
+        try """
+        [profiles.eric]
+        audioInput = "Eric Mic"
+
+        [profiles.studio]
+        audioInput = "Studio Mic"
+        """.write(to: url, atomically: true, encoding: .utf8)
+
+        let editing = Profile(
+            name: "studio",
+            fingerprint: [],
+            audioInput: "Studio Mic"
+        )
+        var receivedForceApplySlug: String? = nil
+        let vm = AddProfileViewModel(
+            watcher: FakeWatcher(),
+            audioController: FakeAudio(devices: ["Studio Mic"]),
+            cameraController: FakeCamera(cameras: []),
+            configURL: url,
+            editing: editing,
+            existingProfileSlugs: ["eric", "studio"],
+            onSaved: { forceApplySlug in
+                receivedForceApplySlug = forceApplySlug
+            }
+        )
+        vm.name = "eric"
+        vm.save()
+        #expect(vm.pendingCollision != nil)
+
+        vm.confirmSaveAsNew()
+
+        #expect(vm.didSave == true)
+        #expect(vm.lastError == nil)
+        // Force-apply must fire regardless of editing context — the
+        // user explicitly picked "Save as new" in the dialog.
+        #expect(receivedForceApplySlug != nil)
+        let loaded = try ConfigLoader().loadProfiles(from: url)
+        let savedNames = Set(loaded.map(\.name))
+        // `studio` is gone (renamed), `eric` is unchanged, the
+        // suffixed sibling exists with studio's edits.
+        #expect(savedNames.contains("eric"))
+        #expect(!savedNames.contains("studio"))
+        let newSlug = savedNames.first { $0 != "eric" }
+        #expect(receivedForceApplySlug == newSlug)
+    }
+
     @Test("collision Update-existing asks the host to force-apply the existing slug")
     func confirmReplaceSignalsForceApply() throws {
         // Mirror of saveAsNewSignalsForceApply for the other collision

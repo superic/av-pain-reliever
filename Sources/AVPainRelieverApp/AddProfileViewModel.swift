@@ -452,27 +452,26 @@ final class AddProfileViewModel: ObservableObject {
 
     /// User picked "Update existing" in the collision dialog — replace
     /// the prior profile's section with our current selections. Force-
-    /// applies only when this came from new-profile creation (no
-    /// editing context). In edit-rename-collision the user might not
-    /// have been on the edited profile, so force-applying could yank
-    /// them onto the merge target unexpectedly; let the resolver run.
+    /// applies unconditionally: clicking a button in the collision
+    /// dialog is an explicit user choice about which profile to land
+    /// on (the alternative was Cancel). Without force-apply, the
+    /// resolver might tiebreak away from the merged target — or, in
+    /// edit-rename collisions, pick a wholly unrelated profile because
+    /// the editing slug just got deleted.
     func confirmReplace() {
         guard let collision = pendingCollision else { return }
         pendingCollision = nil
-        performSave(slug: collision.existingSlug, mode: .replace, forceApply: editingSlug == nil)
+        performSave(slug: collision.existingSlug, mode: .replace, forceApply: true)
     }
 
     /// User picked "Save as new" in the collision dialog — append
-    /// under the auto-suggested suffixed slug. Force-applies only
-    /// when this came from new-profile creation (no editing context).
-    /// In edit-rename-collision Save-as-new the user might not have
-    /// been on the edited profile, so force-applying the suffixed
-    /// sibling could yank them onto it unexpectedly; let the resolver
-    /// run instead.
+    /// under the auto-suggested suffixed slug. Force-applies for the
+    /// same reason as `confirmReplace`: the dialog button is the
+    /// user's explicit "land me on this" signal.
     func confirmSaveAsNew() {
         guard let collision = pendingCollision else { return }
         pendingCollision = nil
-        performSave(slug: collision.newSlug, mode: .append, forceApply: editingSlug == nil)
+        performSave(slug: collision.newSlug, mode: .append, forceApply: true)
     }
 
     /// User picked "Cancel" — drop the collision state and let them
