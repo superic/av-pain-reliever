@@ -79,7 +79,8 @@ public final class CMIOSinkWriter {
 
     /// Discovers the device, opens its sink stream, primes the
     /// buffer queue, and starts streaming. Returns true on success.
-    /// All failures log via os.log; caller decides whether to retry.
+    /// All failures log via the injected `ApplierLogger`; caller
+    /// decides whether to retry.
     func start() -> Bool {
         guard let device = findDevice(matchingUID: deviceUID) else {
             logger.error("CMIO device with UID \(self.deviceUID) not found")
