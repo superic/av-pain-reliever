@@ -167,12 +167,7 @@ private struct CameraSettingsTab: View {
                 .font(.callout)
             Spacer()
             if activator.isEnvOverride {
-                Text("Debug override")
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
-                    .background(Theme.Color.warn, in: Capsule())
+                StatusPill(text: "Debug override", tint: Theme.Color.warn)
             }
         }
         .padding(.vertical, 2)
@@ -315,27 +310,6 @@ private struct GeneralSettingsTab: View {
             }
         }
         .groupedFormChrome()
-    }
-}
-
-/// Small helper to render the version string consistently across
-/// About, Settings, and any future window that needs it. Falls back
-/// to "Dev build" when the binary isn't bundled (the SPM build
-/// path).
-///
-/// Format: matches Apple's standard About-panel phrasing
-/// ("Version X.Y.Z"). Drops the app name (the title above the
-/// version line already shows it) and drops the parenthesized
-/// build number (we set CFBundleVersion == CFBundleShortVersionString,
-/// so showing both was redundant).
-enum VersionInfo {
-    static var short: String {
-        let info = Bundle.main.infoDictionary
-        let shortVersion = info?["CFBundleShortVersionString"] as? String
-        switch shortVersion {
-        case let v?: return "Version \(v)"
-        default:     return "Dev build"
-        }
     }
 }
 
@@ -483,12 +457,7 @@ private struct ProfileRow: View {
                     Text(PrettyName.format(profile.name))
                         .font(.body.weight(.medium))
                     if isActive {
-                        Text("Active")
-                            .font(.caption2.weight(.semibold))
-                            .foregroundStyle(.white)
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 2)
-                            .background(Theme.Color.success, in: Capsule())
+                        StatusPill(text: "Active", tint: Theme.Color.success)
                     }
                 }
                 // Vertical device list — each device on its own row

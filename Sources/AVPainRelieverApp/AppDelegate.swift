@@ -36,14 +36,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
     /// product name until the engine performs its first evaluation.
     @Published var currentProfileTitle: String = "AV Pain Reliever"
 
-    /// Camera the active profile asks the system to prefer, or nil
-    /// if the profile doesn't manage cameras. Surfaced in the menu
-    /// for at-a-glance "what camera should I be on" info — useful
-    /// because Zoom/Slack/Teams don't follow the system preference,
-    /// so the user sometimes has to manually pick the same name in
-    /// those apps.
-    @Published var currentCameraDisplay: String? = nil
-
     /// Slug of the most-recently-applied profile. Used by the menu's
     /// "Switch to" submenu to put a checkmark next to the active
     /// entry. Differs from `currentProfileTitle` (pretty-cased,
@@ -349,7 +341,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
     private func handleProfileApplied(_ profile: Profile) {
         let pretty = PrettyName.format(profile.name)
         currentProfileTitle = pretty
-        currentCameraDisplay = profile.camera
         activeProfileSlug = profile.name
 
         // Toast only on actual changes (different profile name from

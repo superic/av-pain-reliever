@@ -73,8 +73,11 @@ final class SettingsStore: ObservableObject {
         didSet { defaults.set(menuBarIconSymbol, forKey: Key.menuBarIconSymbol) }
     }
 
-    /// Lifetime count of profile applications. Drives the easter-egg
-    /// stats line. Bumped from `AppDelegate.handleProfileApplied`.
+    /// Lifetime count of profile applications. Surfaced as the
+    /// "Auto-switches" row in the Stats settings tab. Bumped from
+    /// `AppDelegate.handleProfileApplied` on every change-of-profile
+    /// (the initial evaluation on launch is intentionally not counted;
+    /// see `lastNotifiedName` gating there).
     @Published var profileSwitchCount: Int {
         didSet { defaults.set(profileSwitchCount, forKey: Key.profileSwitchCount) }
     }
