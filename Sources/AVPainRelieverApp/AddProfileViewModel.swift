@@ -20,6 +20,15 @@ struct PendingCollision: Identifiable, Equatable {
     var newPrettyName: String { PrettyName.format(newSlug) }
     /// Slug of the existing profile we'd replace.
     let existingSlug: String
+    /// Pretty-cased name of the profile the user is editing, when
+    /// they got here by renaming an existing profile into a colliding
+    /// slug. Nil when the wizard is creating a new profile and the
+    /// typed name happened to collide. Drives the alert body so the
+    /// edit-rename case can spell out that the profile being edited
+    /// will also be deleted (both the "Update existing" and "Save as
+    /// new" paths drop the original section, see `performSave`'s
+    /// `editingSlug != slug` cleanup).
+    let editingPrettyName: String?
 }
 
 /// Owns the editable state of the Add-Profile form and runs the save
@@ -431,10 +440,16 @@ final class AddProfileViewModel: ObservableObject {
         if writer.profileExists(named: slug, in: configURL) {
             // Don't write yet — surface the collision dialog and let
             // the user pick (update existing / save as new / cancel).
+            // editingSlug is non-nil here only when the user is
+            // editing an existing profile and renamed it into a
+            // colliding slug — `save()`'s in-place fast-path above
+            // already returned for the `slug == editingSlug` case,
+            // so reaching this branch means we're truly renaming.
             pendingCollision = PendingCollision(
                 existingPrettyName: PrettyName.format(slug),
                 newSlug: writer.nextAvailableName(base: slug, in: configURL),
-                existingSlug: slug
+                existingSlug: slug,
+                editingPrettyName: editingSlug.map(PrettyName.format)
             )
             return
         }

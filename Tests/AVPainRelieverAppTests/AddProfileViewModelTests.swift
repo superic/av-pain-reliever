@@ -804,6 +804,74 @@ struct AddProfileViewModelTests {
         #expect(receivedForceApplySlug == "home-office")
     }
 
+    @Test("collision from new-profile creation has nil editingPrettyName")
+    func collisionFromNewProfileLeavesEditingNil() throws {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("vm-collision-new-\(UUID()).toml")
+        defer { try? FileManager.default.removeItem(at: url) }
+        try """
+        [profiles.home-office]
+        audioInput = "Existing Mic"
+        """.write(to: url, atomically: true, encoding: .utf8)
+
+        let vm = AddProfileViewModel(
+            watcher: FakeWatcher(),
+            audioController: FakeAudio(devices: []),
+            cameraController: FakeCamera(cameras: []),
+            configURL: url,
+            existingProfileSlugs: ["home-office"],
+            onSaved: { _ in }
+        )
+        vm.name = "home-office"
+        vm.save()
+        // Wizard surfaces the collision; editingPrettyName stays nil
+        // because no profile is being edited. The alert body uses
+        // this to pick the "is this a different location?" wording.
+        #expect(vm.pendingCollision != nil)
+        #expect(vm.pendingCollision?.editingPrettyName == nil)
+    }
+
+    @Test("collision from edit-rename carries the editing profile's pretty name")
+    func collisionFromEditRenameCarriesEditingName() throws {
+        // Regression for the misleading-collision-dialog case: when
+        // the user edits "Studio" and renames it into the existing
+        // "Home Office" slug, the alert body needs to spell out that
+        // BOTH paths through the dialog will delete "Studio". The
+        // edit-rename signal is the editingPrettyName field — when
+        // non-nil, AddProfileView renders the deletion-aware copy.
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("vm-collision-edit-\(UUID()).toml")
+        defer { try? FileManager.default.removeItem(at: url) }
+        try """
+        [profiles.home-office]
+        audioInput = "Existing Mic"
+
+        [profiles.studio]
+        audioInput = "Studio Mic"
+        """.write(to: url, atomically: true, encoding: .utf8)
+
+        let editing = Profile(
+            name: "studio",
+            fingerprint: [],
+            audioInput: "Studio Mic"
+        )
+        let vm = AddProfileViewModel(
+            watcher: FakeWatcher(),
+            audioController: FakeAudio(devices: ["Studio Mic"]),
+            cameraController: FakeCamera(cameras: []),
+            configURL: url,
+            editing: editing,
+            existingProfileSlugs: ["home-office", "studio"],
+            onSaved: { _ in }
+        )
+        vm.name = "home-office"
+        vm.save()
+
+        #expect(vm.pendingCollision != nil)
+        #expect(vm.pendingCollision?.existingPrettyName == "Home Office")
+        #expect(vm.pendingCollision?.editingPrettyName == "Studio")
+    }
+
     @Test("currentPreferredName fallback skips the virtual camera")
     func preFillSkipsVirtualCamera() {
         // Mirrors a real machine where userPreferredCamera was set
