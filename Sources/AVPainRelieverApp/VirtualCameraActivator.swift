@@ -217,7 +217,12 @@ final class VirtualCameraActivator: NSObject, ObservableObject,
         logger.info("Relaunching host: \(bundleURL.path, privacy: .public)")
         let task = Process()
         task.executableURL = URL(fileURLWithPath: "/usr/bin/open")
-        task.arguments = [bundleURL.path]
+        // -n forces a brand-new instance. Without it, Launch Services
+        // races our pending `terminate` and sometimes resolves the
+        // bundle to the still-alive PID, activating the about-to-die
+        // process instead of launching a fresh one. Net effect: the
+        // app quits and nothing comes back up.
+        task.arguments = ["-n", bundleURL.path]
         do {
             try task.run()
         } catch {
