@@ -14,15 +14,16 @@ public protocol Notifier {
     /// attached to the notification. Backends that can't surface a
     /// thumbnail simply post the title + body unchanged.
     ///
-    /// `actionTitle` becomes the button label; `onAction` fires when
-    /// the user clicks the button (NOT when they click the body).
-    /// Both are best-effort: backends that can't render an action
-    /// button drop it and `onAction` never fires.
+    /// `onAction` fires when the user clicks the inline button (NOT
+    /// when they click the body). Best-effort: backends that can't
+    /// render an action button drop the handler and it never fires.
+    /// The button label is owned by the backend (the UN backend
+    /// registers a single category up front so all action toasts
+    /// share the same label) — callers don't pass it per-call.
     func notify(
         title: String,
         body: String?,
         iconSymbol: String?,
-        actionTitle: String?,
         onAction: (() -> Void)?
     )
 }
@@ -32,12 +33,12 @@ extension Notifier {
     /// to the full method so backends only have to implement one
     /// signature.
     public func notify(title: String, body: String?) {
-        notify(title: title, body: body, iconSymbol: nil, actionTitle: nil, onAction: nil)
+        notify(title: title, body: body, iconSymbol: nil, onAction: nil)
     }
 
     /// Convenience for a notification with just an icon thumbnail.
     public func notify(title: String, body: String?, iconSymbol: String?) {
-        notify(title: title, body: body, iconSymbol: iconSymbol, actionTitle: nil, onAction: nil)
+        notify(title: title, body: body, iconSymbol: iconSymbol, onAction: nil)
     }
 }
 
@@ -79,13 +80,13 @@ public final class UserNotificationsNotifier: NSObject, Notifier, UNUserNotifica
             // settings UI is the place to fix this.
         }
         // Register one category with one action. Per Apple's API,
-        // categories must be set up-front; you can't attach
-        // arbitrary buttons per-notification. The actionTitle the
-        // caller passes is rendered via the per-notification
-        // `actions[].title` only when we use the
-        // `customDismissAction`-less form, so we keep a fixed action
-        // for now. If we add more action types, register more
-        // categories here.
+        // categories must be set up-front; you can't attach arbitrary
+        // buttons per-notification. So the action button label is
+        // fixed at the category level instead of taken per-call from
+        // the protocol — see the `notify(...)` signature, which
+        // intentionally drops the `actionTitle` parameter for that
+        // reason. If we ever need a second action type, register
+        // another category here and gate on it inside `notify`.
         let openAction = UNNotificationAction(
             identifier: Self.actionID,
             title: "Open Wizard",
@@ -104,7 +105,6 @@ public final class UserNotificationsNotifier: NSObject, Notifier, UNUserNotifica
         title: String,
         body: String?,
         iconSymbol: String?,
-        actionTitle: String?,
         onAction: (() -> Void)?
     ) {
         let content = UNMutableNotificationContent()
@@ -112,10 +112,10 @@ public final class UserNotificationsNotifier: NSObject, Notifier, UNUserNotifica
         if let body { content.body = body }
         content.sound = .default
 
-        // Attach an action when the caller provided one. The button
-        // label rendered to the user is the registered category's
-        // action title ("Open Wizard"); `actionTitle` is currently
-        // accepted for API symmetry but ignored at the UN layer.
+        // Attach the action category when the caller provided a
+        // handler. The button label is the category's pre-registered
+        // "Open Wizard" — UN doesn't take per-notification button
+        // labels, so the protocol surface drops the param entirely.
         if onAction != nil {
             content.categoryIdentifier = Self.actionCategoryID
         }
@@ -279,16 +279,15 @@ public struct AppleScriptNotifier: Notifier {
         title: String,
         body: String?,
         iconSymbol: String?,
-        actionTitle: String?,
         onAction: (() -> Void)?
     ) {
         // osascript notifications can't render an action button or a
-        // custom thumbnail — ignore `iconSymbol`, `actionTitle`, and
-        // `onAction` and post a plain toast. Dev users see the
-        // message; the equivalent action is also reachable from the
-        // menu's "Set Up This Location…" button when in
-        // unknown-location state.
-        _ = (iconSymbol, actionTitle, onAction)
+        // custom thumbnail — ignore `iconSymbol` and `onAction` and
+        // post a plain toast. Dev users see the message; the
+        // equivalent action is also reachable from the menu's
+        // "Set Up This Location…" button when in unknown-location
+        // state.
+        _ = (iconSymbol, onAction)
         notifyPlain(title: title, body: body)
     }
 
