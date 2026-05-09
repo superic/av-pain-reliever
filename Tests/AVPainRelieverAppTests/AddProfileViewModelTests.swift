@@ -641,9 +641,8 @@ private final class FakeWatcher: USBWatcher, @unchecked Sendable {
     func stop() {}
 }
 
-private struct FakeAudio: AudioController {
+private struct FakeAudio: AudioInventory {
     let devices: [String]
-    func setDefault(named: String, role: AudioDeviceRole) -> AudioApplyResult { .ok }
     func availableDevices() -> [AudioDeviceSummary] {
         devices.map { AudioDeviceSummary(name: $0, supportsInput: true, supportsOutput: true) }
     }
@@ -652,7 +651,7 @@ private struct FakeAudio: AudioController {
     }
 }
 
-private struct FakeCamera: CameraController {
+private struct FakeCamera: CameraInventory {
     let cameras: [String]
     let currentPreferred: String?
 
@@ -661,7 +660,6 @@ private struct FakeCamera: CameraController {
         self.currentPreferred = currentPreferred
     }
 
-    func setPreferred(named: String) -> CameraApplyResult { .ok }
     func availableCameras() -> [CameraSummary] { cameras.map { CameraSummary(name: $0) } }
     func currentPreferredName() -> String? { currentPreferred }
 }

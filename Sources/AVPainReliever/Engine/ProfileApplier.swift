@@ -29,15 +29,15 @@ public extension ApplierLogger {
 /// debouncing USB bursts (`Debouncer`), and choosing a fallback when
 /// no profile matches. The applier just executes the side effects.
 public final class ProfileApplier {
-    private let audio: AudioController
-    private let camera: CameraController?
+    private let audio: AudioApplier
+    private let camera: CameraApplier?
     private let virtualCameraSource: VirtualCameraSourceController?
     private let logger: ApplierLogger
     private var lastAppliedName: String?
 
     public init(
-        audio: AudioController,
-        camera: CameraController? = nil,
+        audio: AudioApplier,
+        camera: CameraApplier? = nil,
         virtualCameraSource: VirtualCameraSourceController? = nil,
         logger: ApplierLogger
     ) {

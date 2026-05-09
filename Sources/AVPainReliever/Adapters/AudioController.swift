@@ -71,15 +71,20 @@ public struct AudioDefaults: Sendable {
     }
 }
 
-/// Abstraction over system audio defaults so `ProfileApplier` can be
-/// unit-tested without CoreAudio. Production uses `CoreAudioController`;
-/// tests use a recording mock.
-public protocol AudioController {
+/// Engine-side write seam — sets the system's default input/output
+/// device by name. `ProfileApplier` consumes this; tests inject a
+/// recording mock with no inventory ceremony.
+public protocol AudioApplier {
     /// Look up an audio device by name + role and set it as the system
     /// default for that role. See `AudioApplyResult` for the four
     /// possible outcomes.
     func setDefault(named: String, role: AudioDeviceRole) -> AudioApplyResult
+}
 
+/// Wizard-side read seam — enumerates available audio devices and
+/// queries current defaults. `AddProfileViewModel` consumes this;
+/// tests inject a fake that returns canned snapshots.
+public protocol AudioInventory {
     /// Snapshot of available audio devices, deduplicated by name with
     /// merged input/output capabilities. Used by the wizard UI to
     /// populate audio pickers.
@@ -90,6 +95,12 @@ public protocol AudioController {
     /// scope (rare on macOS but defensible).
     func currentDefaults() -> AudioDefaults
 }
+
+/// Composition of the two seams above. Production
+/// `CoreAudioController` conforms to this; callers that legitimately
+/// need both apply + inventory (e.g., `AppDelegate`'s dependency
+/// bundle) can ask for the umbrella.
+public protocol AudioController: AudioApplier, AudioInventory {}
 
 /// Production `AudioController` backed by raw CoreAudio. Lifted from
 /// `prototypes/audio-defaults.swift` once that prototype proved the

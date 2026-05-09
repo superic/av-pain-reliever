@@ -43,12 +43,20 @@ public struct CameraSummary: Hashable, Sendable, Identifiable {
 ///   selects "AV Pain Reliever" once in each app's picker, and the
 ///   active profile drives which real camera the virtual camera
 ///   streams from.
-public protocol CameraController {
+/// Engine-side write seam — sets the system's `userPreferredCamera`
+/// by name. `ProfileApplier` consumes this; tests inject a recording
+/// mock with no inventory ceremony.
+public protocol CameraApplier {
     /// Set the system's `userPreferredCamera` to the camera with the
     /// given `localizedName`. Returns `.notFound` if no such camera
     /// is currently visible.
     func setPreferred(named: String) -> CameraApplyResult
+}
 
+/// Wizard-side read seam — enumerates available cameras and queries
+/// the current preferred name. `AddProfileViewModel` consumes this;
+/// tests inject a fake that returns canned snapshots.
+public protocol CameraInventory {
     /// Snapshot of available cameras, sorted by name. Used by the
     /// wizard UI to populate the camera picker.
     func availableCameras() -> [CameraSummary]
@@ -57,6 +65,12 @@ public protocol CameraController {
     /// `userPreferredCamera`, or nil if none is set / matches.
     func currentPreferredName() -> String?
 }
+
+/// Composition of the two seams above. Production
+/// `AVFoundationCameraController` conforms to this; callers that
+/// legitimately need both apply + inventory (e.g., `AppDelegate`'s
+/// dependency bundle) can ask for the umbrella.
+public protocol CameraController: CameraApplier, CameraInventory {}
 
 /// Drives the source camera that AV Pain Reliever's own virtual
 /// camera streams from. Conceptually parallel to `CameraController`
