@@ -109,9 +109,15 @@ public protocol VirtualCameraSourceController {
     /// camera's source to match.
     ///
     /// Returns nil when the controller is in any non-live state
-    /// (off, activating, requires-relaunch) — `ProfileApplier`
+    /// (off, activating, requires-relaunch); `ProfileApplier`
     /// then sets the system preference to the profile's literal
     /// camera as it did pre-virtual-camera.
+    ///
+    /// This is host-routing policy expressed at an engine seam.
+    /// Carrying it here (rather than asking the host to rewrite
+    /// each profile's `camera` field before handing it to the
+    /// engine) keeps `apply()` synchronous and the engine free of
+    /// reverse-direction host queries.
     var preferredCameraOverride: String? { get }
 }
 

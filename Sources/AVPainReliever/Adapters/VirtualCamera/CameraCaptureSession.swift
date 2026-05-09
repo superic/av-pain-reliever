@@ -151,12 +151,13 @@ public final class CameraCaptureSession: NSObject {
 
         let output = AVCaptureVideoDataOutput()
         // Deliver the device's NATIVE pixel format and dimensions.
-        // M2 forced 1280×720 BGRA via `videoSettings`, which works
-        // for the FaceTime HD camera but silently produces zero
-        // frames on USB capture cards (HDMI to U3 capture
-        // 0x1e4e/0x701f is the user's known case — it advertises
-        // BGRA in `availableVideoPixelFormatTypes` but the actual
-        // delivery path drops every frame). Letting the device
+        // An earlier iteration forced 1280×720 BGRA via
+        // `videoSettings`, which works for the FaceTime HD camera
+        // but silently produces zero frames on USB capture cards
+        // (HDMI to U3 capture 0x1e4e/0x701f is the user's known
+        // case: it advertises BGRA in
+        // `availableVideoPixelFormatTypes` but the actual delivery
+        // path drops every frame). Letting the device
         // pick its own format makes the AVCaptureSession work for
         // every camera; `CMIOSinkWriter` then converts to
         // 1280×720 BGRA via `VTPixelTransferSession` before
