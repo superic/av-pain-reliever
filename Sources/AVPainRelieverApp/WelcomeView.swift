@@ -61,13 +61,15 @@ struct WelcomeView: View {
     /// first name when available so first launch reads as a hello to
     /// the human at the keyboard, not the product. `NSFullUserName()`
     /// is set by macOS at account creation and almost always non-empty,
-    /// but the fallback covers headless / unusual setups.
-    private static var greetingTitle: String {
+    /// but the fallback covers headless / unusual setups. `static let`
+    /// caches the result for the process lifetime; the username doesn't
+    /// change at runtime.
+    private static let greetingTitle: String = {
         let full = NSFullUserName().trimmingCharacters(in: .whitespacesAndNewlines)
         let firstName = full.split(whereSeparator: { $0.isWhitespace }).first.map(String.init) ?? ""
         if firstName.isEmpty {
             return "Welcome to \(Theme.Copy.appName)"
         }
         return "Welcome, \(firstName)."
-    }
+    }()
 }

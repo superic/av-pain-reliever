@@ -216,7 +216,7 @@ struct AddProfileView: View {
         }
         .alert(
             "Profile already exists",
-            isPresented: collisionPresented,
+            isPresented: .isPresent($viewModel.pendingCollision),
             presenting: viewModel.pendingCollision
         ) { collision in
             Button("Update “\(collision.existingPrettyName)”") {
@@ -231,18 +231,6 @@ struct AddProfileView: View {
         } message: { collision in
             Text("There's already a profile called “\(collision.existingPrettyName)”. Did you mean to update it with the devices and audio you've selected, or is this a different location?")
         }
-    }
-
-    /// Glue between SwiftUI's `isPresented` Binding API and our
-    /// `Identifiable?` collision state — bound to true whenever a
-    /// pending collision exists; setting it false clears the state.
-    private var collisionPresented: Binding<Bool> {
-        Binding(
-            get: { viewModel.pendingCollision != nil },
-            set: { presented in
-                if !presented { viewModel.cancelCollision() }
-            }
-        )
     }
 
     // MARK: - Subviews
