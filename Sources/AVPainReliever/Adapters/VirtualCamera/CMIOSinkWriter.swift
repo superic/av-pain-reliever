@@ -36,7 +36,7 @@ public final class CMIOSinkWriter {
     /// wrapping. The pool recycles a small handful of buffers, so
     /// in steady state the cache hits 90%+ even with this strict
     /// keying.
-    private var lastFormatBufferPtr: UnsafeRawPointer?
+    private var lastFormatBufferID: ObjectIdentifier?
     private var lastFormatDescription: CMFormatDescription?
 
     /// Convert + scale arbitrary input pixel buffers (any format,
@@ -52,10 +52,17 @@ public final class CMIOSinkWriter {
     /// a couple of buffers in flight.
     private var bufferPool: CVPixelBufferPool?
 
-    /// Logged once per (format, dimensions) pair the host
-    /// delivers, so a profile change shows up in the log without
-    /// flooding with one line per frame.
-    private var lastLoggedInputSignature: (OSType, Int, Int) = (0, 0, 0)
+    /// Format + dimensions of the most recently logged host frame,
+    /// or nil before the first frame. Used to log once per
+    /// (format, dimensions) pair the host delivers, so a profile
+    /// change shows up in the log without flooding with one line
+    /// per frame.
+    private struct InputSignature: Equatable {
+        let format: OSType
+        let width: Int
+        let height: Int
+    }
+    private var lastLoggedInputSignature: InputSignature?
 
     /// Output target. The extension's source stream advertises
     /// 1280×720 BGRA; matching here avoids a format mismatch on
@@ -123,9 +130,9 @@ public final class CMIOSinkWriter {
         queue = nil
         transferSession = nil
         bufferPool = nil
-        lastFormatBufferPtr = nil
+        lastFormatBufferID = nil
         lastFormatDescription = nil
-        lastLoggedInputSignature = (0, 0, 0)
+        lastLoggedInputSignature = nil
     }
 
     private var enqueueCount: UInt64 = 0
@@ -306,9 +313,9 @@ public final class CMIOSinkWriter {
     private func ensureOutputFormatDescription(for pixelBuffer: CVPixelBuffer)
         -> CMFormatDescription?
     {
-        let ptr = Unmanaged.passUnretained(pixelBuffer).toOpaque()
+        let id = ObjectIdentifier(pixelBuffer)
         if let cached = lastFormatDescription,
-           lastFormatBufferPtr == UnsafeRawPointer(ptr)
+           lastFormatBufferID == id
         {
             return cached
         }
@@ -322,7 +329,7 @@ public final class CMIOSinkWriter {
             logger.error("CMVideoFormatDescriptionCreateForImageBuffer failed: \(status)")
             return nil
         }
-        lastFormatBufferPtr = UnsafeRawPointer(ptr)
+        lastFormatBufferID = id
         lastFormatDescription = fmt
         return fmt
     }
@@ -427,19 +434,19 @@ public final class CMIOSinkWriter {
     }
 
     private func logIncomingFormatIfChanged(pixelBuffer: CVPixelBuffer) {
-        let signature = (
-            CVPixelBufferGetPixelFormatType(pixelBuffer),
-            CVPixelBufferGetWidth(pixelBuffer),
-            CVPixelBufferGetHeight(pixelBuffer)
+        let signature = InputSignature(
+            format: CVPixelBufferGetPixelFormatType(pixelBuffer),
+            width: CVPixelBufferGetWidth(pixelBuffer),
+            height: CVPixelBufferGetHeight(pixelBuffer)
         )
         if signature == lastLoggedInputSignature { return }
         lastLoggedInputSignature = signature
-        let fourcc = FourCC.pretty(signature.0)
-        let needsConversion = signature.0 != Self.outputFormat
-            || signature.1 != Self.outputWidth
-            || signature.2 != Self.outputHeight
+        let fourcc = FourCC.pretty(signature.format)
+        let needsConversion = signature.format != Self.outputFormat
+            || signature.width != Self.outputWidth
+            || signature.height != Self.outputHeight
         logger.info(
-            "Host frame format: \(fourcc) \(signature.1)x\(signature.2) — \(needsConversion ? "convert+scale" : "passthrough")"
+            "Host frame format: \(fourcc) \(signature.width)x\(signature.height) — \(needsConversion ? "convert+scale" : "passthrough")"
         )
     }
 

@@ -318,6 +318,6 @@ public final class IOKitUSBWatcher: USBWatcher {
         ) else {
             return nil
         }
-        return (raw.takeRetainedValue() as? NSNumber)?.intValue
+        return raw.takeRetainedValue() as? Int
     }
 }
