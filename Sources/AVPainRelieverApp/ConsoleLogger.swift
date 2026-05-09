@@ -6,29 +6,46 @@ import AVPainReliever
 /// logging system. Visible in Console.app and via:
 ///
 /// ```sh
-/// log stream --predicate 'subsystem == "com.ericwillis.avpainreliever"'
+/// log stream --predicate 'subsystem CONTAINS "ericwillis.avpainreliever"' --info --style compact
 /// ```
+///
+/// Each instance carries its own `os.Logger` category so different
+/// engine adapters log under filterable categories ("engine",
+/// "CMIOSinkWriter", "CameraCaptureSession", etc.). The category
+/// also gets prefixed onto the stderr mirror so `swift run` output
+/// stays readable when multiple subsystems log concurrently.
 struct ConsoleLogger: ApplierLogger {
-    private static let logger = Logger(
-        subsystem: "com.ericwillis.avpainreliever",
-        category: "engine"
-    )
+    private let logger: Logger
+    private let category: String
+
+    init(category: String = "engine") {
+        self.logger = Logger(
+            subsystem: "com.ericwillis.avpainreliever",
+            category: category
+        )
+        self.category = category
+    }
 
     func info(_ message: String) {
-        Self.logger.info("\(message, privacy: .public)")
-        Self.writeStderr("[info] \(message)")
+        logger.info("\(message, privacy: .public)")
+        writeStderr("[\(category)] [info] \(message)")
     }
 
     func warn(_ message: String) {
-        Self.logger.warning("\(message, privacy: .public)")
-        Self.writeStderr("[warn] \(message)")
+        logger.warning("\(message, privacy: .public)")
+        writeStderr("[\(category)] [warn] \(message)")
+    }
+
+    func error(_ message: String) {
+        logger.error("\(message, privacy: .public)")
+        writeStderr("[\(category)] [error] \(message)")
     }
 
     /// Mirror to stderr so `swift run` shows engine activity directly
     /// in the terminal. Especially useful for unbundled SPM builds,
     /// where `os.Logger` capture under the explicit subsystem isn't
     /// always reliable.
-    private static func writeStderr(_ message: String) {
+    private func writeStderr(_ message: String) {
         FileHandle.standardError.write(Data("\(message)\n".utf8))
     }
 }

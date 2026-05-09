@@ -3,12 +3,6 @@ import CoreMediaIO
 import CoreMedia
 import CoreVideo
 import VideoToolbox
-import os.log
-
-private let logger = Logger(
-    subsystem: "com.ericwillis.avpainreliever",
-    category: "CMIOSinkWriter"
-)
 
 /// Opens the AV Pain Reliever virtual camera as a CMIO consumer
 /// and writes frames into its sink stream's `CMSimpleQueue`. The
@@ -26,6 +20,7 @@ private let logger = Logger(
 /// (referenced for architecture, not code).
 public final class CMIOSinkWriter {
     private let deviceUID: String
+    private let logger: ApplierLogger
     private var deviceID: CMIODeviceID = 0
     private var streamID: CMIOStreamID = 0
     private var queue: CMSimpleQueue?
@@ -77,8 +72,9 @@ public final class CMIOSinkWriter {
     private static let enqueueHeartbeatStride: UInt64 = 60
     private static let enqueueRejectStride: UInt64 = 30
 
-    public init(deviceUID: String) {
+    public init(deviceUID: String, logger: ApplierLogger) {
         self.deviceUID = deviceUID
+        self.logger = logger
     }
 
     /// Discovers the device, opens its sink stream, primes the
@@ -90,14 +86,14 @@ public final class CMIOSinkWriter {
             return false
         }
         deviceID = device
-        logger.info("Found device id=\(device, privacy: .public)")
+        logger.info("Found device id=\(device)")
 
         guard let sink = findSinkStream(deviceID: device) else {
             logger.error("sink stream not found on device")
             return false
         }
         streamID = sink
-        logger.info("Picked sink stream id=\(sink, privacy: .public)")
+        logger.info("Picked sink stream id=\(sink)")
 
         var unmanaged: Unmanaged<CMSimpleQueue>?
         let copyStatus = CMIOStreamCopyBufferQueue(sink, { _, _, _ in }, nil, &unmanaged)
@@ -199,7 +195,7 @@ public final class CMIOSinkWriter {
         enqueueCount += 1
         if enqueueCount == 1 || enqueueCount % Self.enqueueHeartbeatStride == 0 {
             logger.info(
-                "Enqueued frame #\(self.enqueueCount, privacy: .public) (rejects=\(self.enqueueRejectCount, privacy: .public))"
+                "Enqueued frame #\(self.enqueueCount) (rejects=\(self.enqueueRejectCount))"
             )
         }
     }
@@ -281,7 +277,7 @@ public final class CMIOSinkWriter {
             ) == noErr
         else { return nil }
 
-        logger.info("Device exposes \(count, privacy: .public) stream(s): \(streams.map(String.init).joined(separator: ", "), privacy: .public)")
+        logger.info("Device exposes \(count) stream(s): \(streams.map(String.init).joined(separator: ", "))")
 
         // Don't trust ordering — query each stream's direction
         // property and return the first sink. CMIO assigns IDs in
@@ -289,7 +285,7 @@ public final class CMIOSinkWriter {
         // CameraExtensionDeviceSource.init added them.
         for stream in streams {
             if let direction = streamDirection(streamID: stream) {
-                logger.info("Stream \(stream, privacy: .public) direction=\(direction, privacy: .public)")
+                logger.info("Stream \(stream) direction=\(direction)")
                 // direction 0 = output (host → device, i.e. sink)
                 // direction 1 = input  (device → host, i.e. source)
                 if direction == 0 {
@@ -359,7 +355,7 @@ public final class CMIOSinkWriter {
         )
         guard createStatus == kCVReturnSuccess, let destination else {
             logger.error(
-                "CVPixelBufferPoolCreatePixelBuffer failed: \(createStatus, privacy: .public)"
+                "CVPixelBufferPoolCreatePixelBuffer failed: \(createStatus)"
             )
             return nil
         }
@@ -371,7 +367,7 @@ public final class CMIOSinkWriter {
         )
         guard xferStatus == noErr else {
             logger.error(
-                "VTPixelTransferSessionTransferImage failed: \(xferStatus, privacy: .public)"
+                "VTPixelTransferSessionTransferImage failed: \(xferStatus)"
             )
             return nil
         }
@@ -386,7 +382,7 @@ public final class CMIOSinkWriter {
             pixelTransferSessionOut: &session
         )
         guard status == noErr, let session else {
-            logger.error("VTPixelTransferSessionCreate failed: \(status, privacy: .public)")
+            logger.error("VTPixelTransferSessionCreate failed: \(status)")
             return nil
         }
         // High-quality scaling — hardware path on Apple Silicon,
@@ -422,7 +418,7 @@ public final class CMIOSinkWriter {
             &pool
         )
         guard status == kCVReturnSuccess, let pool else {
-            logger.error("CVPixelBufferPoolCreate failed: \(status, privacy: .public)")
+            logger.error("CVPixelBufferPoolCreate failed: \(status)")
             return nil
         }
         bufferPool = pool
@@ -442,7 +438,7 @@ public final class CMIOSinkWriter {
             || signature.1 != Self.outputWidth
             || signature.2 != Self.outputHeight
         logger.info(
-            "Host frame format: \(fourcc, privacy: .public) \(signature.1, privacy: .public)x\(signature.2, privacy: .public) — \(needsConversion ? "convert+scale" : "passthrough", privacy: .public)"
+            "Host frame format: \(fourcc) \(signature.1)x\(signature.2) — \(needsConversion ? "convert+scale" : "passthrough")"
         )
     }
 
