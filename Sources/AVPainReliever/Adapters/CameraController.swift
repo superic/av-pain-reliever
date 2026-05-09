@@ -25,25 +25,7 @@ public struct CameraSummary: Hashable, Sendable, Identifiable {
     public var id: String { name }
 }
 
-/// Abstraction over `AVCaptureDevice.userPreferredCamera` (macOS 14+
-/// system-wide preferred camera). Production uses
-/// `AVFoundationCameraController`; tests use a recording mock.
-///
-/// Scope and design notes:
-///
-/// - `userPreferredCamera` is the macOS-14+ system API for
-///   "preferred default camera." AVFoundation-modern apps (FaceTime,
-///   browser `getUserMedia`, native AVCapture clients) pick it up
-///   automatically.
-/// - Apps with their own camera-selection UI (Zoom, Slack, Teams)
-///   maintain their OWN selection independently. The engine
-///   intentionally does NOT try to drive those — no plist hacks, no
-///   UI scripting. For those, the V2 native virtual camera
-///   (`VirtualCameraSourceController` below) is the bridge: the user
-///   selects "AV Pain Reliever" once in each app's picker, and the
-///   active profile drives which real camera the virtual camera
-///   streams from.
-/// Engine-side write seam — sets the system's `userPreferredCamera`
+/// Engine-side write seam: sets the system's `userPreferredCamera`
 /// by name. `ProfileApplier` consumes this; tests inject a recording
 /// mock with no inventory ceremony.
 public protocol CameraApplier {
@@ -53,7 +35,7 @@ public protocol CameraApplier {
     func setPreferred(named: String) -> CameraApplyResult
 }
 
-/// Wizard-side read seam — enumerates available cameras and queries
+/// Wizard-side read seam: enumerates available cameras and queries
 /// the current preferred name. `AddProfileViewModel` consumes this;
 /// tests inject a fake that returns canned snapshots.
 public protocol CameraInventory {
@@ -66,10 +48,27 @@ public protocol CameraInventory {
     func currentPreferredName() -> String?
 }
 
-/// Composition of the two seams above. Production
-/// `AVFoundationCameraController` conforms to this; callers that
-/// legitimately need both apply + inventory (e.g., `AppDelegate`'s
-/// dependency bundle) can ask for the umbrella.
+/// Abstraction over `AVCaptureDevice.userPreferredCamera` (macOS 14+
+/// system-wide preferred camera). Composition of the apply + inventory
+/// seams above. Production uses `AVFoundationCameraController`;
+/// callers that legitimately need both (e.g., `AppDelegate`'s
+/// dependency bundle) ask for the umbrella, and tests use a recording
+/// mock per side.
+///
+/// Scope and design notes:
+///
+/// - `userPreferredCamera` is the macOS-14+ system API for
+///   "preferred default camera." AVFoundation-modern apps (FaceTime,
+///   browser `getUserMedia`, native AVCapture clients) pick it up
+///   automatically.
+/// - Apps with their own camera-selection UI (Zoom, Slack, Teams)
+///   maintain their OWN selection independently. The engine
+///   intentionally does NOT try to drive those: no plist hacks, no
+///   UI scripting. For those, the V2 native virtual camera
+///   (`VirtualCameraSourceController` below) is the bridge. The user
+///   selects "AV Pain Reliever" once in each app's picker, and the
+///   active profile drives which real camera the virtual camera
+///   streams from.
 public protocol CameraController: CameraApplier, CameraInventory {}
 
 /// Drives the source camera that AV Pain Reliever's own virtual
@@ -123,10 +122,9 @@ public extension VirtualCameraSourceController {
     var preferredCameraOverride: String? { nil }
 }
 
-/// Production `CameraController` backed by AVFoundation. Stateless —
-/// every call constructs a fresh `DiscoverySession`. Sessions are
-/// cheap (microseconds) and we want fresh results when the user
-/// docks a Continuity Camera mid-wizard.
+/// Production `CameraController` backed by AVFoundation. Stateless;
+/// every call goes through `CameraDiscovery.session()` for a fresh
+/// device list (see `CameraDiscovery` for why fresh per call).
 public struct AVFoundationCameraController: CameraController {
     public init() {}
 

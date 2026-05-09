@@ -99,7 +99,7 @@ public struct ProfileWriter {
         profile: Profile,
         deviceNames: [USBDevice: String?] = [:]
     ) throws -> String {
-        _ = try Self.validateName(profile.name)
+        try Self.validateName(profile.name)
         return Self.render(profile: profile, deviceNames: deviceNames)
     }
 
@@ -224,7 +224,11 @@ public struct ProfileWriter {
 
     /// TOML bare keys allow `[A-Za-z0-9_-]+`. Profile names also need
     /// to be valid for menu-bar display + the engine's
-    /// pretty-casing logic, so we apply the same restriction.
+    /// pretty-casing logic, so we apply the same restriction. Returns
+    /// the validated name unchanged on success; `@discardableResult`
+    /// because the throw is the load-bearing effect and not every
+    /// caller needs to capture the return.
+    @discardableResult
     static func validateName(_ name: String) throws -> String {
         guard !name.isEmpty else { throw ProfileWriteError.invalidName(name) }
         let allowed = CharacterSet(charactersIn:
