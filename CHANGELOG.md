@@ -888,6 +888,14 @@ Lessons:
 
 PRs: #68 (`9b8f50f`), #69 (`a2856d3`), #70 (`f7abc81`), #71 (`6d4cba3`), #72 (`4d61c8c`), #73 (`a69b1e0`). All on `main` as of 2026-05-09.
 
+### Stats: per-profile rankings as their own Section (2026-05-09)
+
+The Stats tab's per-profile breakdown was visually confusing: the most-used profile rendered as a `LabeledContent("Most-used location", value: "Laptop (36)")` with the profile name on the *right*, while the runner-up rows rendered as `LabeledContent("Home Office", value: "18")` with the profile name on the *left*. Same data, two columns, broken eye-scan. The "Most-used location" row also lived inside the Tracking section, sandwiched between unrelated rows like "Manual overrides" and "Active days" — the section interleaved profile rankings with global counters.
+
+Restructured: dropped the "Most-used location" highlight row entirely, moved every per-profile entry into its own Form `Section` with header `Label("Switches by location", systemImage: "list.number")`, sorted by descending count. The first row IS the most-used by definition — sort order carries the meaning, no separate winner callout needed. Matches Apple's pattern for similar surfaces (Settings → Battery, Settings → General → Storage, iOS Settings → Privacy → Tracking): show a sorted list, trust the user to read the top entry as the leader.
+
+`StatsSettingsTab.topProfile` and `StatsSettingsTab.otherProfiles` collapsed into a single `rankedProfiles` computed prop. Updated the doc comment on `SettingsStore.perProfileCounts` to drop the stale "most-used location highlight" reference.
+
 - **When we ship a Phase 1 fix or feature**, ask: does this teach us
   something about the Swift port? If yes, add to "Lessons learned."
 - **When the user gives feedback or hits a bug**, ask: should this be

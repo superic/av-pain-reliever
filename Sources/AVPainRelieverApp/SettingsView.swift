@@ -564,6 +564,16 @@ private struct StatsSettingsTab: View {
                 Label("Tracking", systemImage: "switch.2")
             }
 
+            if settings.statsTrackingEnabled, !rankedProfiles.isEmpty {
+                Section {
+                    ForEach(rankedProfiles, id: \.0) { slug, count in
+                        LabeledContent(PrettyName.format(slug), value: "\(count)")
+                    }
+                } header: {
+                    Label("Switches by location", systemImage: "list.number")
+                }
+            }
+
             if settings.hasRecordedStats {
                 Section {
                     Button(role: .destructive) {
@@ -623,12 +633,6 @@ private struct StatsSettingsTab: View {
         if let lastLine = lastSwitchedString {
             LabeledContent("Last switched", value: lastLine)
         }
-        if let (topSlug, topCount) = topProfile {
-            LabeledContent("Most-used location", value: "\(PrettyName.format(topSlug)) (\(topCount))")
-            ForEach(otherProfiles, id: \.0) { slug, count in
-                LabeledContent(PrettyName.format(slug), value: "\(count)")
-            }
-        }
         LabeledContent("Manual overrides", value: "\(settings.manualOverrideCount)")
         LabeledContent("Current streak", value: streakString(settings.currentStreakDays))
         LabeledContent("Longest streak", value: streakString(settings.longestStreakDays))
@@ -662,21 +666,12 @@ private struct StatsSettingsTab: View {
         return "\(relative) → \(PrettyName.format(slug))"
     }
 
-    /// Highest entry in `perProfileCounts`; nil when the dictionary
-    /// is empty.
-    private var topProfile: (String, Int)? {
-        settings.perProfileCounts.max { $0.value < $1.value }
-            .map { ($0.key, $0.value) }
-    }
-
-    /// All entries except the top one, sorted by descending count.
-    /// The top one is rendered as the "Most-used location" highlight
-    /// just above; this list adds the rankings without duplicating
-    /// the leader.
-    private var otherProfiles: [(String, Int)] {
-        guard let top = topProfile else { return [] }
-        return settings.perProfileCounts
-            .filter { $0.key != top.0 }
+    /// Every profile that has at least one recorded switch, sorted by
+    /// descending count. Powers the "Switches by location" section.
+    /// The first entry is implicitly the most-used: sort order carries
+    /// the meaning, no separate highlight row needed.
+    private var rankedProfiles: [(String, Int)] {
+        settings.perProfileCounts
             .sorted { $0.value > $1.value }
             .map { ($0.key, $0.value) }
     }
