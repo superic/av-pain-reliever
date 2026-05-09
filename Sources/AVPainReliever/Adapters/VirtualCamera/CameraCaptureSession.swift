@@ -54,6 +54,13 @@ public final class CameraCaptureSession: NSObject {
     /// would create a self-source feedback loop.
     private let initialSourceName: String?
 
+    /// Tokens returned by `NotificationCenter.addObserver(forName:…)`.
+    /// Released in `deinit` so the runtime stops calling the closures
+    /// after the capture session is gone. The selector-based form
+    /// auto-zeroed, but the closure-token form requires explicit
+    /// teardown.
+    private var observers: [NSObjectProtocol] = []
+
     public init(
         sink: CMIOSinkWriter,
         logger: ApplierLogger,
@@ -63,27 +70,29 @@ public final class CameraCaptureSession: NSObject {
         self.logger = logger
         self.initialSourceName = initialSourceName
         super.init()
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(handleRuntimeError(_:)),
-            name: .AVCaptureSessionRuntimeError,
-            object: session
-        )
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(handleSessionStarted(_:)),
-            name: .AVCaptureSessionDidStartRunning,
-            object: session
-        )
+        let center = NotificationCenter.default
+        observers.append(center.addObserver(
+            forName: .AVCaptureSessionRuntimeError,
+            object: session,
+            queue: nil
+        ) { [weak self] note in
+            let error = note.userInfo?[AVCaptureSessionErrorKey] as? Error
+            self?.logger.error("AVCaptureSession runtime error: \(error?.localizedDescription ?? "unknown")")
+        })
+        observers.append(center.addObserver(
+            forName: .AVCaptureSessionDidStartRunning,
+            object: session,
+            queue: nil
+        ) { [weak self] _ in
+            self?.logger.info("AVCaptureSession reported running")
+        })
     }
 
-    @objc private func handleRuntimeError(_ notification: Notification) {
-        let error = notification.userInfo?[AVCaptureSessionErrorKey] as? Error
-        logger.error("AVCaptureSession runtime error: \(error?.localizedDescription ?? "unknown")")
-    }
-
-    @objc private func handleSessionStarted(_ notification: Notification) {
-        logger.info("AVCaptureSession reported running")
+    deinit {
+        let center = NotificationCenter.default
+        for token in observers {
+            center.removeObserver(token)
+        }
     }
 
     /// Boots up capture asynchronously. Returns immediately.
