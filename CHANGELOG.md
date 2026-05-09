@@ -849,6 +849,45 @@ second pass those would have been merged as silent regressions in
 prose accuracy. Cheap to run, mechanical to address, demonstrably
 catches drift the first pass introduced.
 
+### Save-as-new + collision dialog fixes (2026-05-09)
+
+Five follow-on PRs (#68, #69, #70, #71, #72) ran on the same day
+as the slop-review program. Three of them fixed real product bugs
+that surfaced while testing the slop-review changes; the other two
+were small cleanups.
+
+**The bug class.** `ProfileResolver` (`Sources/AVPainReliever/Engine/ProfileResolver.swift`) picks the most-specific matching profile and breaks ties alphabetically by name. That tiebreak rule is a validated design decision (see `docs/decisions.md` "Most-specific match wins"), but it interacts badly with the wizard's save flow: when a newly saved profile shares its fingerprint with an existing sibling at the same specificity, the resolver silently picks the older sibling and the user-visible audio/camera state doesn't reflect the just-saved profile. The first add of any session works because the new profile is the only one matching its fingerprint; the second-and-later adds, the collision Save-as-new path, and the collision Update-existing path all hit the bug.
+
+**The fix shape.** `AddProfileViewModel.onSaved`'s callback contract grew a `forceApplySlug: String?` parameter. The wizard passes it on every save path that involves the user declaring "this profile should be active":
+
+- New-profile no-collision append → force-apply.
+- Collision dialog "Update existing" → force-apply (user explicitly chose which profile to land on).
+- Collision dialog "Save as new" → force-apply (same).
+- Edit-in-place (slug unchanged) → no force-apply (resolver re-picks the same profile, applier applies fresh state on the rebuilt engine).
+- Edit-rename no-collision → no force-apply (user might be renaming a profile they aren't currently on; force-applying would yank them onto it unwantedly).
+
+The host (`AppDelegate.onSaved` closure) receives the slug, sets a `pendingForceApplyName` gate, runs `reloadConfig` (which rebuilds the engine and fires `onProfileApplied` once with the resolver's pick — the gate suppresses it in `handleProfileApplied`), then explicitly calls `engine.applyManually(profile)` on the looked-up profile. The user perceives one switch, one toast, one switch-counter increment, regardless of whether the resolver picked the right or wrong profile first.
+
+The `applyManually` call goes directly to `Engine`, not to `AppDelegate.applyManually` — so the manual-override stats counter is correctly NOT incremented for save-driven force-applies.
+
+**Iteration history (kept here so future-Claude can read the why).** PR #69's first commit force-applied unconditionally on `confirmSaveAsNew`. The second commit broadened to all new-profile paths but gated everything on `editingSlug == nil` to avoid yanking users in edit-rename. The third commit reverted that gate for the dialog buttons (`confirmReplace` + `confirmSaveAsNew`) because clicking a dialog button is an explicit "land me on this" signal regardless of editing context — the user reported "edited X, renamed to existing Eric, picked Save as Eric 2, landed on laptop" and the gate was the cause. Final state: `save()` trailing append is gated on `editingSlug == nil`; the two dialog buttons force-apply unconditionally. The diagnostic that settled the third iteration was a debug branch with `os.Logger` tracing at every decision point in the force-apply pipeline; the user captured 60 seconds of log output and the analysis flipped from speculation to verified contract in one round.
+
+**Other PRs that landed in the same cluster:**
+
+- PR #68: borderline-backlog trivial wins (A4 dead `profile` param, M3 `static var` → `static let` for `WelcomeView.greetingTitle`, I1b `Binding.isPresent(_:)` extension migrating two `Binding(get:set:)` glue sites). M4, M6, F12 from the original plan got dropped after verification — see `tools/slop-plan-app-target.md` for the triage.
+- PR #70: collision dialog body now spells out the deletion side effect when the user got there by editing a profile and renaming into an existing slug. `PendingCollision` grew an `editingPrettyName: String?` field; `AddProfileView`'s alert message branches on it.
+- PR #71: name-field focus on every wizard open. `@FocusState` on the TextField, set true via `DispatchQueue.main.async` inside `.onAppear`. Without the deferred dispatch the underlying NSResponder isn't wired up at the time `.onAppear` fires on macOS 14.
+- PR #72: dropped `actionTitle: String?` from `Notifier.notify`. Both backends (UN + AppleScript) silently ignored it; the only caller passed exactly the value the registered UN category was already rendering. Slop-review item M7.
+- PR #73: tightened CLAUDE.md across six themes (provenance, motivational copy, examples within rules, overlapping sections, etc.). Net 122 → 104 lines. Established the operating principle: CLAUDE.md is operational rules only; provenance lives in CHANGELOG.
+
+Lessons:
+
+1. The resolver's alphabetical tiebreak rule is correct (it's the validated design decision); it's the wizard's save flow that needed to model "user just declared this should be active." Don't change the resolver to avoid the tiebreak; let the host signal intent.
+2. Diagnostic tracing settles speculation cycles cheaply. After three rounds of "should work but the user says it doesn't" speculation, instrumenting the actual code paths and asking the user for log output flipped the conversation to evidence in one pass.
+3. CLAUDE.md is auto-loaded into every session, so prose that doesn't operationalize a rule pays context tokens forever for one-time onboarding signal. The PR #73 tightening pass codified this — every line in CLAUDE.md should be doing operational work, with provenance moved here.
+
+PRs: #68 (`9b8f50f`), #69 (`a2856d3`), #70 (`f7abc81`), #71 (`6d4cba3`), #72 (`4d61c8c`), #73 (`a69b1e0`). All on `main` as of 2026-05-09.
+
 - **When we ship a Phase 1 fix or feature**, ask: does this teach us
   something about the Swift port? If yes, add to "Lessons learned."
 - **When the user gives feedback or hits a bug**, ask: should this be
