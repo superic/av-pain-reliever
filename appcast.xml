@@ -7,11 +7,6 @@
         <language>en</language>
         <!--
             Stub feed. The .github/workflows/release.yml workflow
-            appends a new <item> here on every signed-and-notarized
-            release. Until the first tag lands, an installed app
-            fetching this feed correctly resolves to "you're up to
-            date."
-        -->
         <item>
             <title>Version 0.1.0</title>
             <pubDate>Sun, 03 May 2026 07:04:30 +0000</pubDate>
@@ -566,6 +561,44 @@
             <enclosure url="https://github.com/superic/av-pain-reliever/releases/download/v0.2.0.16/AVPainReliever.app.zip"
                        type="application/octet-stream"
                        sparkle:edSignature="FEVMaJksfxWuKNmoQEvgFIPnNMjtZ6Q7cxlza1uVMQXm3aDrW/R/wR84b3tRDrk5e5gQF5lc4D3lktOh9fAkBw==" length="3109638" />
+        </item>
+        <item>
+            <title>Version 0.2.0.17-dev.1</title>
+            <description><![CDATA[
+<p>Alright. First dev release. Money.</p>
+<p>You're at home. Conference Room dock is at the conference room. You want to swap Conference Room's mic from the Yeti to an AT2020. Tough luck, pal. The Yeti's not plugged in, you don't see it in the dropdown, you're stuck waiting for next Tuesday. Or you were. This is the <strong>edit-from-anywhere</strong> release.</p>
+<p>What's new:</p>
+<ul>
+<li>
+<p><strong>The wizard remembers your devices.</strong> Open Edit on any profile from anywhere and its saved audio + camera selections show up, marked "(not connected)" if they're not currently attached. Swap them, change your mind, pick something else. The cache is per-profile so your Home Office CalDigit doesn't leak into Conference Room's mic dropdown. That'd be amateur hour.</p>
+</li>
+<li>
+<p><strong>Soft warning when two profiles share a fingerprint.</strong> Two profiles claiming the same dock means only one of them ever auto-applies. The wizard now catches it at save time. Save Anyway, Cancel, you pick. Money.</p>
+</li>
+<li>
+<p><strong>Profiles sort alphabetically.</strong> Home Office, Laptop, Studio. Every launch. Stable order in the menu bar and in Settings → Profiles. Used to be hash-randomized between sessions which was, in technical terms, just nuts.</p>
+</li>
+<li>
+<p><strong>Edit-mode list puts your saved fingerprint at the top.</strong> Even if half the devices aren't plugged in. You see what this profile IS, not what happens to be plugged in right now. Big difference when you're editing from somewhere else.</p>
+</li>
+<li>
+<p><strong>Pills cleaned up.</strong> "Not connected", "Travels with you", "Important: Mic / Video / Audio / Speaker", "In Home Office" (when you're looking at a device that belongs to another profile). Sentence case across the board. The kind of detail you don't notice until you do.</p>
+</li>
+<li>
+<p><strong>Forget unused devices</strong> lives in Settings → General. One-click cleanup that trims each profile's remembered list to only what it actually uses. For when one-off coffee shop visits clutter things up.</p>
+</li>
+</ul>
+<p>Hey: <strong>it's the first dev release</strong>. First time we've shipped to the dev channel. If you're reading this in the app, you opted in via Settings → General → "Receive dev updates" — welcome aboard. Same builds, slightly faster cadence, smaller batches of in-flight features. Stuff that doesn't necessarily need to wait for a stable cut.</p>
+<p>If you hit anything weird, file an issue or hit <strong>Save Logs for Support</strong> under the Advanced menu. Money.</p>
+]]></description>
+            <pubDate>Sun, 10 May 2026 22:43:14 +0000</pubDate>
+            <sparkle:channel>dev</sparkle:channel>
+            <sparkle:version>0.2.0.17-dev.1</sparkle:version>
+            <sparkle:shortVersionString>0.2.0.17-dev.1</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/superic/av-pain-reliever/releases/download/v0.2.0.17-dev.1/AVPainReliever.app.zip"
+                       type="application/octet-stream"
+                       sparkle:edSignature="PISB/P95h/rIkYnwPvnA9GmNXcXJh8WeG/ux0/R2nSR6YZkdQyNvGHrDpOg1rtdLGZtY6TlE3xfKqqmHRRrCDw==" length="3172040" />
         </item>
     </channel>
 </rss>
