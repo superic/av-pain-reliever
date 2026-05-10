@@ -84,7 +84,7 @@ final class Updater {
         self.controller = controller
         let feedDescription = controller.updater.feedURL?.absoluteString ?? "nil"
         Self.logger.notice("Sparkle updater started; feed=\(feedDescription, privacy: .public)")
-        installWindowTitleObserver()
+        installSparkleWindowCustomizer()
         // The delegate's `allowedChannels` is re-queried on every
         // check, but Sparkle caches its parsed/filtered appcast result
         // for a window between checks. A user who flips the
@@ -104,30 +104,38 @@ final class Updater {
             .store(in: &cancellables)
     }
 
-    /// Sparkle's update alert XIB doesn't set a window title, so its
-    /// windows render with a blank title bar. We can't override the
-    /// XIB without forking Sparkle, but we can name the window at
-    /// runtime: when any window keys, check whether its window
-    /// controller (or the window itself) is one of Sparkle's
-    /// `SU…` / `SPU…` classes and, if so, give it a title.
-    /// Heuristic but cheap; a Sparkle internal class rename would
-    /// silently drop the title back to blank — acceptable downside.
-    private func installWindowTitleObserver() {
+    /// Sparkle's update alert XIB ships with a blank title and the
+    /// full traffic-light set (close + minimize + zoom). Neither fits
+    /// a transient utility dialog. We can't override the XIB without
+    /// forking Sparkle, but we can fix both at runtime: when any
+    /// window becomes key, check whether its window controller (or
+    /// the window itself) is one of Sparkle's `SU…` / `SPU…` classes,
+    /// and if so give it a title and trim the chrome to dialog style
+    /// (title + close only). Heuristic but cheap; a Sparkle internal
+    /// class rename would silently drop the customizations,
+    /// acceptable downside.
+    private func installSparkleWindowCustomizer() {
         NotificationCenter.default.addObserver(
             forName: NSWindow.didBecomeKeyNotification,
             object: nil,
             queue: .main
         ) { notification in
             guard let window = notification.object as? NSWindow else { return }
-            guard window.title.isEmpty else { return }
             let controllerClass = window.windowController.map { NSStringFromClass(type(of: $0)) } ?? ""
             let windowClass = NSStringFromClass(type(of: window))
             let looksLikeSparkle =
                 controllerClass.hasPrefix("SU") || controllerClass.hasPrefix("SPU") ||
                 windowClass.hasPrefix("SU") || windowClass.hasPrefix("SPU")
-            if looksLikeSparkle {
+            guard looksLikeSparkle else { return }
+            if window.title.isEmpty {
                 window.title = "Software Update"
             }
+            // Trim to dialog chrome: title + close only. Idempotent;
+            // safe to apply on every key event.
+            window.styleMask.remove(.miniaturizable)
+            window.styleMask.remove(.resizable)
+            window.standardWindowButton(.miniaturizeButton)?.isEnabled = false
+            window.standardWindowButton(.zoomButton)?.isEnabled = false
         }
     }
 
