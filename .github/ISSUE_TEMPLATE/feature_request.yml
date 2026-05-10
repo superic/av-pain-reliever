@@ -1,0 +1,43 @@
+name: Feature request
+description: Suggest an improvement or new capability for AV Pain Reliever
+title: "[Feature] "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for thinking about how to make this better. Before filing, take a quick look at [`docs/decisions.md`](https://github.com/superic/AV-Pain-Reliever/blob/main/docs/decisions.md) — the **Scope creep candidates** section already lists ideas that have been considered for a future v2 (per-profile display arrangement, opt-in crash reporting, localization, virtual-camera preview in Settings). If your idea is already there, comment on a related issue instead of opening a duplicate. Also worth knowing: AV Pain Reliever is intentionally a self-contained product, so suggestions that require integrating with third-party tools (Hammerspoon, OBS, Karabiner, etc.) are usually out of scope.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem are you trying to solve?
+      description: What real-world frustration prompted this idea? The more specific the better.
+      placeholder: "When I dock at the conference room, my external speaker volume is way louder than my laptop's, and I have to manually turn it down every time."
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed solution
+      description: What should the app do? UI sketch, behavior description, or pseudocode all welcome.
+      placeholder: "Per-profile output volume target — when a profile becomes active, set system output volume to a saved level."
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives you've considered
+      description: Other ways to solve the problem, including not building it. Helps gauge how load-bearing this is.
+    validations:
+      required: false
+
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: Additional context
+      description: Anything else — links, screenshots, related issues, your USB hardware setup if relevant.
+    validations:
+      required: false
