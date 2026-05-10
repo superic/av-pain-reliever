@@ -31,6 +31,22 @@ struct PendingCollision: Identifiable, Equatable {
     let editingPrettyName: String?
 }
 
+/// State the view shows when the user tries to save a profile whose
+/// USB fingerprint exactly matches another saved profile. The
+/// resolver tiebreaks alphabetically, so two profiles with the same
+/// fingerprint mean only one of them ever auto-applies. The other
+/// is reachable only via the menu's Switch to submenu. The warning
+/// dialog spells out the consequence and lets the user save anyway
+/// or cancel back to the form. Separate from `PendingCollision`,
+/// which handles slug clashes (a totally different scenario where
+/// the user explicitly opts into duplication).
+struct PendingFingerprintWarning: Identifiable, Equatable {
+    let id = UUID()
+    /// Pretty-cased name of the other profile that already owns this
+    /// fingerprint, e.g. "Home Office". Drives the alert body.
+    let existingPrettyName: String
+}
+
 /// Owns the editable state of the Add-Profile form and runs the save
 /// action. Created with the data sources it needs (USB watcher,
 /// audio controller, target file URL, post-save reload callback)
@@ -123,12 +139,38 @@ final class AddProfileViewModel: ObservableObject {
     /// suffix.
     @Published var pendingCollision: PendingCollision? = nil
 
+    /// Set when the user attempts to save a profile whose USB
+    /// fingerprint exactly matches another saved profile's
+    /// fingerprint. The view shows a "soft" alert (Save Anyway /
+    /// Cancel) explaining that auto-switching will alphabetical-
+    /// tiebreak between the two and only one will ever apply
+    /// automatically. Independent of `pendingCollision`: that's a
+    /// slug-clash dialog where the user explicitly opts into
+    /// duplication; this one warns about a quieter ambiguity that's
+    /// easy to miss otherwise.
+    @Published var pendingFingerprintWarning: PendingFingerprintWarning? = nil
+
+    /// Save context stashed across the fingerprint-warning dialog so
+    /// `confirmFingerprintWarning()` can resume the save with the
+    /// exact same slug/mode/forceApply the user originally hit Save
+    /// with. Cleared on cancel as well so a subsequent save starts
+    /// from a clean slate.
+    private var stashedSaveContext: (slug: String, mode: SaveMode, forceApply: Bool)?
+
     // MARK: - Dependencies
 
     private let watcher: USBWatcher
     private let audioController: AudioInventory
     private let cameraController: CameraInventory
     private let configURL: URL
+    /// Persistent store for the wizard's remembered-devices caches.
+    /// Optional so tests that only care about live-snapshot behavior
+    /// can omit it; production always passes a real store via
+    /// `AppDelegate.addProfileDependencies`. When non-nil, `refresh()`
+    /// appends current live device names + the editing profile's
+    /// saved audio/camera selections into the caches, and the
+    /// disconnected-name lists below derive from `remembered \ live`.
+    private let settings: SettingsStore?
     /// Notifies the host that the wizard wrote a profile to disk.
     /// `forceApplySlug` is the slug the host should explicitly apply
     /// after reloading — non-nil for the collision "Save as new" path,
@@ -148,6 +190,14 @@ final class AddProfileViewModel: ObservableObject {
     /// Empty set means "don't suppress" (used by tests + the
     /// pre-collision-check codepath).
     private let existingProfileSlugs: Set<String>
+    /// Every other saved profile (the editing one filtered out),
+    /// kept so the wizard can cross-reference currently-attached
+    /// USB devices and label rows that belong to *another* location.
+    /// Without this, a user editing Conference Room from home sees
+    /// CalDigit in the device list with no hint that it belongs to
+    /// Home Office. Empty in tests that don't exercise the
+    /// cross-reference labels.
+    private let otherProfiles: [Profile]
 
     /// Whether the host's virtual camera is currently the active
     /// routing layer. Used to (a) hide the virtual camera from the
@@ -175,7 +225,9 @@ final class AddProfileViewModel: ObservableObject {
         configURL: URL,
         editing: Profile? = nil,
         existingProfileSlugs: Set<String> = [],
+        otherProfiles: [Profile] = [],
         virtualCameraEnabled: Bool = false,
+        settings: SettingsStore? = nil,
         onSaved: @escaping (_ forceApplySlug: String?) -> Void
     ) {
         self.watcher = watcher
@@ -185,7 +237,13 @@ final class AddProfileViewModel: ObservableObject {
         self.onSaved = onSaved
         self.editingSlug = editing?.name
         self.existingProfileSlugs = existingProfileSlugs
+        // Filter the editing profile out defensively in case the
+        // caller passed every available profile; the cross-reference
+        // pill is for *other* profiles, not "this is in itself."
+        let editingName = editing?.name
+        self.otherProfiles = otherProfiles.filter { $0.name != editingName }
         self.virtualCameraEnabled = virtualCameraEnabled
+        self.settings = settings
 
         if let profile = editing {
             // Pre-populate from the existing profile so the user can
@@ -238,12 +296,24 @@ final class AddProfileViewModel: ObservableObject {
             }
         let disconnectedIDs = Set(disconnected.map(\.device))
 
-        // Sort live devices by tier (Important → other named →
-        // portable named → unnamed) per `sortedByTier` below, then
-        // append disconnected entries at the very bottom so active
-        // hardware stays grouped at the top.
-        attachedDevices = Self.sortedByTier(liveSnapshot)
+        // When editing, the profile's saved fingerprint (whether
+        // currently attached or not) floats to the top so the user
+        // immediately sees "these are the devices this profile is
+        // built from." Below that, any unticked currently-attached
+        // devices the user might want to add. This makes the
+        // edit-from-elsewhere flow obvious even when most of the
+        // fingerprint is disconnected.
+        //
+        // When adding (savedFingerprint empty, disconnected empty),
+        // the expression collapses to a plain tier-sorted live
+        // snapshot. The auto-tick logic below picks the Important
+        // rows, which already appear first via the tier sort.
+        let fingerprintIDs = Set(savedFingerprint)
+        let liveInFingerprint = liveSnapshot.filter { fingerprintIDs.contains($0.device) }
+        let liveOutOfFingerprint = liveSnapshot.filter { !fingerprintIDs.contains($0.device) }
+        attachedDevices = Self.sortedByTier(liveInFingerprint)
             + Self.sortedByTier(disconnected)
+            + Self.sortedByTier(liveOutOfFingerprint)
         disconnectedDeviceIDs = disconnectedIDs
 
         // Default selection: only the headline hardware classified
@@ -284,6 +354,30 @@ final class AddProfileViewModel: ObservableObject {
             .filter { $0.name != VirtualCameraActivator.virtualCameraDisplayName }
         if camera == VirtualCameraActivator.virtualCameraDisplayName {
             camera = nil
+        }
+
+        // Seed the editing profile's per-profile cache with ONLY its
+        // saved-on-disk selections (never live attached devices).
+        // Live devices already show up in the dropdown via `audioDevices`
+        // and `cameras`; caching them would falsely make Conference
+        // Room "remember" CalDigit just because CalDigit happened to
+        // be attached when the user opened Conference Room's wizard
+        // at their home dock. The cache only exists to keep a profile's
+        // OWN saved selections visible across disconnects.
+        //
+        // When adding a new profile (editingSlug == nil) there's no
+        // profile-key yet, so the seed is skipped entirely. History
+        // builds up once the profile exists and is reopened.
+        if let editingSlug {
+            let inputsToRemember = audioInput.map { [$0] } ?? []
+            let outputsToRemember = audioOutput.map { [$0] } ?? []
+            let camerasToRemember = camera.map { [$0] } ?? []
+            settings?.rememberDevices(
+                forProfile: editingSlug,
+                audioInputs: inputsToRemember,
+                audioOutputs: outputsToRemember,
+                cameras: camerasToRemember
+            )
         }
 
         // Pre-select whatever the system currently uses so the user
@@ -333,6 +427,86 @@ final class AddProfileViewModel: ObservableObject {
 
     var outputDevices: [AudioDevice] {
         audioDevices.filter(\.supportsOutput)
+    }
+
+    /// Editing profile's remembered audio input names that aren't
+    /// currently attached. The wizard's input picker renders these at
+    /// the bottom of the list (alphabetical, with a "(not connected)"
+    /// suffix) so a user editing from a different location can still
+    /// pick the right mic. Empty when adding a new profile (no
+    /// profile-key yet), when no `SettingsStore` was injected (test
+    /// cases), or when this profile has no remembered names.
+    var disconnectedInputNames: [String] {
+        Self.disconnected(
+            remembered: settings?.rememberedAudioInputs[editingSlug ?? ""],
+            from: inputDevices.map(\.name)
+        )
+    }
+
+    /// Editing profile's remembered audio output names that aren't
+    /// currently attached.
+    var disconnectedOutputNames: [String] {
+        Self.disconnected(
+            remembered: settings?.rememberedAudioOutputs[editingSlug ?? ""],
+            from: outputDevices.map(\.name)
+        )
+    }
+
+    /// Editing profile's remembered camera names that aren't
+    /// currently attached.
+    var disconnectedCameraNames: [String] {
+        Self.disconnected(
+            remembered: settings?.rememberedCameras[editingSlug ?? ""],
+            from: cameras.map(\.name)
+        )
+    }
+
+    private static func disconnected(remembered: [String]?, from live: [String]) -> [String] {
+        guard let remembered else { return [] }
+        let liveSet = Set(live)
+        return remembered.filter { !liveSet.contains($0) }.sorted()
+    }
+
+    /// Whether the wizard should render the green "Important: <cat>"
+    /// pill for `device`. The pill was designed to explain why a
+    /// device gets auto-ticked into a new profile's fingerprint, so
+    /// it only makes sense in two contexts:
+    ///
+    /// 1. Adding a new profile (auto-tick is live).
+    /// 2. Editing an existing profile and the device is already in
+    ///    its fingerprint (the pill confirms why it's ticked).
+    ///
+    /// Editing Conference Room while at home and seeing CalDigit
+    /// labeled "Important: Audio" (the source of this gate) would
+    /// be a false claim that CalDigit matters to Conference Room.
+    /// The view falls through to `otherProfileLabel(forDevice:)` so
+    /// the user instead sees "In Home Office" on those rows.
+    func shouldShowImportantPill(forDevice device: USBDevice) -> Bool {
+        selectedDeviceIDs.contains(device) || !editingExisting
+    }
+
+    /// Quiet gray label the wizard renders on a currently-attached
+    /// device that doesn't belong to THIS profile's fingerprint but
+    /// does belong to one (or more) other saved profiles. Lets a
+    /// user editing Conference Room from home see "In Home Office"
+    /// on the CalDigit row instead of an unexplained device. Returns
+    /// nil when the device isn't in any other profile's fingerprint.
+    /// For multiple matches we render a count phrase rather than
+    /// listing names. The pill's job is to orient, not enumerate.
+    ///
+    /// Always nil when *adding* a new profile: the add flow is about
+    /// capturing the current location, not investigating how each
+    /// attached device relates to other profiles. Surfacing those
+    /// labels there reads as noise (every device the user has ever
+    /// fingerprinted suddenly gets a "lives somewhere else" badge).
+    func otherProfileLabel(forDevice device: USBDevice) -> String? {
+        guard editingExisting else { return nil }
+        let matches = otherProfiles.filter { $0.fingerprint.contains(device) }
+        switch matches.count {
+        case 0: return nil
+        case 1: return "In \(PrettyName.format(matches[0].name))"
+        default: return "In \(matches.count) other profiles"
+        }
     }
 
     /// Four-tier sort for the wizard's device list, alphabetical
@@ -476,7 +650,10 @@ final class AddProfileViewModel: ObservableObject {
     func confirmReplace() {
         guard let collision = pendingCollision else { return }
         pendingCollision = nil
-        performSave(slug: collision.existingSlug, mode: .replace, forceApply: true)
+        // Skip the fingerprint warning: clicking Update is an
+        // explicit duplication choice that already passed through
+        // the (separate) name-collision dialog.
+        performSave(slug: collision.existingSlug, mode: .replace, forceApply: true, bypassFingerprintCheck: true)
     }
 
     /// User picked "Save as new" in the collision dialog — append
@@ -486,13 +663,51 @@ final class AddProfileViewModel: ObservableObject {
     func confirmSaveAsNew() {
         guard let collision = pendingCollision else { return }
         pendingCollision = nil
-        performSave(slug: collision.newSlug, mode: .append, forceApply: true)
+        // Skip the fingerprint warning: Save-as-new is almost always
+        // a deliberate fingerprint-duplication choice (that's how
+        // you split one location into multiple profiles), and the
+        // user already made it past one dialog.
+        performSave(slug: collision.newSlug, mode: .append, forceApply: true, bypassFingerprintCheck: true)
     }
 
     /// User picked "Cancel" — drop the collision state and let them
     /// edit the form.
     func cancelCollision() {
         pendingCollision = nil
+    }
+
+    /// User picked "Save Anyway" in the fingerprint-warning dialog.
+    /// Resume the save with the stashed context, bypassing the check
+    /// so we don't re-prompt for the same conflict.
+    func confirmFingerprintWarning() {
+        guard let context = stashedSaveContext else { return }
+        pendingFingerprintWarning = nil
+        stashedSaveContext = nil
+        performSave(
+            slug: context.slug,
+            mode: context.mode,
+            forceApply: context.forceApply,
+            bypassFingerprintCheck: true
+        )
+    }
+
+    /// User picked "Cancel" in the fingerprint-warning dialog. Drop
+    /// the warning + stashed context so a subsequent save runs the
+    /// check fresh.
+    func cancelFingerprintWarning() {
+        pendingFingerprintWarning = nil
+        stashedSaveContext = nil
+    }
+
+    /// Return the first *other* saved profile whose fingerprint is
+    /// the exact same set as `fingerprint`, or nil. Set comparison
+    /// so order and TOML round-trip noise don't matter. Used by the
+    /// save path to flag the alphabetical-tiebreak hazard before the
+    /// write goes through. The editing profile is already filtered
+    /// out of `otherProfiles` so self-comparison never triggers.
+    func conflictingProfile(forFingerprint fingerprint: [USBDevice]) -> Profile? {
+        let target = Set(fingerprint)
+        return otherProfiles.first { Set($0.fingerprint) == target }
     }
 
     // MARK: - Implementation
@@ -502,11 +717,7 @@ final class AddProfileViewModel: ObservableObject {
         case replace
     }
 
-    private func performSave(slug: String, mode: SaveMode, forceApply: Bool = false) {
-        isSaving = true
-        lastError = nil
-        defer { isSaving = false }
-
+    private func performSave(slug: String, mode: SaveMode, forceApply: Bool = false, bypassFingerprintCheck: Bool = false) {
         // Build the fingerprint from EVERY ticked row in the form —
         // both currently-attached and saved-but-disconnected. The
         // user editing while away from a location is the whole
@@ -514,6 +725,31 @@ final class AddProfileViewModel: ObservableObject {
         // here would silently undo the user's intent on save.
         let selectedRows = attachedDevices.filter { selectedDeviceIDs.contains($0.device) }
         let fingerprint = selectedRows.map(\.device)
+
+        // Soft warning: another saved profile already owns this
+        // exact fingerprint. The resolver alphabetical-tiebreaks
+        // between same-specificity matches, so only one of the two
+        // would ever auto-apply. Pause the save and let the user
+        // confirm via `confirmFingerprintWarning()` (which calls
+        // back through with `bypassFingerprintCheck: true`) or back
+        // out via `cancelFingerprintWarning()`. The collision-dialog
+        // continuation methods (confirmReplace / confirmSaveAsNew)
+        // bypass this check because they're explicit duplication
+        // choices already.
+        if !bypassFingerprintCheck,
+           let conflict = conflictingProfile(forFingerprint: fingerprint)
+        {
+            stashedSaveContext = (slug: slug, mode: mode, forceApply: forceApply)
+            pendingFingerprintWarning = PendingFingerprintWarning(
+                existingPrettyName: PrettyName.format(conflict.name)
+            )
+            return
+        }
+
+        isSaving = true
+        lastError = nil
+        defer { isSaving = false }
+
         let deviceNames: [USBDevice: String?] = Dictionary(
             uniqueKeysWithValues: selectedRows.map { ($0.device, $0.name) }
         )
@@ -544,10 +780,22 @@ final class AddProfileViewModel: ObservableObject {
                 )
             }
             // Renamed an existing profile (slug differs from the one we
-            // started editing) → drop the old section so the user
-            // doesn't end up with both. Failures here surface as a
-            // warning since the new profile already saved fine.
+            // started editing). Drop the old TOML section so the user
+            // doesn't end up with both, and migrate the editing
+            // profile's per-slug state (stats + remembered-device
+            // caches) over to the new slug. For mode .replace
+            // (collision "Update existing"), the editing profile is
+            // being subsumed into the target, so its side data goes
+            // away via forgetProfile instead of being moved.
+            // Failures on the TOML delete surface as a warning since
+            // the new profile already saved fine.
             if let editing = editingSlug, editing != slug {
+                switch mode {
+                case .append:
+                    settings?.renameProfile(from: editing, to: slug)
+                case .replace:
+                    settings?.forgetProfile(slug: editing)
+                }
                 do {
                     try ProfileWriter().delete(named: editing, in: configURL)
                 } catch {
@@ -564,7 +812,7 @@ final class AddProfileViewModel: ObservableObject {
             // Race: replace expected the section to be there but
             // someone (the user editing the TOML by hand, another
             // tool) removed it between collision check and write.
-            lastError = "Couldn't save: profile \"\(PrettyName.format(name))\" is no longer in the config — try Add Profile instead."
+            lastError = "Couldn't save: profile \"\(PrettyName.format(name))\" is no longer in the config. Try Add Profile instead."
         } catch let ProfileWriteError.invalidName(name) {
             lastError = "Couldn't save: \"\(name)\" isn't a valid profile name."
         } catch let ProfileWriteError.writeFailed(reason) {
@@ -580,7 +828,7 @@ final class AddProfileViewModel: ObservableObject {
     /// starter content so the file looks consistent regardless of
     /// who created it.
     static let starterHeader = """
-    # AV Pain Reliever — profile config.
+    # AV Pain Reliever profile config.
     # Each [profiles.<name>] section defines a location.
     # See https://github.com/superic/av-pain-reliever for the schema.
 

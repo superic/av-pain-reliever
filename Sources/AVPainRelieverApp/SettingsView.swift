@@ -32,7 +32,7 @@ struct SettingsView: View {
 
     var body: some View {
         TabView(selection: $delegate.settingsTab) {
-            GeneralSettingsTab(settings: settings)
+            GeneralSettingsTab(settings: settings, delegate: delegate)
                 .tabItem {
                     Label("General", systemImage: "gearshape")
                 }
@@ -233,7 +233,13 @@ private struct CameraSettingsTab: View {
 
 private struct GeneralSettingsTab: View {
     @ObservedObject var settings: SettingsStore
+    /// Source of the in-use audio/camera names that Forget Remembered
+    /// Devices preserves. Read at click time so a user who edits a
+    /// profile and then immediately clicks Forget gets the up-to-date
+    /// reference set without us re-observing every profile change.
+    @ObservedObject var delegate: AppDelegate
     @State private var showingMenuBarIconPicker = false
+    @State private var forgetRememberedConfirmationVisible = false
 
     var body: some View {
         Form {
@@ -299,6 +305,26 @@ private struct GeneralSettingsTab: View {
                 Label("Detection", systemImage: Theme.Symbol.usbSection)
             }
 
+            if settings.hasRememberedDevices {
+                Section {
+                    Button(role: .destructive) {
+                        forgetRememberedConfirmationVisible = true
+                    } label: {
+                        Text("Forget unused devices…")
+                            .foregroundStyle(Theme.Color.error)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    Text("The Add Profile wizard remembers every audio device and camera it's seen, so you can edit a profile's selections even when its dock isn't plugged in. Wipe the ones that aren't used by any saved profile. Devices a profile depends on stay in the list.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                } header: {
+                    Label("Remembered devices", systemImage: "tray.full")
+                }
+            }
+
             Section {
                 Toggle("Receive dev updates", isOn: $settings.devUpdates)
                 Text("Opt in to small in-flight features. Dev releases ship more often than the stable line and usually carry one or two finished tweaks at a time. Off by default.")
@@ -315,6 +341,19 @@ private struct GeneralSettingsTab: View {
             }
         }
         .groupedFormChrome()
+        .alert(
+            "Forget unused devices?",
+            isPresented: $forgetRememberedConfirmationVisible
+        ) {
+            Button("Forget", role: .destructive) {
+                settings.forgetRememberedDevices(
+                    currentProfiles: delegate.availableProfiles
+                )
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Audio and camera names that aren't used by any saved profile will be dropped. Anything a profile depends on stays so the wizard can still show it when you're away from that location.")
+        }
     }
 }
 
