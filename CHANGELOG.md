@@ -1036,6 +1036,20 @@ The Scope creep candidates list grew by two entries to keep the canonical list c
 
 Doc-only PR; no code changes.
 
+### Add a third Sparkle release channel: dev (2026-05-09)
+
+The release flow grew from two channels (stable + experimental) to three (stable + dev + experimental). Project convention for what goes where: stable carries normal-sized features and bug fixes for everyone, dev carries small in-flight features (ships more often than stable, low-risk per change), experimental carries moonshot work that may break things. Dev and experimental are independent toggles in Settings, not points on a single stability axis, so the user can opt in to either, both, or neither.
+
+**Settings UI.** Settings → General → Updates gained a second toggle: "Receive dev updates" alongside the existing "Receive experimental updates," each with its own caption. Listed dev first since it's the lower-risk opt-in. Both default off.
+
+**SettingsStore.** New `devUpdates: Bool` mirrors `experimentalUpdates` exactly (same lazy-default pattern, same `didSet` write). No migration needed; new key, additive.
+
+**ChannelGatingDelegate.** `allowedChannels(for:)` now returns a `Set<String>` constructed from both bools: `dev` if `devUpdates`, `experimental` if `experimentalUpdates`. Sparkle treats the returned set as a union, so a user with both flipped on sees the union of stable + dev + experimental. Updater also gained a Combine subscriber for `$devUpdates` matching the existing `$experimentalUpdates` one, plus `.notice` log lines on each toggle change so the toggle-driven re-check is visible in the app's own log stream (Sparkle's internal background-check logs go to its own subsystem, not ours).
+
+**Workflow.** `appcast-publish.yml`'s tag-suffix dispatch grew a `*-dev*) export CHANNEL=dev ;;` arm before the experimental one. `release.yml` doesn't touch channels anymore (decoupled in #84), so no changes there. `scripts/sign-appcast.sh` already accepts any `$CHANNEL` value and emits `<sparkle:channel>$CHANNEL</sparkle:channel>`, so the script needs no edit.
+
+**Known follow-up** (not in this PR): the pre-check intercept in `Updater.checkForUpdates()` uses `isExperimentalVersion(_:)` to detect a running experimental version and nudge the user to enable the toggle. That heuristic was already stale after the 2026-05-05 graduation (it infers channel from major/minor numbers, but the rule flipped to tag-suffix dispatch). Adding "dev" doesn't make it more wrong; it's the same gap. The clean fix is to bake the channel into the build at release time (a new `SUChannel` key in `Info.plist` set by the workflow based on tag suffix) and have the intercept compare bundled vs. enabled channels. Out of scope for this PR.
+
 ### Confetti: bigger pop, slower fall (2026-05-09)
 
 Tuned `ConfettiBurst` to feel less rushed. The launch power range bumped from `200...420` to `280...520` (~30% more reach, so the apex is higher and the spread wider). The per-particle fall duration went from `1.4...2.2`s to `2.2...3.4`s (~55% slower descent). The `oneShotConfetti` cleanup timer moved from 3.2s to 4.5s to cover the longer trajectory and updated the doc comment to match. No structural changes; same `KeyframeAnimator` driving the same trajectory shape, just different numbers.
