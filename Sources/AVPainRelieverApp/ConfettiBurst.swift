@@ -139,7 +139,7 @@ private struct ConfettiParticle: View {
             // the existing Window scene; rendering truly outside the
             // window requires a borderless transparent host window,
             // which is a separate change.
-            let power = Double.random(in: 200...420)
+            let power = Double.random(in: 280...520)
             let peakDX = CGFloat(cos(angle) * power)
             // sin(angle) is negative across the upward cone; flip to a
             // positive rise so the trajectory keyframe can subtract it
@@ -151,7 +151,7 @@ private struct ConfettiParticle: View {
                 driftDX: CGFloat.random(in: -40...40),
                 fallTarget: CGFloat.random(in: 360...560),
                 riseDuration: Double.random(in: 0.5...0.85),
-                fallDuration: Double.random(in: 1.4...2.2),
+                fallDuration: Double.random(in: 2.2...3.4),
                 spin: Double.random(in: -900...900),
                 size: CGFloat.random(in: 8...14),
                 color: palette.randomElement() ?? .accentColor,
@@ -165,12 +165,13 @@ extension View {
     /// Overlay a one-shot `ConfettiBurst` when `isPresented` is true.
     /// After `duration` the binding flips back to false so the overlay
     /// unmounts and no animations keep ticking. Default duration
-    /// outlasts the longest particle trajectory (≈ 2.4s rise + fall).
-    /// Used by the About + Welcome dialogs to keep the celebratory
-    /// burst self-contained — the caller just toggles the flag.
+    /// outlasts the longest particle trajectory (≈ 4.25s rise + fall,
+    /// rounded up for buffer). Used by the About + Welcome dialogs to
+    /// keep the celebratory burst self-contained; the caller just
+    /// toggles the flag.
     func oneShotConfetti(
         isPresented: Binding<Bool>,
-        duration: Duration = .seconds(3.2)
+        duration: Duration = .seconds(4.5)
     ) -> some View {
         overlay {
             if isPresented.wrappedValue {
