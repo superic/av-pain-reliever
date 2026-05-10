@@ -1036,6 +1036,16 @@ The Scope creep candidates list grew by two entries to keep the canonical list c
 
 Doc-only PR; no code changes.
 
+### Issue templates tailored to the project (2026-05-09)
+
+The boilerplate `bug_report.md` / `feature_request.md` that landed earlier today were GitHub's defaults: half the fields didn't fit a macOS utility (browser, smartphone) and the load-bearing fields for *this* project (app version, release channel, macOS version, Save Logs attachment) weren't there. Replaced with structured YAML issue forms that bake in the right questions and validate the required ones.
+
+**Bug report (`bug_report.yml`).** Required fields: what happened, steps to reproduce, app version, release channel (dropdown: Stable / Dev / Experimental / both), macOS version. Optional fields: USB hardware involved, active profile, logs (with explicit instructions to use **Advanced → Save Logs for Support…** and drag the file onto the textarea), additional context. Auto-labeled `bug`, title prefixed `[Bug]`. The dropdown for release channel is the structural win, since most reports skipped that field with the prose template.
+
+**Feature request (`feature_request.yml`).** Required fields: problem, proposed solution. Optional: alternatives considered, additional context. The intro text points users at `docs/decisions.md`'s scope-creep candidates so duplicates of already-considered ideas land as comments on existing items, and notes that third-party-integration suggestions are usually out of scope per the self-contained product principle. Auto-labeled `enhancement`, title prefixed `[Feature]`.
+
+**`config.yml`.** Disables blank issues (forces a template) and adds a single contact link pointing at the new Discussions tab for general questions, so "how do I…" traffic lands there instead of in Issues.
+
 ### Add a third Sparkle release channel: dev (2026-05-09)
 
 The release flow grew from two channels (stable + experimental) to three (stable + dev + experimental). Project convention for what goes where: stable carries normal-sized features and bug fixes for everyone, dev carries small in-flight features (ships more often than stable, low-risk per change), experimental carries moonshot work that may break things. Dev and experimental are independent toggles in Settings, not points on a single stability axis, so the user can opt in to either, both, or neither.

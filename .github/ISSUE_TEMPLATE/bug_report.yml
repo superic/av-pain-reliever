@@ -1,0 +1,104 @@
+name: Bug report
+description: Something in AV Pain Reliever is broken or behaves wrong
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to file a bug report. The fields below help reproduce the issue quickly. The single most useful thing you can do is attach a log dump from **Advanced → Save Logs for Support…** in the menu bar app — that captures the last hour of unified-log entries and answers most "what was the app actually doing?" questions in one go.
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: What happened?
+      description: A clear and concise description of the bug. What did you expect? What did you see instead?
+      placeholder: "After plugging in my CalDigit dock, the audio profile switched but the camera kept showing my laptop webcam in Zoom."
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: How do you trigger this? List the actions in order. USB-related bugs almost always need to know which device(s) were attached or detached.
+      placeholder: |
+        1. Quit Zoom entirely.
+        2. Connect the CalDigit dock with the LG monitor and Yeti mic attached.
+        3. Open Zoom and start a meeting.
+        4. Camera selector shows "AV Pain Reliever" but feed is the laptop webcam.
+    validations:
+      required: true
+
+  - type: input
+    id: app-version
+    attributes:
+      label: AV Pain Reliever version
+      description: From the menu bar **AV Pain Reliever → About**, or visible in `~/Library/Logs` if logs are open.
+      placeholder: "0.2.0.16"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: channel
+    attributes:
+      label: Release channel
+      description: Which Sparkle channel is your install on? Check Settings → General → Updates.
+      options:
+        - Stable (no toggles enabled)
+        - Dev (Receive dev updates is on)
+        - Experimental (Receive experimental updates is on)
+        - Both Dev and Experimental enabled
+    validations:
+      required: true
+
+  - type: input
+    id: macos-version
+    attributes:
+      label: macOS version
+      description: From  → About This Mac.
+      placeholder: "macOS 15.4 (24E248)"
+    validations:
+      required: true
+
+  - type: textarea
+    id: hardware
+    attributes:
+      label: USB hardware involved
+      description: List the dock, peripherals, and what was being plugged in or unplugged when the bug happened. Include vendor and model where you can.
+      placeholder: |
+        - CalDigit TS3 Plus dock
+        - LG UltraFine 27" monitor
+        - Blue Yeti microphone
+        - Logitech Brio webcam
+    validations:
+      required: false
+
+  - type: input
+    id: active-profile
+    attributes:
+      label: Active profile (if known)
+      description: Which profile was active when the bug happened? See the menu bar status item.
+      placeholder: "home-office"
+    validations:
+      required: false
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: |
+        Open AV Pain Reliever from the menu bar, click **Advanced → Save Logs for Support…**, save the file, and drag it onto this field to attach it. The export captures the last hour of unified-log entries from the main app process.
+
+        If the bug involves the virtual camera, also capture Console.app entries filtered by subsystem `com.ericwillis.avpainreliever.CameraExtension` (the Camera Extension runs in a separate process and isn't in the main export).
+      placeholder: "Drop the av-pain-reliever-log-<timestamp>.txt file here, or paste the relevant lines."
+    validations:
+      required: false
+
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: Additional context
+      description: Anything else worth knowing — screenshots, screen recordings, what was different from a normal day, hunches.
+    validations:
+      required: false

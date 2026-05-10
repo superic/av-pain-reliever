@@ -1,0 +1,8 @@
+# Steers the "New issue" flow. The two YAML form templates in this
+# directory show up automatically; this file controls what else
+# appears alongside them.
+blank_issues_enabled: false
+contact_links:
+  - name: Question or general discussion
+    url: https://github.com/superic/AV-Pain-Reliever/discussions
+    about: For "how do I…" / "is this normal?" / sharing your USB setup, prefer Discussions over Issues. Bug reports and concrete feature requests still belong here in Issues.
