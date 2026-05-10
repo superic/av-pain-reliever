@@ -1000,6 +1000,18 @@ Logged as `.notice` rather than `.error` because the auth cancel is an expected 
 
 PRs: builds on #79 and #80; mirrors the closure-callback pattern (`onVisibilityConfirmed`) introduced in #79.
 
+### docs/decisions.md sync after the persistent-todo walkthrough (2026-05-09)
+
+Walked the Pending review section of `tools/todo.md` (the gitignored persistent-todo file) and folded the resulting signals into `docs/decisions.md`. Doc-only PR; no code changes.
+
+**Open questions consolidation.** Four open questions had collected enough signal to settle: vid/pid collision (no hits across 3 users; was already redundant with the validated USB-fingerprinting decision), menu bar profile-name display (default works for all 3 users), external user wizard sticks (2 users completed without help), and toast notifications useful-or-annoying (a Settings toggle "Send notifications when profiles change" already ships, so the question is user preference rather than a code change). The validated notifications bullet in `docs/decisions.md` was clarified to mention the toggle. All four moved into a new "Resolved on 2026-05-09 (walkthrough)" section at the bottom of the doc so the trail is visible. The 1.5s debounce question and the non-USB-disambiguation question stay open; neither has signal yet.
+
+**Scope-creep pruning.** Five v2 candidates that the user has now decided are out-of-product were dropped: per-profile wallpaper, Karabiner profile switching, Bluetooth pairing, VPN, and focus mode / Do Not Disturb. Two stay noted for v2: per-profile display arrangement and opt-in crash + error reporting. The dropped items are listed in the Resolved section so a future reader doesn't propose them again without checking.
+
+**Persistent todo.** `tools/todo.md` was updated in lockstep: the Deferred refactors section was deleted entirely (all 5 items had real reasons-to-skip already on file in `tools/slop-plan-app-target.md`, and the natural moment to refactor came and went on PRs #79, #80, and #81 without anyone feeling the pull); the toast-cutdown work moved into Active.
+
+**Hammerspoon-era cleanup.** The Validated decisions section had four prototype-era entries that no longer described the shipped Swift app: an `obs-cmd` shell-out justification, an "OBS scenes are the right unit of switching" bullet, a "Camo is not a viable alternative" bullet, and an "OBS Virtual Camera in Zoom/Slack" bullet. Plus stray Phase-1 references elsewhere ("no Lua" in the Target product list, "manual override" in the menu-bar UI line which contradicts the validated "No manual override" decision below it, "Audio Hijack-style aggregate device hacks" naming a third-party). All removed. The `obs-cmd` / OBS-scenes / Camo bullets were dropped outright (no replacement needed, they were Phase-1 integration choices that the v0.2.0 virtual camera made moot). The "Same as System + OBS Virtual Camera" bullet was reworded to point at the app's own virtual camera. Doc header at the top retitled from "settled before the Swift app was built" to "settled by the shipped implementation," which is the accurate framing now that v0.2.x has graduated.
+
 - **When we ship a Phase 1 fix or feature**, ask: does this teach us
   something about the Swift port? If yes, add to "Lessons learned."
 - **When the user gives feedback or hits a bug**, ask: should this be
