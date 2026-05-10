@@ -1036,6 +1036,10 @@ The Scope creep candidates list grew by two entries to keep the canonical list c
 
 Doc-only PR; no code changes.
 
+### Trim chrome on Sparkle's update-available window (2026-05-09)
+
+The Sparkle "Update Available" window shipped with the full traffic-light set (close + minimize + zoom). For a transient utility dialog those extra two buttons read as wrong; a software-update prompt isn't something you'd want to minimize or maximize. Extended the existing Sparkle-window detector in `Updater.swift` (formerly `installWindowTitleObserver`, renamed to `installSparkleWindowCustomizer` to reflect the wider scope) to also remove `.miniaturizable` and `.resizable` from the window's `styleMask` and disable the standard miniaturize and zoom buttons. Matches the project pattern in `WindowChrome.applyDialogChrome` (greyed-out rather than hidden, the macOS-idiomatic way to indicate "this window doesn't do that"). Idempotent on every `didBecomeKeyNotification` for a Sparkle window, same as the title-set behavior it sits next to.
+
 ### Decouple appcast publish from tag push (2026-05-09)
 
 Moved the appcast `<item>` insertion out of `release.yml` into a new `appcast-publish.yml` workflow that triggers on `release: published`. The old flow auto-spliced the appcast item the moment a tag landed, using GitHub's auto-generated PR list as the description. That meant the in-app "Check for Updates" panel showed users a wall of PR titles instead of the polished Vince Vaughn voice that was meant for `appcast.xml`. By the time the maintainer edited the draft release body into the right voice and clicked Publish, the appcast had already shipped to users with the wrong content.
