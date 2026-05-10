@@ -1025,6 +1025,17 @@ Walked the Pending review section of `tools/todo.md` (the gitignored persistent-
   capture it under "Locked architectural choices" with the rationale.
 - **Before starting Phase 2**, do a final pass through this doc to confirm
   every "open question" has been answered or explicitly deferred.
+
+### v1 graduation criteria + two new v2 candidates (2026-05-09)
+
+`docs/decisions.md` gained a "v1 graduation criteria" section so the bar for tagging `v1.0.0` is written down rather than implicit. Five "already met" bullets capture state today: virtual camera path battle-tested across PRs #79, #80, and #81; wizard validated on 2 external users; Save Logs for Support shipped (#78); Sparkle release flow stable across 15 v0.2.x releases; engine test coverage at 73-100% on pure logic. Three forward-looking gate items: 14-day soak with no critical-class bug PRs landing on `main` (clock starts 2026-05-09 since today shipped 3 visibility-race fixes); `tools/todo.md` Active section empty at tag time; author judgment as the actual trigger (no mechanical date).
+
+The section also lists what was considered and explicitly *not* a v1 gate, with reasons: crash + error reporting (deferred to v2), app-target test coverage at engine parity (active fun work targeting 80% on non-UI files), live virtual-camera preview in Settings (v2), localization (v2), and external user count thresholds (chasing a number distracts from quality signal).
+
+The Scope creep candidates list grew by two entries to keep the canonical list current: localization and the live virtual-camera preview in Settings → Camera. The latter is interesting because it doubles as a self-diagnostic (a user can see the feed without opening Zoom) and because the host process consuming its own virtual camera output is the same shape as the "self-source feedback loop on late consumer connect" bug class from 2026-05-05; that lesson is cross-referenced.
+
+Doc-only PR; no code changes.
+
 ## V1 design pass (2026-05-01)
 
 The functional engine + wizard was complete (94 tests, end-to-end
