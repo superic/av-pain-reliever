@@ -1,0 +1,193 @@
+# Appcast publishing pipeline.
+#
+# Trigger: a GitHub Release is *published* (taken out of draft state).
+# This is the "Click Publish on the draft" step in the maintainer's
+# release flow. It runs after `release.yml` has built, signed,
+# notarized, and created the draft release with its .app.zip asset.
+#
+# Why a separate workflow: the appcast description is what users see
+# in Sparkle's "Check for Updates" panel. We want it to carry the
+# polished, human-written release notes (Vince Vaughn voice), not the
+# auto-generated PR list that exists at tag-push time. Decoupling
+# appcast publication from tag push means:
+#   - The maintainer edits the draft release body before clicking
+#     Publish, and what users see in-app matches what they see on the
+#     GitHub release page.
+#   - Tagging a release no longer auto-publishes to users; releases
+#     are deliberate by construction.
+#
+# Behavior: rebuilds the signed appcast <item> from the published
+# release body and upserts it into appcast.xml on main. If an item
+# with the matching <sparkle:version> already exists (e.g. because
+# this release was previously published, edited, and re-published),
+# its content is replaced; otherwise the new item is spliced in
+# before </channel>.
+
+name: Appcast publish
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write  # to push appcast.xml to main
+
+jobs:
+  publish:
+    # Same self-hosted runner as release.yml so we share the
+    # SPARKLE_PRIVATE_KEY secret context and the resolved Swift
+    # package artifacts (sign_update binary).
+    runs-on: [self-hosted, macos-arm64, xcode-26-4-1]
+    timeout-minutes: 10
+
+    env:
+      VERSION_TAG: ${{ github.event.release.tag_name }}
+
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v6
+        with:
+          ref: main
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Compute version number
+        run: echo "VERSION_NUM=${VERSION_TAG#v}" >> "$GITHUB_ENV"
+
+      - name: Skip dryrun tags
+        run: |
+          set -euo pipefail
+          case "$VERSION_TAG" in
+              *dryrun*)
+                  echo "::notice::Skipping appcast publish for dryrun tag $VERSION_TAG"
+                  echo "SKIP_APPCAST=1" >> "$GITHUB_ENV"
+                  ;;
+          esac
+
+      - name: Resolve Swift package (sign_update binary)
+        if: env.SKIP_APPCAST != '1'
+        run: swift package resolve
+
+      - name: Download release asset
+        if: env.SKIP_APPCAST != '1'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          gh release download "$VERSION_TAG" \
+              --pattern "AVPainReliever.app.zip" \
+              --dir dist
+
+      - name: Render release notes to HTML
+        if: env.SKIP_APPCAST != '1'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          BODY="$(gh release view "$VERSION_TAG" --json body --jq .body 2>/dev/null || true)"
+          if [[ -z "$BODY" ]]; then
+              echo "::notice::Release body is empty; appcast item will not include a description"
+              echo "RELEASE_NOTES_HTML=" >> "$GITHUB_ENV"
+              exit 0
+          fi
+          # GitHub's /markdown API renders GFM exactly like the release
+          # page does, so the appcast HTML matches what the user sees on
+          # the release page.
+          HTML="$(gh api -X POST /markdown -f text="$BODY" -f mode=gfm)"
+          {
+              echo "RELEASE_NOTES_HTML<<APPCAST_EOF"
+              echo "$HTML"
+              echo "APPCAST_EOF"
+          } >> "$GITHUB_ENV"
+
+      - name: Sign appcast item
+        if: env.SKIP_APPCAST != '1'
+        env:
+          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+          VERSION: ${{ env.VERSION_NUM }}
+          RELEASE_NOTES_HTML: ${{ env.RELEASE_NOTES_HTML }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${SPARKLE_PRIVATE_KEY:-}" ]]; then
+              echo "::error::SPARKLE_PRIVATE_KEY is empty; cannot sign the appcast item"
+              exit 1
+          fi
+          # Stable by default. To opt a release into the experimental
+          # Sparkle channel, append `-experimental` (or
+          # `-experimental.N`) to the tag, e.g. `v0.2.1.0-experimental.1`.
+          # Only installs that have allowlisted "experimental" via
+          # Settings → General → Updates → "Receive experimental
+          # updates" see those items.
+          case "$VERSION_TAG" in
+              *-experimental*) export CHANNEL=experimental ;;
+              *)               export CHANNEL= ;;
+          esac
+          echo "Appcast channel: ${CHANNEL:-<stable>}"
+          ITEM_FILE="$RUNNER_TEMP/appcast-item.xml"
+          scripts/sign-appcast.sh dist/AVPainReliever.app.zip > "$ITEM_FILE"
+          echo "APPCAST_ITEM_FILE=$ITEM_FILE" >> "$GITHUB_ENV"
+
+      - name: Upsert item into appcast.xml on main
+        if: env.SKIP_APPCAST != '1'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ITEM_FILE: ${{ env.APPCAST_ITEM_FILE }}
+          VERSION: ${{ env.VERSION_NUM }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${ITEM_FILE:-}" || ! -f "${ITEM_FILE:-}" ]]; then
+              echo "::error::No signed appcast item to publish"
+              exit 1
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          # Pull again in case main moved between checkout and now.
+          git fetch origin main
+          git checkout main
+          git pull --ff-only origin main
+          # Upsert: if an <item> block with <sparkle:version>$VERSION</sparkle:version>
+          # exists, replace it with the new signed item. Otherwise splice
+          # the new item before </channel>. awk buffers each <item>...</item>
+          # block so the version-match check operates on the full block,
+          # not a single line.
+          awk \
+              -v item_file="$ITEM_FILE" \
+              -v target_version="$VERSION" \
+              '
+              BEGIN { in_item = 0; item_buf = ""; replaced = 0 }
+              /<item>/ {
+                  in_item = 1
+                  item_buf = $0
+                  next
+              }
+              in_item == 1 && /<\/item>/ {
+                  item_buf = item_buf "\n" $0
+                  marker = "<sparkle:version>" target_version "</sparkle:version>"
+                  if (index(item_buf, marker) > 0) {
+                      while ((getline line < item_file) > 0) print line
+                      close(item_file)
+                      replaced = 1
+                  } else {
+                      print item_buf
+                  }
+                  in_item = 0
+                  item_buf = ""
+                  next
+              }
+              in_item == 1 {
+                  item_buf = item_buf "\n" $0
+                  next
+              }
+              /<\/channel>/ && !replaced {
+                  while ((getline line < item_file) > 0) print line
+                  close(item_file)
+              }
+              { print }
+              ' appcast.xml > appcast.xml.new
+          mv appcast.xml.new appcast.xml
+          git add appcast.xml
+          git commit -m "appcast: publish $VERSION_TAG
+
+          [skip ci]"
+          git push origin main

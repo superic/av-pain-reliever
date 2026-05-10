@@ -227,86 +227,11 @@ jobs:
                   --title "$VERSION_TAG"
           fi
 
-      - name: Render release notes to HTML
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -euo pipefail
-          BODY="$(gh release view "$VERSION_TAG" --json body --jq .body 2>/dev/null || true)"
-          if [[ -z "$BODY" ]]; then
-              echo "::notice::Release body is empty; appcast item will not include a description"
-              echo "RELEASE_NOTES_HTML=" >> "$GITHUB_ENV"
-              exit 0
-          fi
-          # GitHub's /markdown API renders GFM exactly like the release
-          # page does, so the appcast HTML matches what the user sees on
-          # the release page.
-          HTML="$(gh api -X POST /markdown -f text="$BODY" -f mode=gfm)"
-          {
-              echo "RELEASE_NOTES_HTML<<APPCAST_EOF"
-              echo "$HTML"
-              echo "APPCAST_EOF"
-          } >> "$GITHUB_ENV"
-
-      - name: Sign appcast item
-        env:
-          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
-          VERSION: ${{ env.VERSION_NUM }}
-          RELEASE_NOTES_HTML: ${{ env.RELEASE_NOTES_HTML }}
-        run: |
-          set -euo pipefail
-          if [[ -z "${SPARKLE_PRIVATE_KEY:-}" ]]; then
-              echo "::warning::SPARKLE_PRIVATE_KEY empty — appcast item will not be signed/published"
-              echo "APPCAST_ITEM_FILE=" >> "$GITHUB_ENV"
-              exit 0
-          fi
-          # Stable by default. To opt a release into the experimental
-          # Sparkle channel, append `-experimental` (or
-          # `-experimental.N`) to the tag — e.g. `v0.2.1.0-experimental.1`.
-          # Only installs that have allowlisted "experimental" via
-          # Settings → General → Updates → "Receive experimental
-          # updates" see those items.
-          #
-          # Earlier rule was the inverse (v0.2.x defaulted to
-          # experimental during the virtual-camera development track).
-          # That track graduated to stable in 2026-05; the new default
-          # matches how most apps work and is future-proof for major
-          # version bumps without workflow edits.
-          case "$VERSION_TAG" in
-              *-experimental*) export CHANNEL=experimental ;;
-              *)               export CHANNEL= ;;
-          esac
-          echo "Appcast channel: ${CHANNEL:-<stable>}"
-          ITEM_FILE="$RUNNER_TEMP/appcast-item.xml"
-          scripts/sign-appcast.sh dist/AVPainReliever.app.zip > "$ITEM_FILE"
-          echo "APPCAST_ITEM_FILE=$ITEM_FILE" >> "$GITHUB_ENV"
-
-      - name: Append item to appcast.xml on main
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -euo pipefail
-          if [[ -z "${APPCAST_ITEM_FILE:-}" || ! -f "${APPCAST_ITEM_FILE:-}" ]]; then
-              echo "::warning::No signed appcast item to publish"
-              exit 0
-          fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git fetch origin main
-          git checkout main
-          # Splice the new <item> in immediately before </channel>.
-          # awk over sed because sed's behavior across BSD/GNU on
-          # multi-line replaces is annoying to make portable.
-          awk -v item_file="$APPCAST_ITEM_FILE" '
-              /<\/channel>/ {
-                  while ((getline line < item_file) > 0) print line
-                  close(item_file)
-              }
-              { print }
-          ' appcast.xml > appcast.xml.new
-          mv appcast.xml.new appcast.xml
-          git add appcast.xml
-          git commit -m "appcast: publish $VERSION_TAG
-
-          [skip ci]"
-          git push origin main
+      # Appcast publishing happens in a separate workflow
+      # (.github/workflows/appcast-publish.yml) triggered by
+      # `release: published`. That decouples "binary is built and
+      # available" from "users see it via Check for Updates": the
+      # maintainer edits the draft release notes (typically into the
+      # Vince Vaughn voice) before clicking Publish, and the appcast
+      # item gets the published body as its description rather than
+      # the auto-generated PR list. Releases become deliberate.

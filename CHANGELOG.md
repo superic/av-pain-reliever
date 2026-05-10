@@ -1036,6 +1036,18 @@ The Scope creep candidates list grew by two entries to keep the canonical list c
 
 Doc-only PR; no code changes.
 
+### Decouple appcast publish from tag push (2026-05-09)
+
+Moved the appcast `<item>` insertion out of `release.yml` into a new `appcast-publish.yml` workflow that triggers on `release: published`. The old flow auto-spliced the appcast item the moment a tag landed, using GitHub's auto-generated PR list as the description. That meant the in-app "Check for Updates" panel showed users a wall of PR titles instead of the polished Vince Vaughn voice that was meant for `appcast.xml`. By the time the maintainer edited the draft release body into the right voice and clicked Publish, the appcast had already shipped to users with the wrong content.
+
+New flow: `release.yml` builds, signs, notarizes, and creates the draft release with the .app.zip asset; nothing touches `appcast.xml`. After the maintainer edits the draft notes and clicks Publish, `appcast-publish.yml` runs on the same self-hosted runner, pulls the published body via `gh release view`, renders it through GitHub's `/markdown` API (same renderer the release page uses, so the in-app HTML matches what users see on the release page), re-signs the appcast item with the EdDSA private key via `scripts/sign-appcast.sh`, and upserts it into `appcast.xml` on `main`. Releases are now deliberate by construction, the version isn't visible to auto-updating users until the maintainer signals "I'm ready" by clicking Publish.
+
+The upsert logic is awk over `appcast.xml`: buffer each `<item>...</item>` block, check whether `<sparkle:version>$VERSION</sparkle:version>` is inside the buffer, replace if found and splice before `</channel>` if not. Tested locally against the live `appcast.xml`: replacing v0.2.0.16's existing item kept the count at 36; splicing a fictional v9.9.9 item bumped the count to 37 and preserved the channel/RSS closing tags. Channel-suffix dispatch (`-experimental.N` → experimental channel, bare tag → stable) moved to the new workflow unchanged. Dryrun tags (`*dryrun*`) skip appcast publishing entirely, same as before.
+
+Side benefit: `appcast.xml` updates can no longer race the maintainer's editing window. Two callers, one source of truth (the published release body), and the GitHub Release page and the Sparkle update panel will always agree.
+
+CI-only PR; no app code changes.
+
 ## V1 design pass (2026-05-01)
 
 The functional engine + wizard was complete (94 tests, end-to-end
