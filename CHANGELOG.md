@@ -976,6 +976,16 @@ The first apply on launch (from `engine.start()`) still happens before visibilit
 
 PR: #79.
 
+### Poll for visibility instead of one-shot checking (2026-05-09)
+
+Follow-up to PR #79. Hands-on testing surfaced a second visibility-race symptom on the in-session toggle-off-then-on path: the auto-relaunch's first visibility check at 1.5s frequently fails because the OS hasn't fully republished the Camera Extension yet (it was just deactivated and reactivated within a few seconds). State escalates to `.requiresRelaunch` again, and the user has to click Restart a *second* time. Empirically the OS needs another ~3-5s after that, at which point the cache is healthy and Photo Booth/Zoom see the virtual camera fine.
+
+`scheduleHostVisibilityCheck` previously did a one-shot `asyncAfter(deadline: .now() + 1.5)`. Now it uses a small polling loop: first check at 1.5s (so the fresh-launch happy path's latency stays the same), and on failure poll every 1s up to an 8s total budget. As soon as `hostCanSeeVirtualCamera()` returns true, fire `onVisibilityConfirmed` and stop polling. Only escalate to `.requiresRelaunch` once the budget is exhausted.
+
+Net effect: the toggle-off-then-on path now needs one auto-relaunch instead of two. The fresh-launch path is unchanged (the first check at 1.5s passes and we exit immediately). Failure mode (extension truly broken) takes 8s instead of 1.5s before showing the Restart button — acceptable tradeoff because the success rate of the eventual poll is high enough that the additional dead time on the rare honest-failure case isn't worse than the false-escalation rate of the one-shot check.
+
+Recursion via `DispatchQueue.main.asyncAfter` (each poll schedules the next) is safe: the closure captures `[weak self]`, so a deallocated activator bails on the `guard let self`. State changes during polling (user disables, manual override) bail via `guard self.state == .on`.
+
 - **When we ship a Phase 1 fix or feature**, ask: does this teach us
   something about the Swift port? If yes, add to "Lessons learned."
 - **When the user gives feedback or hits a bug**, ask: should this be

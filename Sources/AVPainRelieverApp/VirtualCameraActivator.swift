@@ -320,25 +320,39 @@ final class VirtualCameraActivator: NSObject, ObservableObject,
     /// `.requiresRelaunch` so Settings can offer the same Restart
     /// affordance the disable→enable path uses.
     private func scheduleHostVisibilityCheck() {
-        // ~1.5 s is enough for CMIO to publish after activation on
-        // every machine I've measured. Too short and a healthy
-        // first-activation gets misclassified; longer adds dead time
-        // before the wizard's camera list reflects reality.
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
+        // First check at 1.5s (the calibrated minimum for fresh-launch
+        // where CMIO has published and AVFoundation's DiscoverySession
+        // cache has refreshed). On failure, poll every 1s up to 8s
+        // total. The auto-relaunch path (host restarted after a
+        // toggle-off-then-on cycle) often needs 3-5s for the OS to
+        // fully republish the extension; a one-shot 1.5s check
+        // escalates to `.requiresRelaunch` every time and forces a
+        // second relaunch.
+        let deadline = Date().addingTimeInterval(8.0)
+        pollHostVisibility(deadline: deadline, nextAttemptIn: 1.5)
+    }
+
+    private func pollHostVisibility(deadline: Date, nextAttemptIn delay: TimeInterval) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
             guard let self, self.state == .on else { return }
             if Self.hostCanSeeVirtualCamera() {
                 logger.notice("Visibility check: host sees the virtual camera in DiscoverySession")
                 self.onVisibilityConfirmed?()
                 return
             }
-            logger.error("Visibility check: host process can't see its own Camera Extension — escalating to .requiresRelaunch")
-            self.endConsumerWatch()
-            self.stopGraceTimer?.cancel()
-            self.stopGraceTimer = nil
-            self.consumerActive = false
-            self.pendingSourceName = nil
-            self.stopCapturePipeline()
-            self.state = .requiresRelaunch
+            if Date() >= deadline {
+                logger.error("Visibility check: host process can't see its own Camera Extension within budget; escalating to .requiresRelaunch")
+                self.endConsumerWatch()
+                self.stopGraceTimer?.cancel()
+                self.stopGraceTimer = nil
+                self.consumerActive = false
+                self.pendingSourceName = nil
+                self.stopCapturePipeline()
+                self.state = .requiresRelaunch
+                return
+            }
+            logger.debug("Visibility check: not yet visible, retrying in 1s")
+            self.pollHostVisibility(deadline: deadline, nextAttemptIn: 1.0)
         }
     }
 
