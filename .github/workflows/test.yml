@@ -72,3 +72,11 @@ jobs:
 
       - name: Test
         run: swift test --parallel
+
+      - name: Appcast upsert regression
+        # Tiny shell-test harness for scripts/upsert-appcast-item.awk.
+        # Pins the start-of-line anchoring that prevents the awk
+        # script from eating XML comments whose prose mentions
+        # `<item>`. Without this, a future workflow tweak could
+        # re-introduce the 2026-05-10 live-feed-broke bug.
+        run: scripts/test-upsert-appcast.sh

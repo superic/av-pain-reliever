@@ -5,8 +5,6 @@
         <link>https://github.com/superic/av-pain-reliever</link>
         <description>AV Pain Reliever — release feed for the Sparkle auto-updater.</description>
         <language>en</language>
-        <!--
-            Stub feed. The .github/workflows/release.yml workflow
         <item>
             <title>Version 0.1.0</title>
             <pubDate>Sun, 03 May 2026 07:04:30 +0000</pubDate>
