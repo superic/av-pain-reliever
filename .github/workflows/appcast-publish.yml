@@ -148,44 +148,16 @@ jobs:
           git checkout main
           git pull --ff-only origin main
           # Upsert: if an <item> block with <sparkle:version>$VERSION</sparkle:version>
-          # exists, replace it with the new signed item. Otherwise splice
-          # the new item before </channel>. awk buffers each <item>...</item>
-          # block so the version-match check operates on the full block,
-          # not a single line.
+          # exists, replace it with the new signed item. Otherwise
+          # splice the new item before </channel>. The awk logic
+          # lives in scripts/upsert-appcast-item.awk so it can be
+          # unit-tested independently (see
+          # scripts/test-upsert-appcast.sh, exercised in test.yml).
           awk \
               -v item_file="$ITEM_FILE" \
               -v target_version="$VERSION" \
-              '
-              BEGIN { in_item = 0; item_buf = ""; replaced = 0 }
-              /<item>/ {
-                  in_item = 1
-                  item_buf = $0
-                  next
-              }
-              in_item == 1 && /<\/item>/ {
-                  item_buf = item_buf "\n" $0
-                  marker = "<sparkle:version>" target_version "</sparkle:version>"
-                  if (index(item_buf, marker) > 0) {
-                      while ((getline line < item_file) > 0) print line
-                      close(item_file)
-                      replaced = 1
-                  } else {
-                      print item_buf
-                  }
-                  in_item = 0
-                  item_buf = ""
-                  next
-              }
-              in_item == 1 {
-                  item_buf = item_buf "\n" $0
-                  next
-              }
-              /<\/channel>/ && !replaced {
-                  while ((getline line < item_file) > 0) print line
-                  close(item_file)
-              }
-              { print }
-              ' appcast.xml > appcast.xml.new
+              -f scripts/upsert-appcast-item.awk \
+              appcast.xml > appcast.xml.new
           mv appcast.xml.new appcast.xml
           git add appcast.xml
           git commit -m "appcast: publish $VERSION_TAG
