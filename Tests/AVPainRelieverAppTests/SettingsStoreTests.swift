@@ -449,6 +449,350 @@ struct SettingsStoreTests {
         #expect(store.hasRecordedStats == true)
     }
 
+    // MARK: - Per-profile state migration (delete / rename / reconcile)
+
+    @Test("forgetProfile clears the deleted profile's remembered-device caches")
+    func forgetProfileClearsRememberedDeviceCaches() {
+        // Regression for the orphan-on-delete bug surfaced by slop
+        // review: deleting a profile used to leave its three
+        // remembered-* dict entries dangling in UserDefaults until
+        // the user found the Forget Unused Devices button.
+        let store = SettingsStore(defaults: makeSuite())
+        store.rememberDevices(
+            forProfile: "conference-room",
+            audioInputs: ["Yeti"],
+            audioOutputs: ["Conference Speakers"],
+            cameras: ["Conference Cam"]
+        )
+        // Sanity: the entries exist before the delete.
+        #expect(store.rememberedAudioInputs["conference-room"] == ["Yeti"])
+
+        store.forgetProfile(slug: "conference-room")
+
+        #expect(store.rememberedAudioInputs["conference-room"] == nil)
+        #expect(store.rememberedAudioOutputs["conference-room"] == nil)
+        #expect(store.rememberedCameras["conference-room"] == nil)
+    }
+
+    @Test("forgetProfile leaves other profiles' caches intact")
+    func forgetProfileSpared() {
+        let store = SettingsStore(defaults: makeSuite())
+        store.rememberDevices(
+            forProfile: "conference-room",
+            audioInputs: ["Yeti"], audioOutputs: [], cameras: []
+        )
+        store.rememberDevices(
+            forProfile: "home-office",
+            audioInputs: ["CalDigit"], audioOutputs: [], cameras: []
+        )
+        store.forgetProfile(slug: "conference-room")
+        #expect(store.rememberedAudioInputs["home-office"] == ["CalDigit"])
+    }
+
+    @Test("reconcileProfiles drops cache entries for slugs not in the current set")
+    func reconcileProfilesDropsCacheOrphans() {
+        // Regression for the orphan-survives-reboot path: a profile
+        // deleted out-of-band (hand-edit of profiles.toml, missed
+        // forgetProfile call) should have its cache cleaned up at
+        // the next bootEngine via reconcileProfiles.
+        let store = SettingsStore(defaults: makeSuite())
+        store.rememberDevices(
+            forProfile: "ghost-from-old-build",
+            audioInputs: ["Old Mic"], audioOutputs: [], cameras: []
+        )
+        store.rememberDevices(
+            forProfile: "home-office",
+            audioInputs: ["CalDigit"],
+            audioOutputs: ["CalDigit"],
+            cameras: ["BRIO"]
+        )
+
+        store.reconcileProfiles(currentSlugs: ["home-office"])
+
+        #expect(store.rememberedAudioInputs["ghost-from-old-build"] == nil)
+        #expect(store.rememberedAudioInputs["home-office"] == ["CalDigit"])
+        #expect(store.rememberedCameras["home-office"] == ["BRIO"])
+    }
+
+    @Test("renameProfile moves stats and remembered-device caches to the new slug")
+    func renameProfileMovesAllPerSlugState() {
+        // Regression for the orphan-on-rename bug: renaming Home
+        // Office to Apartment should carry the per-profile cache so
+        // the wizard's dropdowns keep showing the saved selections
+        // under the new identity.
+        let store = SettingsStore(defaults: makeSuite())
+        store.statsTrackingEnabled = true
+        store.recordSwitch(toSlug: "home-office")
+        store.rememberDevices(
+            forProfile: "home-office",
+            audioInputs: ["Yeti", "AT2020"],
+            audioOutputs: ["CalDigit"],
+            cameras: ["BRIO"]
+        )
+
+        store.renameProfile(from: "home-office", to: "apartment")
+
+        // Old slug is gone.
+        #expect(store.perProfileCounts["home-office"] == nil)
+        #expect(store.rememberedAudioInputs["home-office"] == nil)
+        #expect(store.rememberedAudioOutputs["home-office"] == nil)
+        #expect(store.rememberedCameras["home-office"] == nil)
+        // New slug carries the migrated state.
+        #expect(store.perProfileCounts["apartment"] == 1)
+        #expect(store.rememberedAudioInputs["apartment"] == ["Yeti", "AT2020"])
+        #expect(store.rememberedAudioOutputs["apartment"] == ["CalDigit"])
+        #expect(store.rememberedCameras["apartment"] == ["BRIO"])
+        // lastSwitchSlug follows the rename.
+        #expect(store.lastSwitchSlug == "apartment")
+    }
+
+    @Test("renameProfile is a no-op when old and new slugs match")
+    func renameProfileNoOpForSameSlug() {
+        let store = SettingsStore(defaults: makeSuite())
+        store.rememberDevices(
+            forProfile: "home-office",
+            audioInputs: ["Yeti"], audioOutputs: [], cameras: []
+        )
+        store.renameProfile(from: "home-office", to: "home-office")
+        #expect(store.rememberedAudioInputs["home-office"] == ["Yeti"])
+    }
+
+    @Test("renameProfile leaves lastSwitchSlug alone when it doesn't point at the renamed profile")
+    func renameProfileLeavesUnrelatedLastSwitchAlone() {
+        let store = SettingsStore(defaults: makeSuite())
+        store.statsTrackingEnabled = true
+        store.recordSwitch(toSlug: "conference-room")
+        store.rememberDevices(
+            forProfile: "home-office",
+            audioInputs: ["Yeti"], audioOutputs: [], cameras: []
+        )
+        store.renameProfile(from: "home-office", to: "apartment")
+        #expect(store.lastSwitchSlug == "conference-room")
+    }
+
+    // MARK: - Remembered devices (wizard pickers, per-profile cache)
+
+    @Test("remembered-device caches default to empty dicts")
+    func rememberedDevicesDefaultEmpty() {
+        let store = SettingsStore(defaults: makeSuite())
+        #expect(store.rememberedAudioInputs.isEmpty)
+        #expect(store.rememberedAudioOutputs.isEmpty)
+        #expect(store.rememberedCameras.isEmpty)
+        #expect(store.hasRememberedDevices == false)
+    }
+
+    @Test("rememberDevices appends new names under the profile's slug and dedupes")
+    func rememberDevicesAppendsAndDedupes() {
+        let store = SettingsStore(defaults: makeSuite())
+        store.rememberDevices(
+            forProfile: "home-office",
+            audioInputs: ["Yeti", "MacBook Pro Microphone"],
+            audioOutputs: ["MacBook Pro Speakers"],
+            cameras: ["Built-in", "Logitech BRIO"]
+        )
+        #expect(store.rememberedAudioInputs["home-office"] == ["Yeti", "MacBook Pro Microphone"])
+        #expect(store.rememberedAudioOutputs["home-office"] == ["MacBook Pro Speakers"])
+        #expect(store.rememberedCameras["home-office"] == ["Built-in", "Logitech BRIO"])
+        #expect(store.hasRememberedDevices == true)
+
+        // Second call for the same profile with overlap + a new entry
+        // only appends the new one.
+        store.rememberDevices(
+            forProfile: "home-office",
+            audioInputs: ["Yeti", "Shure MV7"],
+            audioOutputs: ["MacBook Pro Speakers"],
+            cameras: ["Logitech BRIO"]
+        )
+        #expect(store.rememberedAudioInputs["home-office"] == ["Yeti", "MacBook Pro Microphone", "Shure MV7"])
+        #expect(store.rememberedAudioOutputs["home-office"] == ["MacBook Pro Speakers"])
+        #expect(store.rememberedCameras["home-office"] == ["Built-in", "Logitech BRIO"])
+    }
+
+    @Test("rememberDevices keeps profiles' caches isolated from each other")
+    func rememberDevicesIsolatesProfiles() {
+        // The headline behavior for the per-profile redesign: Home
+        // Office's CalDigit must NEVER leak into Conference Room's
+        // dropdown when the user opens Conference Room's wizard.
+        let store = SettingsStore(defaults: makeSuite())
+        store.rememberDevices(
+            forProfile: "home-office",
+            audioInputs: ["CalDigit TS3 Audio"],
+            audioOutputs: ["CalDigit TS3 Audio"],
+            cameras: ["Logitech BRIO"]
+        )
+        store.rememberDevices(
+            forProfile: "conference-room",
+            audioInputs: ["Yeti Stereo Microphone"],
+            audioOutputs: ["Conference Room Speakers"],
+            cameras: ["Conference Cam"]
+        )
+        // Each profile only sees its own entries.
+        #expect(store.rememberedAudioInputs["home-office"] == ["CalDigit TS3 Audio"])
+        #expect(store.rememberedAudioInputs["conference-room"] == ["Yeti Stereo Microphone"])
+        #expect(store.rememberedCameras["home-office"] == ["Logitech BRIO"])
+        #expect(store.rememberedCameras["conference-room"] == ["Conference Cam"])
+    }
+
+    @Test("rememberDevices drops empty-string inputs defensively")
+    func rememberDevicesIgnoresEmptyNames() {
+        let store = SettingsStore(defaults: makeSuite())
+        store.rememberDevices(
+            forProfile: "home-office",
+            audioInputs: ["", "Yeti"],
+            audioOutputs: [""],
+            cameras: ["", "Built-in"]
+        )
+        #expect(store.rememberedAudioInputs["home-office"] == ["Yeti"])
+        #expect(store.rememberedAudioOutputs["home-office"] == nil)
+        #expect(store.rememberedCameras["home-office"] == ["Built-in"])
+    }
+
+    @Test("remembered-device caches persist across reloads")
+    func rememberedDevicesPersist() {
+        let defaults = makeSuite()
+        do {
+            let store = SettingsStore(defaults: defaults)
+            store.rememberDevices(
+                forProfile: "home-office",
+                audioInputs: ["Yeti"],
+                audioOutputs: ["Studio Display Speakers"],
+                cameras: ["Logitech BRIO"]
+            )
+        }
+        let reopened = SettingsStore(defaults: defaults)
+        #expect(reopened.rememberedAudioInputs["home-office"] == ["Yeti"])
+        #expect(reopened.rememberedAudioOutputs["home-office"] == ["Studio Display Speakers"])
+        #expect(reopened.rememberedCameras["home-office"] == ["Logitech BRIO"])
+        #expect(reopened.hasRememberedDevices == true)
+    }
+
+    @Test("forget with an empty profiles list wipes every cache entry")
+    func forgetWithEmptyProfilesWipes() {
+        let store = SettingsStore(defaults: makeSuite())
+        store.rememberDevices(
+            forProfile: "home-office",
+            audioInputs: ["Yeti"],
+            audioOutputs: ["Speakers"],
+            cameras: ["BRIO"]
+        )
+        store.forgetRememberedDevices(currentProfiles: [])
+        #expect(store.rememberedAudioInputs.isEmpty)
+        #expect(store.rememberedAudioOutputs.isEmpty)
+        #expect(store.rememberedCameras.isEmpty)
+        #expect(store.hasRememberedDevices == false)
+    }
+
+    @Test("forget trims each profile's cache to its current selections")
+    func forgetTrimsToCurrentSelections() {
+        // Models the journal a profile builds up: Yeti was originally
+        // saved, later swapped for AT2020. Both are in the cache
+        // (history), but only AT2020 is the current saved value.
+        // Forget should drop Yeti and keep AT2020.
+        let store = SettingsStore(defaults: makeSuite())
+        store.rememberDevices(
+            forProfile: "home-office",
+            audioInputs: ["Yeti", "AT2020"],
+            audioOutputs: ["Studio Display Speakers", "MacBook Pro Speakers"],
+            cameras: ["Logitech BRIO", "Built-in"]
+        )
+        let homeOffice = Profile(
+            name: "home-office",
+            fingerprint: [],
+            audioInput: "AT2020",
+            audioOutput: "MacBook Pro Speakers",
+            camera: "Built-in"
+        )
+        store.forgetRememberedDevices(currentProfiles: [homeOffice])
+
+        #expect(store.rememberedAudioInputs["home-office"] == ["AT2020"])
+        #expect(store.rememberedAudioOutputs["home-office"] == ["MacBook Pro Speakers"])
+        #expect(store.rememberedCameras["home-office"] == ["Built-in"])
+    }
+
+    @Test("forget drops cache entries for profiles that no longer exist")
+    func forgetDropsOrphanProfileCaches() {
+        let store = SettingsStore(defaults: makeSuite())
+        store.rememberDevices(
+            forProfile: "deleted-profile",
+            audioInputs: ["Old Mic"],
+            audioOutputs: [],
+            cameras: []
+        )
+        store.rememberDevices(
+            forProfile: "home-office",
+            audioInputs: ["Yeti"],
+            audioOutputs: [],
+            cameras: []
+        )
+        let homeOffice = Profile(
+            name: "home-office",
+            fingerprint: [],
+            audioInput: "Yeti"
+        )
+        store.forgetRememberedDevices(currentProfiles: [homeOffice])
+
+        // Deleted profile's entry is gone; live profile is preserved.
+        #expect(store.rememberedAudioInputs["deleted-profile"] == nil)
+        #expect(store.rememberedAudioInputs["home-office"] == ["Yeti"])
+    }
+
+    @Test("forget keeps profiles' caches with empty saved selections by dropping them entirely")
+    func forgetEmptyProfileSelectionWipesProfileEntry() {
+        // Profile with nil audioInput etc. has nothing to preserve.
+        // The trimming function should drop the cache entry entirely
+        // (empty arrays produce nothing meaningful to keep).
+        let store = SettingsStore(defaults: makeSuite())
+        store.rememberDevices(
+            forProfile: "minimal",
+            audioInputs: ["Yeti"],
+            audioOutputs: ["Speakers"],
+            cameras: ["BRIO"]
+        )
+        let minimal = Profile(name: "minimal", fingerprint: []) // all selections nil
+        store.forgetRememberedDevices(currentProfiles: [minimal])
+
+        #expect(store.rememberedAudioInputs["minimal"] == nil)
+        #expect(store.rememberedAudioOutputs["minimal"] == nil)
+        #expect(store.rememberedCameras["minimal"] == nil)
+        #expect(store.hasRememberedDevices == false)
+    }
+
+    @Test("forget is a no-op when every profile's cache already matches its current selections")
+    func forgetNoOpWhenEverythingInUse() {
+        let store = SettingsStore(defaults: makeSuite())
+        store.rememberDevices(
+            forProfile: "home-office",
+            audioInputs: ["Yeti"],
+            audioOutputs: ["MacBook Pro Speakers"],
+            cameras: ["Built-in"]
+        )
+        let homeOffice = Profile(
+            name: "home-office",
+            fingerprint: [],
+            audioInput: "Yeti",
+            audioOutput: "MacBook Pro Speakers",
+            camera: "Built-in"
+        )
+        store.forgetRememberedDevices(currentProfiles: [homeOffice])
+        // Nothing changed.
+        #expect(store.rememberedAudioInputs["home-office"] == ["Yeti"])
+        #expect(store.rememberedAudioOutputs["home-office"] == ["MacBook Pro Speakers"])
+        #expect(store.rememberedCameras["home-office"] == ["Built-in"])
+    }
+
+    @Test("constructing a fresh SettingsStore does not write defaults to disk")
+    func freshStoreDoesNotPersistDefaults() {
+        let defaults = makeSuite()
+        _ = SettingsStore(defaults: defaults)
+        // The remembered-device caches use the lazy-default-on-read
+        // pattern (locked behavior per CLAUDE.md). A construction-only
+        // pass must NOT write `[:]` to disk — that would lock in the
+        // default and break future evolution of the schema.
+        #expect(defaults.object(forKey: SettingsStore.Key.rememberedAudioInputs) == nil)
+        #expect(defaults.object(forKey: SettingsStore.Key.rememberedAudioOutputs) == nil)
+        #expect(defaults.object(forKey: SettingsStore.Key.rememberedCameras) == nil)
+    }
+
     @Test("stats fields persist across reloads")
     func statsFieldsRoundTrip() {
         let defaults = makeSuite()

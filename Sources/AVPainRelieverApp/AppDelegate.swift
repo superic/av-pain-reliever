@@ -23,11 +23,24 @@ struct AddProfileDependencies {
     /// already taken — preventing the wizard from pre-loading a
     /// duplicate name that would collide at save time.
     let existingProfileSlugs: Set<String>
+    /// Every saved profile, including the one being edited. The
+    /// wizard's view model filters the editing slug out internally,
+    /// so callers can pass `availableProfiles` directly without
+    /// pre-filtering. Used to label USB rows that belong to a
+    /// different location ("In Home Office") rather than letting the
+    /// user assume the device is associated with this profile.
+    let otherProfiles: [Profile]
     /// Whether the virtual camera is the active routing layer at
     /// wizard-open time. Drives the camera picker's filter (the
     /// virtual camera is hidden from the list) and the helper text
     /// that explains the per-profile camera setting under each mode.
     let virtualCameraEnabled: Bool
+    /// Shared preferences store. The wizard appends every live audio
+    /// + camera device name into the store's remembered-devices
+    /// caches on each refresh, so the pickers can still show the
+    /// dock's mic when the user edits the profile from a different
+    /// location.
+    let settings: SettingsStore
     let onSaved: (_ forceApplySlug: String?) -> Void
 }
 
@@ -354,7 +367,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
 
         let logger = ConsoleLogger()
         let profiles = ProfileBootstrapper().loadOrBootstrap(logger: logger)
-        availableProfiles = profiles
+        availableProfiles = ProfileDisplayOrder.displayOrder(profiles)
         // Self-heal stats orphaned by anything that bypassed
         // `forgetProfile` (hand-edits to profiles.toml, or migration
         // from a build that predates the delete-time hook).
@@ -534,7 +547,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
             configURL: ProfileBootstrapper.canonicalTOMLURL,
             editing: editing,
             existingProfileSlugs: existing,
+            otherProfiles: availableProfiles,
             virtualCameraEnabled: virtualCameraActivator.state == .on,
+            settings: settings,
             onSaved: { [weak self] forceApplySlug in
                 // Saving any profile is taken as the user being
                 // committed — no need to keep showing the welcome

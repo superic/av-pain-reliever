@@ -77,7 +77,7 @@ struct AddProfileView: View {
                         if !viewModel.prettyPreview.isEmpty {
                             namePreviewCaption
                         } else {
-                            Text("Pick anything human — letters, spaces, punctuation are fine.")
+                            Text("Pick anything human. Letters, spaces, punctuation are fine.")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
@@ -114,12 +114,14 @@ struct AddProfileView: View {
                     audioPicker(
                         title: "Input (microphone)",
                         selection: $viewModel.audioInput,
-                        devices: viewModel.inputDevices
+                        devices: viewModel.inputDevices,
+                        disconnectedNames: viewModel.disconnectedInputNames
                     )
                     audioPicker(
                         title: "Output (speakers)",
                         selection: $viewModel.audioOutput,
-                        devices: viewModel.outputDevices
+                        devices: viewModel.outputDevices,
+                        disconnectedNames: viewModel.disconnectedOutputNames
                     )
                 } header: {
                     sectionHeader("Audio", symbol: Theme.Symbol.audioSection)
@@ -254,6 +256,20 @@ struct AddProfileView: View {
                 Text("There's already a profile called “\(collision.existingPrettyName)”. Did you mean to update it with the devices and audio you've selected, or is this a different location?")
             }
         }
+        .alert(
+            "Same fingerprint as “\(viewModel.pendingFingerprintWarning?.existingPrettyName ?? "")”",
+            isPresented: .isPresent($viewModel.pendingFingerprintWarning),
+            presenting: viewModel.pendingFingerprintWarning
+        ) { warning in
+            Button("Save Anyway") {
+                viewModel.confirmFingerprintWarning()
+            }
+            Button("Cancel", role: .cancel) {
+                viewModel.cancelFingerprintWarning()
+            }
+        } message: { warning in
+            Text("“\(warning.existingPrettyName)” already matches the same USB devices. When both are plugged in, only one switches automatically (the alphabetical winner). The other will still be reachable from the menu's Switch to submenu, but it won't apply by itself.")
+        }
     }
 
     // MARK: - Subviews
@@ -309,7 +325,7 @@ struct AddProfileView: View {
                 Image(systemName: "info.circle.fill")
                     .foregroundStyle(.tint)
                 (Text("Fallback profile. ").bold()
-                    + Text("With no devices ticked, this profile matches whenever no other profile does — useful for a laptop-undocked default. Tick devices above to make it specific to a location."))
+                    + Text("With no devices ticked, this profile matches whenever no other profile does. Useful for a laptop-undocked default. Tick devices above to make it specific to a location."))
                     .font(.caption)
                     .foregroundStyle(.primary)
             }
@@ -354,26 +370,38 @@ struct AddProfileView: View {
                                     // pill on portable peripherals
                                     // (keyboards, mice, phones,
                                     // AirPods, watches, headphones).
-                                    // These are auto-unticked by the
-                                    // view model — the pill is
-                                    // informational, explaining why
-                                    // the row is shown unticked. Tone
-                                    // is descriptive, not directive.
+                                    // Universal: applies regardless
+                                    // of which profile is being edited
+                                    // since portability is about the
+                                    // device class, not the location.
                                     StatusPill(text: "Travels with you", tint: .gray)
                                 } else if let category = DevicePortability
-                                    .importantCategory(deviceName: entry.name) {
+                                    .importantCategory(deviceName: entry.name),
+                                    viewModel.shouldShowImportantPill(forDevice: entry.device) {
                                     // Green "Important" pill on the
                                     // headline hardware that's most
-                                    // likely defining this location —
-                                    // dedicated mics, cameras, capture
-                                    // cards, audio interfaces.
-                                    // Auto-ticked by the view model;
-                                    // pill confirms the auto-selection
-                                    // and explains why. Mutually
-                                    // exclusive with "Travels with you"
-                                    // by classifier construction
-                                    // (their keywords don't overlap).
-                                    StatusPill(text: "Important: \(category)", tint: Theme.Color.success)
+                                    // likely defining this location.
+                                    // Gated on `shouldShowImportantPill`
+                                    // so it only fires when we're
+                                    // adding new (auto-tick context)
+                                    // or the device is already in this
+                                    // profile's fingerprint. Without
+                                    // the gate, CalDigit attached at
+                                    // home would be labeled "Important"
+                                    // while editing Conference Room.
+                                    // That's a false claim about its
+                                    // relevance to that profile.
+                                    StatusPill(text: "Important: \(category.capitalized)", tint: Theme.Color.success)
+                                } else if let otherLabel = viewModel.otherProfileLabel(forDevice: entry.device) {
+                                    // Quiet gray "In Home Office"
+                                    // pill on currently-attached
+                                    // devices that belong to another
+                                    // profile's fingerprint, so the
+                                    // user knows what they're looking
+                                    // at instead of an unexplained
+                                    // row. Fallback only: earlier
+                                    // pills win when they apply.
+                                    StatusPill(text: otherLabel, tint: .gray)
                                 }
                             }
                             Text(idLine(for: entry.device))
@@ -399,13 +427,13 @@ struct AddProfileView: View {
     @ViewBuilder
     private var cameraSectionHelperText: some View {
         if viewModel.virtualCameraEnabled {
-            Text("Virtual camera will use this as its source. Set Zoom, Slack, and Teams to “AV Pain Reliever” once — they'll follow your profile automatically.")
+            Text("Virtual camera will use this as its source. Set Zoom, Slack, and Teams to “AV Pain Reliever” once. They'll follow your profile automatically.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .fixedSize(horizontal: false, vertical: true)
         } else {
-            Text("Sets macOS's preferred camera. Apps with their own camera picker (Zoom, Slack, Teams) won't follow this — configure those once per location and they'll remember.")
+            Text("Sets macOS's preferred camera. Apps with their own camera picker (Zoom, Slack, Teams) won't follow this. Configure those once per location and they'll remember.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -413,48 +441,76 @@ struct AddProfileView: View {
         }
     }
 
-    /// Camera picker — mirrors `audioPicker`'s treatment of saved-
-    /// but-currently-unavailable values. Keeps a synthesized "(not
-    /// connected)" entry so a Home Office profile's external camera
-    /// stays visible when the user's editing from the laptop café.
+    /// Camera picker. Currently-attached cameras render first
+    /// (alphabetical), then a "(not connected)" group of cameras the
+    /// wizard has seen before but that aren't here right now. A
+    /// saved value that's somehow in neither list (a hand-edited
+    /// TOML, a forgot-everything reset) is synthesized at the top of
+    /// the disconnected group so the binding stays stable.
     private var cameraPicker: some View {
-        let saved = $viewModel.camera.wrappedValue
-        let savedAvailable = saved.map { name in
-            viewModel.cameras.contains(where: { $0.name == name })
-        } ?? true
+        let liveNames = viewModel.cameras.map(\.name)
+        let disconnected = mergedDisconnectedNames(
+            saved: viewModel.camera,
+            live: liveNames,
+            remembered: viewModel.disconnectedCameraNames
+        )
         return Picker("Camera", selection: $viewModel.camera) {
             Text("Don't change").tag(String?.none)
-            if let saved, !savedAvailable {
-                Text("\(saved)  (not connected)")
-                    .tag(String?.some(saved))
-            }
             ForEach(viewModel.cameras) { cam in
                 Text(cam.name).tag(String?.some(cam.name))
+            }
+            ForEach(disconnected, id: \.self) { name in
+                Text("\(name)  (not connected)")
+                    .tag(String?.some(name))
             }
         }
     }
 
-    private func audioPicker(title: String, selection: Binding<String?>, devices: [AudioDevice]) -> some View {
-        // If the saved value isn't in the live device list (the user
-        // is editing the profile while away from this location),
-        // synthesize an entry so the picker still displays the saved
-        // choice and the binding stays stable. The "(not connected)"
-        // suffix tells the user nothing's wrong — the device just
-        // isn't here right now.
-        let saved = selection.wrappedValue
-        let savedAvailable = saved.map { name in
-            devices.contains(where: { $0.name == name })
-        } ?? true
+    /// Build the audio-device picker. Currently-attached devices
+    /// render at the top (alphabetical, as CoreAudio returned them),
+    /// then the wizard's remembered-but-disconnected names at the
+    /// bottom (alphabetical, with " (not connected)" suffix). A
+    /// saved value that's in neither list is synthesized at the top
+    /// of the disconnected group so the binding never breaks.
+    private func audioPicker(
+        title: String,
+        selection: Binding<String?>,
+        devices: [AudioDevice],
+        disconnectedNames: [String]
+    ) -> some View {
+        let liveNames = devices.map(\.name)
+        let disconnected = mergedDisconnectedNames(
+            saved: selection.wrappedValue,
+            live: liveNames,
+            remembered: disconnectedNames
+        )
         return Picker(title, selection: selection) {
             Text("Don't change").tag(String?.none)
-            if let saved, !savedAvailable {
-                Text("\(saved)  (not connected)")
-                    .tag(String?.some(saved))
-            }
             ForEach(devices) { device in
                 Text(device.name).tag(String?.some(device.name))
             }
+            ForEach(disconnected, id: \.self) { name in
+                Text("\(name)  (not connected)")
+                    .tag(String?.some(name))
+            }
         }
+    }
+
+    /// Combine the wizard's remembered-disconnected list with the
+    /// saved value, so a saved-but-not-yet-remembered name (legacy
+    /// profile, post-forget edit) still appears. Sorted
+    /// alphabetically; case-sensitive dedupe matches the
+    /// SettingsStore cache's match semantics.
+    private func mergedDisconnectedNames(
+        saved: String?,
+        live: [String],
+        remembered: [String]
+    ) -> [String] {
+        var merged = Set(remembered)
+        if let saved, !live.contains(saved), !merged.contains(saved) {
+            merged.insert(saved)
+        }
+        return merged.sorted()
     }
 
     /// Caption line under each device row. Shows vid/pid and the

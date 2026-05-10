@@ -33,6 +33,9 @@ final class SettingsStore: ObservableObject {
         static let longestStreakDays = "longestStreakDays"
         static let activeDaysCount = "activeDaysCount"
         static let uniqueDeviceFingerprints = "uniqueDeviceFingerprints"
+        static let rememberedAudioInputs = "rememberedAudioInputs"
+        static let rememberedAudioOutputs = "rememberedAudioOutputs"
+        static let rememberedCameras = "rememberedCameras"
     }
 
     /// Toast on profile change?  Default on — the at-a-glance signal
@@ -227,6 +230,47 @@ final class SettingsStore: ObservableObject {
     /// extra published field.
     var uniqueDevicesSeenCount: Int { uniqueDeviceFingerprints.count }
 
+    /// Per-profile cache of audio input device names the wizard has
+    /// seen referenced by each profile's `audioInput` value over time.
+    /// Keyed by profile slug, value is the list of remembered names
+    /// (append-only, insertion-order preserved). The Add-Profile
+    /// wizard's input picker merges the live CoreAudio snapshot with
+    /// `rememberedAudioInputs[editingSlug] ?? []`, so a user editing
+    /// Conference Room from home still sees the dock's Yeti in the
+    /// dropdown without leaking Home Office's CalDigit into the same
+    /// picker.
+    ///
+    /// Entries persist until the user clicks "Forget unused devices"
+    /// in Settings → General, which trims each profile's cache to
+    /// only the names that profile currently references.
+    @Published var rememberedAudioInputs: [String: [String]] {
+        didSet { write(rememberedAudioInputs, forKey: Key.rememberedAudioInputs) }
+    }
+
+    /// Per-profile cache of audio output device names. Same shape +
+    /// semantics as `rememberedAudioInputs` but segregated because
+    /// CoreAudio's device list splits into input-only / output-only
+    /// subsets and the wizard's two pickers each consult one half.
+    @Published var rememberedAudioOutputs: [String: [String]] {
+        didSet { write(rememberedAudioOutputs, forKey: Key.rememberedAudioOutputs) }
+    }
+
+    /// Per-profile cache of camera display names. Same shape as the
+    /// audio caches.
+    @Published var rememberedCameras: [String: [String]] {
+        didSet { write(rememberedCameras, forKey: Key.rememberedCameras) }
+    }
+
+    /// True when any profile's remembered-device cache has at least
+    /// one entry. Drives the Settings → General "Forget unused
+    /// devices" affordance, which only renders when there's
+    /// something to wipe.
+    var hasRememberedDevices: Bool {
+        rememberedAudioInputs.values.contains { !$0.isEmpty }
+            || rememberedAudioOutputs.values.contains { !$0.isEmpty }
+            || rememberedCameras.values.contains { !$0.isEmpty }
+    }
+
     /// True iff there's user-meaningful stats data (counters
     /// non-zero, dictionaries / arrays non-empty, a last-switch
     /// recorded). Drives both the Reset Stats section's visibility
@@ -294,6 +338,9 @@ final class SettingsStore: ObservableObject {
         self.longestStreakDays = (defaults.object(forKey: Key.longestStreakDays) as? Int) ?? 0
         self.activeDaysCount = (defaults.object(forKey: Key.activeDaysCount) as? Int) ?? 0
         self.uniqueDeviceFingerprints = (defaults.object(forKey: Key.uniqueDeviceFingerprints) as? [String]) ?? []
+        self.rememberedAudioInputs = (defaults.object(forKey: Key.rememberedAudioInputs) as? [String: [String]]) ?? [:]
+        self.rememberedAudioOutputs = (defaults.object(forKey: Key.rememberedAudioOutputs) as? [String: [String]]) ?? [:]
+        self.rememberedCameras = (defaults.object(forKey: Key.rememberedCameras) as? [String: [String]]) ?? [:]
     }
 
     /// Bump the lifetime switch counter that drives the easter-egg
@@ -371,6 +418,122 @@ final class SettingsStore: ObservableObject {
         }
     }
 
+    /// Append any never-seen audio/camera names into a *specific*
+    /// profile's remembered-devices cache. Insertion order is
+    /// preserved (no sort here) so a stable "first time we saw it"
+    /// record exists per profile. The wizard sorts at display time.
+    /// Empty strings are dropped defensively. Only writes back to
+    /// UserDefaults for caches that actually grew, so a refresh in a
+    /// steady-state location doesn't touch defaults at all.
+    ///
+    /// Scoping per profile avoids cross-profile leakage: Conference
+    /// Room's picker only sees Conference Room's history, never Home
+    /// Office's CalDigit. The wizard calls this with its editing
+    /// profile's slug.
+    ///
+    /// Not gated by `statsTrackingEnabled`. These names are
+    /// remembered so the wizard's pickers stay useful when devices
+    /// aren't currently attached. That's user-facing UI plumbing, not
+    /// analytics, so the privacy toggle doesn't apply.
+    func rememberDevices(
+        forProfile slug: String,
+        audioInputs: [String],
+        audioOutputs: [String],
+        cameras: [String]
+    ) {
+        let newInputs = Self.appendingNew(
+            audioInputs, intoProfile: slug, in: rememberedAudioInputs
+        )
+        if newInputs != rememberedAudioInputs { rememberedAudioInputs = newInputs }
+        let newOutputs = Self.appendingNew(
+            audioOutputs, intoProfile: slug, in: rememberedAudioOutputs
+        )
+        if newOutputs != rememberedAudioOutputs { rememberedAudioOutputs = newOutputs }
+        let newCameras = Self.appendingNew(
+            cameras, intoProfile: slug, in: rememberedCameras
+        )
+        if newCameras != rememberedCameras { rememberedCameras = newCameras }
+    }
+
+    /// Append entries from `additions` into the per-profile list for
+    /// `slug` in `existing`. Returns the unchanged dict when nothing
+    /// new appeared (case-sensitive dedupe), so the caller can skip
+    /// the assignment and avoid a UserDefaults write.
+    private static func appendingNew(
+        _ additions: [String],
+        intoProfile slug: String,
+        in existing: [String: [String]]
+    ) -> [String: [String]] {
+        let priorList = existing[slug] ?? []
+        var seen = Set(priorList)
+        var grown = priorList
+        for name in additions where !name.isEmpty && !seen.contains(name) {
+            grown.append(name)
+            seen.insert(name)
+        }
+        if grown == priorList { return existing }
+        var updated = existing
+        updated[slug] = grown
+        return updated
+    }
+
+    /// Trim each profile's remembered-devices cache to only the names
+    /// that profile currently references in its audio/camera selections.
+    /// Also drops cache entries for profiles that no longer exist
+    /// (deleted profiles can't have current selections).
+    ///
+    /// Wired to the Settings → General "Forget unused devices" button:
+    /// a user clicking Forget is asking to drop one-off devices from
+    /// the dropdown history without losing names their saved profiles
+    /// still depend on. The Settings UI passes in the current profile
+    /// list so we can compute the keep-sets per profile.
+    ///
+    /// Calling with an empty array wipes every profile's cache (no
+    /// profile maps to a non-empty keep set), which keeps the test
+    /// surface simple.
+    ///
+    /// Only writes back to UserDefaults for caches that actually
+    /// shrank, so a no-op call (everything is in-use, no orphans)
+    /// doesn't touch disk.
+    func forgetRememberedDevices(currentProfiles profiles: [Profile]) {
+        let keepInputs: [String: Set<String>] = Dictionary(
+            uniqueKeysWithValues: profiles.map { ($0.name, Set([$0.audioInput].compactMap { $0 })) }
+        )
+        let keepOutputs: [String: Set<String>] = Dictionary(
+            uniqueKeysWithValues: profiles.map { ($0.name, Set([$0.audioOutput].compactMap { $0 })) }
+        )
+        let keepCameras: [String: Set<String>] = Dictionary(
+            uniqueKeysWithValues: profiles.map { ($0.name, Set([$0.camera].compactMap { $0 })) }
+        )
+
+        let trimmedInputs = Self.trimming(rememberedAudioInputs, keeping: keepInputs)
+        if trimmedInputs != rememberedAudioInputs { rememberedAudioInputs = trimmedInputs }
+        let trimmedOutputs = Self.trimming(rememberedAudioOutputs, keeping: keepOutputs)
+        if trimmedOutputs != rememberedAudioOutputs { rememberedAudioOutputs = trimmedOutputs }
+        let trimmedCameras = Self.trimming(rememberedCameras, keeping: keepCameras)
+        if trimmedCameras != rememberedCameras { rememberedCameras = trimmedCameras }
+    }
+
+    /// Filter each profile's remembered list to only the names listed
+    /// in the corresponding keep set, dropping profiles whose slug
+    /// isn't a key in `keeping` (= profile no longer exists). Empty
+    /// per-profile lists are removed entirely so `hasRememberedDevices`
+    /// flips false when nothing meaningful is left.
+    private static func trimming(
+        _ cache: [String: [String]],
+        keeping: [String: Set<String>]
+    ) -> [String: [String]] {
+        var result: [String: [String]] = [:]
+        for (slug, names) in cache {
+            guard let keep = keeping[slug] else { continue }
+            let trimmed = names.filter { keep.contains($0) }
+            if !trimmed.isEmpty {
+                result[slug] = trimmed
+            }
+        }
+        return result
+    }
+
     /// Drop a profile's per-slug stats when the profile itself is
     /// deleted. Removes its `perProfileCounts` entry, and clears
     /// `lastSwitchSlug` / `lastSwitchDate` if the deleted profile was
@@ -389,25 +552,91 @@ final class SettingsStore: ObservableObject {
             lastSwitchSlug = nil
             lastSwitchDate = nil
         }
+        if rememberedAudioInputs[slug] != nil {
+            rememberedAudioInputs.removeValue(forKey: slug)
+        }
+        if rememberedAudioOutputs[slug] != nil {
+            rememberedAudioOutputs.removeValue(forKey: slug)
+        }
+        if rememberedCameras[slug] != nil {
+            rememberedCameras.removeValue(forKey: slug)
+        }
     }
 
-    /// Drop per-slug stats whose profile no longer exists. Called on
-    /// every config load so any stats orphaned by an out-of-band path
-    /// (a hand-edit of profiles.toml, a migration from a build before
-    /// `forgetProfile` existed) self-heal on next launch. Same shape
-    /// as `forgetProfile`: only per-slug data, never aggregates.
-    /// No-op (no disk write) when nothing is orphaned.
+    /// Move every piece of per-slug state from `oldSlug` to `newSlug`:
+    /// stats counts, the last-switch fields if they pointed at the
+    /// old slug, and the three remembered-device caches. Used by the
+    /// wizard's rename path so a renamed profile keeps its history
+    /// (counters, remembered audio/camera selections) instead of
+    /// silently dropping it on save. No-op when `oldSlug == newSlug`
+    /// or when neither slug has any data.
+    ///
+    /// Move-with-overwrite semantics: if `newSlug` already has data,
+    /// the move clobbers it. In practice this only matters in the
+    /// "Save as new" collision path, where `newSlug` is a suffix the
+    /// writer just confirmed is free; for regular rename `newSlug`
+    /// is also fresh by construction.
+    func renameProfile(from oldSlug: String, to newSlug: String) {
+        guard oldSlug != newSlug else { return }
+        if let count = perProfileCounts[oldSlug] {
+            var updated = perProfileCounts
+            updated[oldSlug] = nil
+            updated[newSlug] = count
+            perProfileCounts = updated
+        }
+        if lastSwitchSlug == oldSlug {
+            lastSwitchSlug = newSlug
+        }
+        rememberedAudioInputs = Self.movingProfile(from: oldSlug, to: newSlug, in: rememberedAudioInputs)
+        rememberedAudioOutputs = Self.movingProfile(from: oldSlug, to: newSlug, in: rememberedAudioOutputs)
+        rememberedCameras = Self.movingProfile(from: oldSlug, to: newSlug, in: rememberedCameras)
+    }
+
+    private static func movingProfile(
+        from oldSlug: String,
+        to newSlug: String,
+        in cache: [String: [String]]
+    ) -> [String: [String]] {
+        guard let entries = cache[oldSlug] else { return cache }
+        var updated = cache
+        updated[oldSlug] = nil
+        updated[newSlug] = entries
+        return updated
+    }
+
+    /// Drop per-slug data (stats + remembered-device caches) whose
+    /// profile no longer exists. Called on every config load so any
+    /// orphans from an out-of-band path (a hand-edit of profiles.toml,
+    /// a migration from a build before this hook covered the cache,
+    /// a crash mid-rename) self-heal on next launch. Aggregates
+    /// (`profileSwitchCount`, streaks, active days, unique devices)
+    /// are intentionally left alone. No-op (no disk write) when
+    /// nothing is orphaned.
     func reconcileProfiles(currentSlugs: Set<String>) {
-        let staleKeys = perProfileCounts.keys.filter { !currentSlugs.contains($0) }
-        if !staleKeys.isEmpty {
+        let staleStatsKeys = perProfileCounts.keys.filter { !currentSlugs.contains($0) }
+        if !staleStatsKeys.isEmpty {
             var trimmed = perProfileCounts
-            for key in staleKeys { trimmed.removeValue(forKey: key) }
+            for key in staleStatsKeys { trimmed.removeValue(forKey: key) }
             perProfileCounts = trimmed
         }
         if let last = lastSwitchSlug, !currentSlugs.contains(last) {
             lastSwitchSlug = nil
             lastSwitchDate = nil
         }
+        rememberedAudioInputs = Self.dropping(slugsNotIn: currentSlugs, from: rememberedAudioInputs)
+        rememberedAudioOutputs = Self.dropping(slugsNotIn: currentSlugs, from: rememberedAudioOutputs)
+        rememberedCameras = Self.dropping(slugsNotIn: currentSlugs, from: rememberedCameras)
+    }
+
+    private static func dropping(
+        slugsNotIn currentSlugs: Set<String>,
+        from cache: [String: [String]]
+    ) -> [String: [String]] {
+        let staleKeys = cache.keys.filter { !currentSlugs.contains($0) }
+        guard !staleKeys.isEmpty else { return cache }
+        var trimmed = cache
+        for key in staleKeys { trimmed.removeValue(forKey: key) }
+        return trimmed
     }
 
     /// Wipe every stats counter / dictionary / last-switched field.
