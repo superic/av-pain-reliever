@@ -296,6 +296,11 @@ private struct MenuContentView: View {
             } label: {
                 Label("Reveal Log in Console", systemImage: "terminal")
             }
+            Button {
+                LogExporter.saveLogsWithPrompt()
+            } label: {
+                Label("Save Logs for Support…", systemImage: "square.and.arrow.up.on.square")
+            }
         } label: {
             Label("Advanced", systemImage: "wrench.and.screwdriver")
         }

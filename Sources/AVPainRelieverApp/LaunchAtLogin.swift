@@ -34,10 +34,10 @@ enum LaunchAtLogin {
         do {
             if enabled {
                 try service.register()
-                logger.info("registered as login item")
+                logger.notice("registered as login item")
             } else {
                 try service.unregister()
-                logger.info("unregistered as login item")
+                logger.notice("unregistered as login item")
             }
         } catch {
             // SMAppService throws for unsupported bundles, denied

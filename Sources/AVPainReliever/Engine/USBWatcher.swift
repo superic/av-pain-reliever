@@ -97,8 +97,15 @@ public final class IOKitUSBWatcher: USBWatcher {
     private var firstAddDrainDone = false
     private var firstRemoveDrainDone = false
     private var onChange: (() -> Void)?
+    private let logger: ApplierLogger?
 
-    public init() {}
+    /// `logger`, when supplied, receives `.debug` lines for IOKit
+    /// notification arming, suppressed initial drains, and per-burst
+    /// add/remove counts. Default `nil` keeps tests quiet and the
+    /// existing call sites source-compatible.
+    public init(logger: ApplierLogger? = nil) {
+        self.logger = logger
+    }
 
     deinit {
         stop()
@@ -160,6 +167,7 @@ public final class IOKitUSBWatcher: USBWatcher {
         // port.
         guard notifyPort == nil else { return }
         self.onChange = onChange
+        logger?.debug("usb-watcher: starting (matching class=\(Self.usbDeviceClass))")
 
         guard let port = IONotificationPortCreate(kIOMainPortDefault) else {
             return
@@ -216,6 +224,7 @@ public final class IOKitUSBWatcher: USBWatcher {
 
     public func stop() {
         guard let port = notifyPort else { return }
+        logger?.debug("usb-watcher: stopping")
         // Release the iterators returned by IOServiceAddMatchingNotification
         // before destroying the port. Per Apple's IOKitLib.h
         // documentation, those iterators "should be released by the
@@ -237,22 +246,28 @@ public final class IOKitUSBWatcher: USBWatcher {
 
     private func handleAddedIterator(_ iter: io_iterator_t) {
         let suppress = !firstAddDrainDone
-        var sawEvent = false
-        Self.drain(iter) { _ in
-            if !suppress { sawEvent = true }
-        }
+        var count = 0
+        Self.drain(iter) { _ in count += 1 }
         firstAddDrainDone = true
-        if sawEvent { onChange?() }
+        if suppress {
+            logger?.debug("usb-watcher: initial-add drain (\(count) device(s)), suppressed")
+        } else {
+            logger?.debug("usb-watcher: add burst (\(count) device(s)), firing onChange")
+            if count > 0 { onChange?() }
+        }
     }
 
     private func handleRemovedIterator(_ iter: io_iterator_t) {
         let suppress = !firstRemoveDrainDone
-        var sawEvent = false
-        Self.drain(iter) { _ in
-            if !suppress { sawEvent = true }
-        }
+        var count = 0
+        Self.drain(iter) { _ in count += 1 }
         firstRemoveDrainDone = true
-        if sawEvent { onChange?() }
+        if suppress {
+            logger?.debug("usb-watcher: initial-remove drain (\(count) device(s)), suppressed")
+        } else {
+            logger?.debug("usb-watcher: remove burst (\(count) device(s)), firing onChange")
+            if count > 0 { onChange?() }
+        }
     }
 
     // MARK: - IOKit helpers

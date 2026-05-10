@@ -9,6 +9,13 @@ import AVPainReliever
 /// log stream --predicate 'subsystem CONTAINS "ericwillis.avpainreliever"' --info --style compact
 /// ```
 ///
+/// For chatty per-event diagnostic output (`.debug` calls), bump the
+/// stream's level filter:
+///
+/// ```sh
+/// log stream --predicate 'subsystem CONTAINS "ericwillis.avpainreliever"' --level debug --style compact
+/// ```
+///
 /// Each instance carries its own `os.Logger` category so different
 /// engine adapters log under filterable categories ("engine",
 /// "CMIOSinkWriter", "CameraCaptureSession", etc.). The category
@@ -26,8 +33,22 @@ struct ConsoleLogger: ApplierLogger {
         self.category = category
     }
 
+    func debug(_ message: String) {
+        logger.debug("\(message, privacy: .public)")
+        // No stderr mirror for debug. Too chatty for `swift run`;
+        // use `log stream --level debug` to consume.
+    }
+
     func info(_ message: String) {
-        logger.info("\(message, privacy: .public)")
+        // Route to `.notice`, NOT `.info`. Apple's `os.Logger.info` is
+        // memory-only by default — those entries don't reach the
+        // unified-log archive that `OSLogStore` reads, so they'd be
+        // missing from any "Save Logs for Support" export. Our `info`
+        // calls are state transitions ("applying profile X", "set
+        // default output Y") that absolutely need to land in support
+        // captures, so they map to `.notice` (Apple's "info worth
+        // keeping" level, persisted by default).
+        logger.notice("\(message, privacy: .public)")
         writeStderr("[\(category)] [info] \(message)")
     }
 

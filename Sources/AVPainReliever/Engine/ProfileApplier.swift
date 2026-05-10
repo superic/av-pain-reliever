@@ -1,11 +1,15 @@
 import Foundation
 
-/// Three-level logger interface for engine components. Production
+/// Four-level logger interface for engine components. Production
 /// wires this to `os.Logger` (Apple's unified logging); tests use a
 /// recording mock. `error` exists for unrecoverable failures
 /// (CMIO/AVFoundation hard errors); `warn` for recoverable issues
-/// the engine logged-and-continued through.
+/// the engine logged-and-continued through; `info` for state
+/// transitions worth surfacing in default `log stream`; `debug`
+/// for chatty per-event noise that's only useful during a
+/// diagnostic session (`log stream --level debug`).
 public protocol ApplierLogger {
+    func debug(_ message: String)
     func info(_ message: String)
     func warn(_ message: String)
     func error(_ message: String)
@@ -17,6 +21,10 @@ public extension ApplierLogger {
     /// distinguish severities (the production `ConsoleLogger`)
     /// implement `error` directly.
     func error(_ message: String) { warn(message) }
+    /// Default no-op so existing conformers (test recorders) don't
+    /// have to implement `debug` to keep building. The production
+    /// `ConsoleLogger` overrides to route to `os.Logger.debug`.
+    func debug(_ message: String) {}
 }
 
 /// Applies a resolved profile: switches default audio in/out and the
@@ -53,6 +61,7 @@ public final class ProfileApplier {
             return
         }
         logger.info("applying profile: \(profile.name)")
+        logger.debug("applier: target audioInput=\(profile.audioInput ?? "<none>") audioOutput=\(profile.audioOutput ?? "<none>") camera=\(profile.camera ?? "<none>")")
 
         if let input = profile.audioInput {
             applyAudio(input, role: .input)
@@ -92,6 +101,7 @@ public final class ProfileApplier {
     /// virtual-camera toggle) means the same profile name should
     /// resolve to a different set of system-state writes.
     public func invalidateLastApplied() {
+        logger.debug("applier: invalidating lastAppliedName (was \(lastAppliedName ?? "<nil>"))")
         lastAppliedName = nil
     }
 

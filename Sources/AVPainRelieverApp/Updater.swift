@@ -83,7 +83,7 @@ final class Updater {
         )
         self.controller = controller
         let feedDescription = controller.updater.feedURL?.absoluteString ?? "nil"
-        Self.logger.info("Sparkle updater started; feed=\(feedDescription, privacy: .public)")
+        Self.logger.notice("Sparkle updater started; feed=\(feedDescription, privacy: .public)")
         installWindowTitleObserver()
         // The delegate's `allowedChannels` is re-queried on every
         // check, but Sparkle caches its parsed/filtered appcast result

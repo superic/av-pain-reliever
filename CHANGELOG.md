@@ -914,6 +914,32 @@ Added a "Docs that move with the code" subsection to CLAUDE.md under "Project-wi
 
 The triggers are explicit: CHANGELOG gets a dated H3 entry on every non-mechanical PR; README updates only when a PR changes user-visible behavior (a new setting, renamed menu item, removed feature, install-flow change). Internal refactors, doc-only edits, and test-only changes don't touch README — an executive reader wouldn't notice them. Same operational-rule shape as the other CLAUDE.md subsections, ~6 lines added.
 
+### Verbose `.debug` logging + Save Logs for Support menu item (2026-05-09)
+
+Two complementary diagnostics features in one PR.
+
+**Verbose logging.** `ApplierLogger` (the engine's logging seam in `Sources/AVPainReliever/Engine/ProfileApplier.swift`) gained a fourth method, `func debug(_ message: String)`, with a default no-op impl that keeps existing test conformers (`MockLogger` in `ProfileApplierTests.swift`) building unchanged. The production `ConsoleLogger` overrides `.debug` to route to `os.Logger.debug` (no stderr mirror — too chatty for `swift run`). Chatty per-event `.debug` calls now exist across four areas the user explicitly scoped: engine internals (`Engine`, `ProfileResolver`, `ProfileApplier`, debounce decisions), `IOKitUSBWatcher` (every attach/detach burst with device counts, plus initial-drain-suppressed signals), `AppDelegate` switch handler / `SettingsStore` writes (every UserDefaults persist via a new `write(_:forKey:)` helper), and the virtual camera lifecycle (`VirtualCameraActivator` state transitions, `CameraCaptureSession.setSource`).
+
+By default, `log stream` doesn't show `.debug` entries — they're invisible until explicitly requested. To consume the verbose channel during a diagnostic session, run:
+
+```sh
+log stream --predicate 'subsystem CONTAINS "ericwillis.avpainreliever"' --level debug --style compact
+```
+
+The local `dev/build` helper (private repo) prints this command in its post-build status block so it's one paste away after every full build.
+
+`ProfileResolver.resolve(attached:)` gained an optional `logger:` parameter (default nil) so the resolver can emit "candidate scoring + winner" debug lines when called from the engine; existing call sites and tests stay source-compatible. `IOKitUSBWatcher.init(logger:)` gained the same shape. The two seams differ on purpose: the resolver is `Sendable` and stateless, so per-call injection avoids changing its value-type semantics; the watcher holds long-lived IOKit notification ports, so init injection fits.
+
+**Save Logs for Support…** A new `LogExporter` enum (`Sources/AVPainRelieverApp/LogExporter.swift`) exposes a static entry point wired to a new `Advanced → Save Logs for Support…` menu item. Uses `OSLogStore(scope: .currentProcessIdentifier)` + `NSPredicate(format: "subsystem BEGINSWITH %@", "com.ericwillis.avpainreliever")` to dump the last 60 minutes of main-app log entries to a user-chosen file (default `av-pain-reliever-log-<timestamp>.txt` in Downloads). Reveals the result in Finder and shows a follow-up alert with the entry count. Plain-text format: `timestamp [category] [level] message`, prefixed with a header documenting the window, subsystem prefix, entry count, and the `.debug`-not-persisted caveat.
+
+**Scope caveat.** `OSLogStore(scope: .currentProcessIdentifier)` captures the calling process only. The embedded Camera Extension runs in a separate process (subsystem `com.ericwillis.avpainreliever.CameraExtension`); its logs are NOT in this export. The wider scope (`.includeAllProcesses`) requires a private-data-access entitlement that may not survive notarization for a sandboxed direct-distribution app, so the simpler scope was chosen. The doc comment + the file header in the export both name this limitation explicitly so a support reader knows to also capture Console.app output filtered by the extension's subsystem when the bug is virtual-camera-related.
+
+**Persistence levels — caught during user-visible testing.** Apple's unified log persists `.notice` and above by default; `.debug` AND `.info` are memory-only and never reach the archive `OSLogStore` reads. An initial pass had `ConsoleLogger.info` routing to `os.Logger.info`, which made the support export nearly empty (the user's first test run captured this — almost nothing showed in the saved file even though `log stream` was busy). Fix: `ConsoleLogger.info` now routes to `os.Logger.notice` since our `info` semantic is "state transition worth keeping" — exactly what Apple's `.notice` is for. Same change for the three direct `os.Logger.info` callsites in the App target (`VirtualCameraActivator`, `LaunchAtLogin`, `Updater`). The Camera Extension's direct `os.Logger.info` callsites were left alone — extension entries don't reach this export anyway (separate process, called out explicitly in the doc and the file header).
+
+**`.debug` is transient by design.** Even after the `.info → .notice` fix, `.debug` is still off the persistence path. That's intentional: `.debug` is for live `log stream` consumption during real-time debugging; bug-report exports get the more durable `.notice`/`.warning`/`.error` entries. An in-memory ring buffer was considered and deferred — the live `log stream` flow handles the niche case where `.debug` is actually needed.
+
+**Slop pass.** Pre-PR `/code-quality:slop` review against the diff caught the `OSLogStore` scope/doc mismatch (originally claimed Camera Extension capture; corrected to be honest about main-app-only), an enum-equality `String(describing:)` shortcut in `VirtualCameraActivator.state` (replaced with the existing `Equatable` conformance), em dashes leaking into log strings (project memory rule), an inconsistent raw `Logger` instance in `SettingsStore` (rerouted through `ConsoleLogger(category: "settings")` to match the rest of the codebase), and over-explaining doc comments on the new `AppDelegate.logger` field (trimmed to the one-liner). Verbose `funcName: <prose>` debug strings in `AppDelegate` switch handlers also got tightened to just the variable info.
+
 - **When we ship a Phase 1 fix or feature**, ask: does this teach us
   something about the Swift port? If yes, add to "Lessons learned."
 - **When the user gives feedback or hits a bug**, ask: should this be
