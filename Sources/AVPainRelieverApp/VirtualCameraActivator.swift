@@ -101,6 +101,15 @@ final class VirtualCameraActivator: NSObject, ObservableObject,
     /// the consumer's wiring site.
     var onVisibilityConfirmed: (() -> Void)?
 
+    /// Fires on the main thread when the user cancels the macOS auth
+    /// prompt that gates a deactivate request. The OS-level deactivate
+    /// never happened so the extension is still alive — the activator
+    /// has already restored its own state to `.on`. The host wires this
+    /// to roll the persisted Settings toggle back to `true` and re-apply
+    /// the active profile so the system-wide preferred camera flips
+    /// back to the virtual camera. Set once during host setup.
+    var onDeactivateAuthCancelled: (() -> Void)?
+
     /// True when the env var override forced enable on launch.
     /// Settings UI hides the toggle's persistence-driven semantics
     /// and shows a "debug override active" badge instead so the
@@ -544,6 +553,26 @@ final class VirtualCameraActivator: NSObject, ObservableObject,
         _ request: OSSystemExtensionRequest,
         didFailWithError error: Error
     ) {
+        // Auth-cancel during deactivate: the prompt was declined, so
+        // the extension is still alive on the OS side and only the
+        // host's view of state is wrong (disable() flipped to .off
+        // synchronously). Roll back to .on. Activate-side cancels
+        // still escalate to .failed via the path below.
+        let nsError = error as NSError
+        let isDeactivateAuthCancel = state == .off
+            && nsError.domain == OSSystemExtensionErrorDomain
+            && nsError.code == OSSystemExtensionError.Code.authorizationRequired.rawValue
+        if isDeactivateAuthCancel {
+            logger.notice("Camera Extension deactivate cancelled by user (auth prompt declined); rolling back toggle to on")
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                self.deactivatedThisSession = false
+                self.beginConsumerWatch()
+                self.state = .on
+                self.onDeactivateAuthCancelled?()
+            }
+            return
+        }
         let message = error.localizedDescription
         logger.error("Camera Extension request failed: \(message, privacy: .public)")
         DispatchQueue.main.async { [weak self] in
