@@ -1036,6 +1036,10 @@ The Scope creep candidates list grew by two entries to keep the canonical list c
 
 Doc-only PR; no code changes.
 
+### Confetti: bigger pop, slower fall (2026-05-09)
+
+Tuned `ConfettiBurst` to feel less rushed. The launch power range bumped from `200...420` to `280...520` (~30% more reach, so the apex is higher and the spread wider). The per-particle fall duration went from `1.4...2.2`s to `2.2...3.4`s (~55% slower descent). The `oneShotConfetti` cleanup timer moved from 3.2s to 4.5s to cover the longer trajectory and updated the doc comment to match. No structural changes; same `KeyframeAnimator` driving the same trajectory shape, just different numbers.
+
 ### Trim chrome on Sparkle's update-available window (2026-05-09)
 
 The Sparkle "Update Available" window shipped with the full traffic-light set (close + minimize + zoom). For a transient utility dialog those extra two buttons read as wrong; a software-update prompt isn't something you'd want to minimize or maximize. Extended the existing Sparkle-window detector in `Updater.swift` (formerly `installWindowTitleObserver`, renamed to `installSparkleWindowCustomizer` to reflect the wider scope) to also remove `.miniaturizable` and `.resizable` from the window's `styleMask` and disable the standard miniaturize and zoom buttons. Matches the project pattern in `WindowChrome.applyDialogChrome` (greyed-out rather than hidden, the macOS-idiomatic way to indicate "this window doesn't do that"). Idempotent on every `didBecomeKeyNotification` for a Sparkle window, same as the title-set behavior it sits next to.
