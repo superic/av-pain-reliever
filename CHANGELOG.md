@@ -1036,6 +1036,20 @@ The Scope creep candidates list grew by two entries to keep the canonical list c
 
 Doc-only PR; no code changes.
 
+### Three GitHub social-preview options (2026-05-10)
+
+GitHub's repo "Social preview" setting is what shows on Twitter/Slack/Discord unfurls. The repo had no custom one, so unfurls inherited the generic GitHub avatar. Generated three candidate 1280×640 PNGs as a starting point.
+
+A new `scripts/generate-og-cards.swift` renders all three into `docs/og/og-card-{1,2,3}.png` using AppKit drawing that mirrors `AppIcon.swift`'s pale-ice + Apple-system-blue palette, so the cards feel like a continuation of the actual app icon rather than a separate brand artifact. Each card is 1280×640 with a 40pt safe margin per [GitHub's published template](https://github.blog/news-insights/social-cards/), so nothing important crops at smaller renders.
+
+The three differ on both layout and tagline so the maintainer has a real spread to pick from:
+
+- **`og-card-1.png` (Hero).** Icon centered at the top, name and tagline centered below. Pale icy gradient background. Most "official product card" of the three. Tagline: "Audio and camera that follow your dock."
+- **`og-card-2.png` (Asymmetric).** Large icon on the left half, name and two-line tagline stacked on the right. White background. Cleanest at small sizes. Tagline: "Plug in. Unplug. Don't think about it."
+- **`og-card-3.png` (Story).** Three SF Symbols across the middle (USB → speaker → camera) showing the value prop visually, name and tagline below. Light neutral background. Tagline: "Your laptop knows where it is."
+
+Uploading is a manual step in repo Settings → General → Social preview (no `gh` API surface for it). A small `docs/og/README.md` documents the regeneration command and the upload path so a future tweak doesn't require re-deriving the workflow.
+
 ### Issue templates tailored to the project (2026-05-09)
 
 The boilerplate `bug_report.md` / `feature_request.md` that landed earlier today were GitHub's defaults: half the fields didn't fit a macOS utility (browser, smartphone) and the load-bearing fields for *this* project (app version, release channel, macOS version, Save Logs attachment) weren't there. Replaced with structured YAML issue forms that bake in the right questions and validate the required ones.
