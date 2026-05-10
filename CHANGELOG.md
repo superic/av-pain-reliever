@@ -940,6 +940,42 @@ The local `dev/build` helper (private repo) prints this command in its post-buil
 
 **Slop pass.** Pre-PR `/code-quality:slop` review against the diff caught the `OSLogStore` scope/doc mismatch (originally claimed Camera Extension capture; corrected to be honest about main-app-only), an enum-equality `String(describing:)` shortcut in `VirtualCameraActivator.state` (replaced with the existing `Equatable` conformance), em dashes leaking into log strings (project memory rule), an inconsistent raw `Logger` instance in `SettingsStore` (rerouted through `ConsoleLogger(category: "settings")` to match the rest of the codebase), and over-explaining doc comments on the new `AppDelegate.logger` field (trimmed to the one-liner). Verbose `funcName: <prose>` debug strings in `AppDelegate` switch handlers also got tightened to just the variable info.
 
+### Fix camera visibility race on Camera Extension activation (2026-05-09)
+
+Once Feature B's verbose logging shipped (#78), the new `.notice` and `.debug` lines made an existing virtual-camera bug obvious at every fresh launch:
+
+```
+[engine] applying profile: home-office
+[engine] set default input: Yeti Stereo Microphone
+E [engine] camera 'AV Pain Reliever' not found, skipping (it may not be currently attached)
+E [Activator] Visibility check: host process can't see its own Camera Extension, escalating to .requiresRelaunch
+[Activator] state: on → requiresRelaunch
+```
+
+Two related symptoms, one root cause. When `OSSystemExtensionRequest` reports activation success, the activator transitions `state → .on` immediately. A Combine sink in `AppDelegate` was firing `engine.reapply()` synchronously on that transition. The applier then asks `setPreferred(named: "AV Pain Reliever")` (the virtual camera's display name), but `AVCaptureDevice.DiscoverySession` in the host process still has a stale cache (warmed before the extension registered) so the call returns `.notFound`. ~1.5s later, `scheduleHostVisibilityCheck` runs, sees the same blindness, and escalates to `.requiresRelaunch` — surfacing the manual "Restart" button in Settings → Camera. After the user clicks Restart, the second-process DiscoverySession is fresh and sees the camera fine.
+
+The fix is to defer the post-activation reapply until *after* the visibility check confirms visibility. Two minimal changes:
+
+- `VirtualCameraActivator` gained a `var onVisibilityConfirmed: (() -> Void)?` callback. `scheduleHostVisibilityCheck`'s success branch fires it.
+- `AppDelegate` sets the callback to `engine.reapply()` and adds `.filter { !$0 }` to the existing `$state` Combine sink. The sink now only fires reapply on transitions *out of* `.on` (toggle-off cleanup, visibility-failure cleanup); transitions *into* `.on` go through the visibility-confirmed callback so AVFoundation has had ~1.5s to refresh first.
+
+After the fix, the same sequence on a fresh launch logs:
+
+```
+[Activator] state: activating → on
+[engine] applying profile: home-office  (initial — runs once at engine.start())
+... 1.5s ...
+[Activator] Visibility check: host sees the virtual camera in DiscoverySession
+[engine] applying profile: home-office  (reapply — now succeeds because cache is fresh)
+[engine] set preferred camera: AV Pain Reliever
+```
+
+No `not found` error, no `.requiresRelaunch`, no manual Restart click. The user-visible "AV Pain Reliever appears in Zoom/Slack/Teams as a usable camera within 2s of launch" outcome matches what users have always expected.
+
+The first apply on launch (from `engine.start()`) still happens before visibility is confirmed, so it'll still log `set preferred camera: HDMI to U3 capture` (the literal profile camera) since the activator's `preferredCameraOverride` returns nil while `state != .on`. The deferred reapply then re-fires once the override is live AND the cache has refreshed. Two applies per launch is fine — applier no-ops a same-name re-apply, and `reapply()` explicitly invalidates that dedupe so the second pass actually runs.
+
+PR: #79.
+
 - **When we ship a Phase 1 fix or feature**, ask: does this teach us
   something about the Swift port? If yes, add to "Lessons learned."
 - **When the user gives feedback or hits a bug**, ask: should this be

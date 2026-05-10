@@ -95,6 +95,12 @@ final class VirtualCameraActivator: NSObject, ObservableObject,
         }
     }
 
+    /// Fires on the main thread when `scheduleHostVisibilityCheck`
+    /// confirms `AVCaptureDevice.DiscoverySession` sees the virtual
+    /// camera. Set once during host setup; the rationale lives at
+    /// the consumer's wiring site.
+    var onVisibilityConfirmed: (() -> Void)?
+
     /// True when the env var override forced enable on launch.
     /// Settings UI hides the toggle's persistence-driven semantics
     /// and shows a "debug override active" badge instead so the
@@ -322,6 +328,7 @@ final class VirtualCameraActivator: NSObject, ObservableObject,
             guard let self, self.state == .on else { return }
             if Self.hostCanSeeVirtualCamera() {
                 logger.notice("Visibility check: host sees the virtual camera in DiscoverySession")
+                self.onVisibilityConfirmed?()
                 return
             }
             logger.error("Visibility check: host process can't see its own Camera Extension — escalating to .requiresRelaunch")
