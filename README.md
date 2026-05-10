@@ -1,4 +1,6 @@
-# AV Pain Reliever
+<p align="center">
+  <img src="docs/og-card.png" alt="AV Pain Reliever — Your laptop knows where it is." width="800">
+</p>
 
 > Auto-switch your microphone, speakers, and camera when you change desks.
 
