@@ -148,12 +148,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
             }
             .store(in: &cancellables)
         // The activator's `preferredCameraOverride` flips with state.
-        // When state crosses into / out of `.on`, the active profile's
-        // camera should be re-applied with the new override semantics
-        // (system-wide preferred = virtual camera vs. = real camera).
-        // `removeDuplicates` collapses the no-op transitions so we
-        // don't reapply on every internal `.activating` →
-        // `.needsApproval` shimmer.
+        // When state crosses *out of* `.on`, the active profile's
+        // camera should be re-applied so the system-wide preferred
+        // camera flips back to the real device (and not stay pinned
+        // at the now-unhealthy virtual camera). `removeDuplicates`
+        // collapses no-op transitions so we don't reapply on every
+        // internal `.activating` → `.needsApproval` shimmer.
+        //
+        // Crossing *into* `.on` is handled separately by
+        // `onVisibilityConfirmed` below — firing reapply synchronously
+        // on `state → .on` produces a stale-cache `camera not found`
+        // error (AVFoundation's DiscoverySession hasn't refreshed yet
+        // in this process), so we defer the apply until the
+        // visibility check has confirmed the device is reachable.
         virtualCameraActivator.$state
             .map { state -> Bool in
                 if case .on = state { return true }
@@ -161,11 +168,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
             }
             .removeDuplicates()
             .dropFirst()
+            .filter { !$0 }
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in
                 self?.engine?.reapply()
             }
             .store(in: &cancellables)
+        // Counterpart: re-apply once the post-activation visibility
+        // check confirms AVFoundation can see "AV Pain Reliever" in
+        // this process. See the comment above.
+        virtualCameraActivator.onVisibilityConfirmed = { [weak self] in
+            self?.engine?.reapply()
+        }
     }
 
     /// The most recent profile name we surfaced through
@@ -630,9 +644,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
     private func applyVirtualCameraToggle(enabled: Bool) {
         if enabled {
             virtualCameraActivator.enable(envOverride: false)
-            // The `.on` transition (when activation completes)
-            // triggers `engine.reapply()` via the state observer
-            // wired up in `init`. Nothing to do here.
+            // The post-activation visibility check (deferred ~1.5s
+            // after `state → .on`) fires `onVisibilityConfirmed`,
+            // which calls `engine.reapply()` once AVFoundation's
+            // cache has refreshed. Nothing to do here.
         } else {
             virtualCameraActivator.disable()
             // Disable is synchronous — state goes to `.off`
