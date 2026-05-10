@@ -1036,6 +1036,18 @@ The Scope creep candidates list grew by two entries to keep the canonical list c
 
 Doc-only PR; no code changes.
 
+### README tightening: drop tagline, remove em dashes, less polished voice (2026-05-10)
+
+The README read as slightly AI-shaped: heavy em-dash use for parenthetical asides, a too-tidy descriptive tagline under the hero image, polished but slightly hollow phrasings in the intro. User feedback on 2026-05-10: *"Make it sound less like AI wrote it. You're wonderful but I want more of a human touch here."*
+
+Three passes through the file:
+
+1. **Removed the descriptive blockquote tagline.** ("Auto-switch your microphone, speakers, and camera when you change desks.") The hero image's alt attribute and the body paragraph below it carry the same information without the duplication.
+2. **Removed every em dash.** Replaced with periods, commas, parens, or colons depending on the grammatical role each one was filling. Bullet definitions like `**Switch to** — manually apply…` became `**Switch to**: manually apply…`. Aside-style em dashes around lists (`Some apps — Zoom, Slack, Teams — keep…`) became parens. The hero image's alt text (`AV Pain Reliever — Your laptop knows where it is.`) became `AV Pain Reliever. Your laptop knows where it is.`
+3. **Loosened the intro paragraph.** Original: *"When you carry a MacBook between locations — your home office, a work desk, a conference room, a café — your audio defaults usually need fixing every time."* Now reads in shorter, choppier sentences with the location list broken into its own beat: *"You carry your MacBook to a few different desks during the week. Home office, work desk, conference room, café. Each one has a different microphone, different speakers, maybe a different camera. The audio is wrong until you fix it."* Same information, more conversational rhythm.
+
+Navigation arrows (`→`) were left alone. They're a different character and serve a different purpose (path separators, e.g., `Settings… → Camera`).
+
 ### README hero image replaces the H1 title (2026-05-10)
 
 The README opened with a plain `# AV Pain Reliever` H1. Now that the repo has a real social-preview card uploaded under Settings → General → Social preview (the "story" layout: USB → speaker → camera, white background, "Your laptop knows where it is."), the same image carries the title role at the top of the README too — visual continuity with what users see on GitHub unfurls.
