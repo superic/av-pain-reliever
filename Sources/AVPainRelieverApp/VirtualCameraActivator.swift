@@ -151,22 +151,22 @@ final class VirtualCameraActivator: NSObject, ObservableObject,
     func enable(envOverride: Bool = false) {
         switch state {
         case .activating, .needsApproval, .on:
-            logger.info("enable() called while already \(String(describing: self.state), privacy: .public) — no-op")
+            logger.notice("enable() called while already \(String(describing: self.state), privacy: .public) — no-op")
             return
         case .requiresRelaunch:
-            logger.info("enable() called while .requiresRelaunch — keeping that state until relaunch")
+            logger.notice("enable() called while .requiresRelaunch — keeping that state until relaunch")
             return
         case .off, .failed:
             break
         }
         if deactivatedThisSession {
-            logger.info("enable() blocked: in-session deactivation requires a host relaunch")
+            logger.notice("enable() blocked: in-session deactivation requires a host relaunch")
             state = .requiresRelaunch
             return
         }
         isEnvOverride = envOverride
         state = .activating
-        logger.info("Submitting Camera Extension activation request (envOverride=\(envOverride, privacy: .public))")
+        logger.notice("Submitting Camera Extension activation request (envOverride=\(envOverride, privacy: .public))")
 
         let request = OSSystemExtensionRequest.activationRequest(
             forExtensionWithIdentifier: Self.extensionBundleID,
@@ -188,12 +188,12 @@ final class VirtualCameraActivator: NSObject, ObservableObject,
     func disable() {
         switch state {
         case .off:
-            logger.info("disable() called while already off — no-op")
+            logger.notice("disable() called while already off — no-op")
             return
         default:
             break
         }
-        logger.info("Disabling: stopping capture pipeline + deactivating extension")
+        logger.notice("Disabling: stopping capture pipeline + deactivating extension")
         endConsumerWatch()
         stopGraceTimer?.cancel()
         stopGraceTimer = nil
@@ -221,7 +221,7 @@ final class VirtualCameraActivator: NSObject, ObservableObject,
     /// state.
     func relaunch() {
         let bundleURL = Bundle.main.bundleURL
-        logger.info("Relaunching host: \(bundleURL.path, privacy: .public)")
+        logger.notice("Relaunching host: \(bundleURL.path, privacy: .public)")
         let task = Process()
         task.executableURL = URL(fileURLWithPath: "/usr/bin/open")
         // -n forces a brand-new instance. Without it, Launch Services
@@ -259,14 +259,14 @@ final class VirtualCameraActivator: NSObject, ObservableObject,
         session.start()
         sinkWriter = writer
         captureSession = session
-        logger.info("Started host-side capture + CMIO sink writer (initialSource=\(self.pendingSourceName ?? "<system-default>", privacy: .public))")
+        logger.notice("Started host-side capture + CMIO sink writer (initialSource=\(self.pendingSourceName ?? "<system-default>", privacy: .public))")
     }
 
     private func stopCapturePipeline() {
         captureSession?.stop()
         captureSession = nil
         sinkWriter = nil
-        logger.info("Stopped host-side capture pipeline")
+        logger.notice("Stopped host-side capture pipeline")
     }
 
     // MARK: - VirtualCameraSourceController
@@ -321,7 +321,7 @@ final class VirtualCameraActivator: NSObject, ObservableObject,
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
             guard let self, self.state == .on else { return }
             if Self.hostCanSeeVirtualCamera() {
-                logger.info("Visibility check: host sees the virtual camera in DiscoverySession")
+                logger.notice("Visibility check: host sees the virtual camera in DiscoverySession")
                 return
             }
             logger.error("Visibility check: host process can't see its own Camera Extension — escalating to .requiresRelaunch")
@@ -349,7 +349,7 @@ final class VirtualCameraActivator: NSObject, ObservableObject,
             user.uniqueID == Self.virtualCameraUID
         else { return }
         AVCaptureDevice.userPreferredCamera = AVCaptureDevice.systemPreferredCamera
-        logger.info(
+        logger.notice(
             "Cleared userPreferredCamera that was pointing at the virtual camera; system fallback now \(AVCaptureDevice.systemPreferredCamera?.localizedName ?? "(none)", privacy: .public)"
         )
     }
@@ -377,7 +377,7 @@ final class VirtualCameraActivator: NSObject, ObservableObject,
     /// `enable()`. Idempotent.
     private func beginConsumerWatch() {
         guard !consumerWatchActive else {
-            logger.info("beginConsumerWatch: already active — no-op")
+            logger.notice("beginConsumerWatch: already active — no-op")
             return
         }
         let observer = Unmanaged.passUnretained(self).toOpaque()
@@ -442,7 +442,7 @@ final class VirtualCameraActivator: NSObject, ObservableObject,
         stopGraceTimer?.cancel()
         stopGraceTimer = nil
         if captureSession == nil {
-            logger.info("Consumer connected — starting host capture pipeline")
+            logger.notice("Consumer connected — starting host capture pipeline")
             startCapturePipeline()
         }
     }
@@ -457,7 +457,7 @@ final class VirtualCameraActivator: NSObject, ObservableObject,
         timer.schedule(deadline: .now() + Self.stopGraceSeconds)
         timer.setEventHandler { [weak self] in
             guard let self, !self.consumerActive else { return }
-            logger.info("Stop grace expired — tearing down host capture pipeline")
+            logger.notice("Stop grace expired — tearing down host capture pipeline")
             self.stopCapturePipeline()
             self.stopGraceTimer = nil
         }
@@ -479,7 +479,7 @@ final class VirtualCameraActivator: NSObject, ObservableObject,
     }
 
     func requestNeedsUserApproval(_ request: OSSystemExtensionRequest) {
-        logger.info("Camera Extension needs user approval — open System Settings → Login Items & Extensions")
+        logger.notice("Camera Extension needs user approval — open System Settings → Login Items & Extensions")
         DispatchQueue.main.async { [weak self] in
             // Don't override .on — a Sparkle-driven upgrade-replace
             // flow can fire needs-user-approval AFTER the original
@@ -494,7 +494,7 @@ final class VirtualCameraActivator: NSObject, ObservableObject,
         _ request: OSSystemExtensionRequest,
         didFinishWithResult result: OSSystemExtensionRequest.Result
     ) {
-        logger.info("Camera Extension request finished: result=\(result.rawValue, privacy: .public)")
+        logger.notice("Camera Extension request finished: result=\(result.rawValue, privacy: .public)")
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
             switch result {

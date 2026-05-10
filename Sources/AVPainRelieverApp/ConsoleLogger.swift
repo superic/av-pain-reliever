@@ -40,7 +40,15 @@ struct ConsoleLogger: ApplierLogger {
     }
 
     func info(_ message: String) {
-        logger.info("\(message, privacy: .public)")
+        // Route to `.notice`, NOT `.info`. Apple's `os.Logger.info` is
+        // memory-only by default — those entries don't reach the
+        // unified-log archive that `OSLogStore` reads, so they'd be
+        // missing from any "Save Logs for Support" export. Our `info`
+        // calls are state transitions ("applying profile X", "set
+        // default output Y") that absolutely need to land in support
+        // captures, so they map to `.notice` (Apple's "info worth
+        // keeping" level, persisted by default).
+        logger.notice("\(message, privacy: .public)")
         writeStderr("[\(category)] [info] \(message)")
     }
 

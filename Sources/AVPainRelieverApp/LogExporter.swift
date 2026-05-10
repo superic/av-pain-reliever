@@ -12,11 +12,18 @@ import AppKit
 /// virtual-camera issues, ask the reporter to also capture Console.app
 /// output filtered by `subsystem:com.ericwillis.avpainreliever.CameraExtension`.
 ///
-/// `.debug` entries are NOT persisted by Apple's unified log system
-/// by default, so this export only sees `.info` and above. For live
-/// debug-level diagnostics use `log stream --level debug --predicate
-/// 'subsystem CONTAINS "ericwillis.avpainreliever"' --style compact`
-/// directly.
+/// Apple's unified log persists `.notice` and above by default;
+/// `.debug` and `.info` entries are memory-only and never reach the
+/// archive `OSLogStore` reads. `ConsoleLogger.info` maps to
+/// `os.Logger.notice` for exactly this reason — our `info` lines
+/// describe state transitions worth keeping, so they need to be
+/// persisted. This export captures everything `ConsoleLogger`
+/// promotes to `.notice` plus `.warning` / `.error` / `.fault`.
+///
+/// `.debug` calls (chatty per-event diagnostics) are intentionally
+/// transient. For live debug-level diagnostics use
+/// `log stream --level debug --predicate 'subsystem CONTAINS
+/// "ericwillis.avpainreliever"' --style compact` directly.
 enum LogExporter {
     /// User-facing entry point. Shows a save panel, dumps the last
     /// `windowMinutes` minutes of relevant log entries to the chosen
@@ -69,7 +76,8 @@ enum LogExporter {
             # Process: main app only (Camera Extension logs are in a separate process; capture them via Console.app)
             # Subsystem prefix: com.ericwillis.avpainreliever
             # Entries: \(count)
-            # Note: .debug-level entries are not persisted by macOS by default and won't appear here.
+            # Note: .debug entries are transient and never reach this export. For live debug capture, run:
+            #   log stream --predicate 'subsystem CONTAINS "ericwillis.avpainreliever"' --level debug --style compact
 
             """
         let body = lines.joined(separator: "\n")
