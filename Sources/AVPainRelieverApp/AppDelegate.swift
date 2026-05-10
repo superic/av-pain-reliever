@@ -180,6 +180,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         virtualCameraActivator.onVisibilityConfirmed = { [weak self] in
             self?.engine?.reapply()
         }
+        // User cancelled the macOS auth prompt for a deactivate.
+        // Activator already restored its state to `.on`; sync the
+        // persisted setting so the Settings toggle bounces back, and
+        // re-apply the active profile so the system-wide preferred
+        // camera flips from the real fallback (set by disable()'s
+        // synchronous path) back to the virtual camera.
+        virtualCameraActivator.onDeactivateAuthCancelled = { [weak self] in
+            guard let self else { return }
+            self.settings.virtualCameraEnabled = true
+            self.engine?.reapply()
+        }
     }
 
     /// The most recent profile name we surfaced through

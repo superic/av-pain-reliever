@@ -986,6 +986,20 @@ Net effect: the toggle-off-then-on path now needs one auto-relaunch instead of t
 
 Recursion via `DispatchQueue.main.asyncAfter` (each poll schedules the next) is safe: the closure captures `[weak self]`, so a deallocated activator bails on the `guard let self`. State changes during polling (user disables, manual override) bail via `guard self.state == .on`.
 
+### Roll back the virtual-camera toggle when the deactivate auth prompt is cancelled (2026-05-09)
+
+User-visible bug: with the virtual camera on, flipping Settings → Camera off, then clicking Cancel on the macOS admin-password prompt, left the app in a `.failed` state. Toggling back on tripped the in-session deactivation guard and forced a `.requiresRelaunch` auto-relaunch — five seconds of dance for an action the user explicitly cancelled.
+
+The OS-level deactivate never went through (Cancel meant Cancel), so the extension was still alive. The only thing wrong was the host's view of state: `disable()` flips state to `.off` synchronously before submitting the deactivation request, and the existing `didFailWithError` path indiscriminately escalated every failure to `.failed(message)`.
+
+Fix: in `VirtualCameraActivator.didFailWithError`, detect the auth-cancel-during-deactivate case (`state == .off` AND error domain `OSSystemExtensionErrorDomain` AND code `OSSystemExtensionError.Code.authorizationRequired` (13)). Roll back: restore `state = .on`, clear `deactivatedThisSession`, restart the consumer watch that `disable()` ended, and fire a new `onDeactivateAuthCancelled` callback. AppDelegate's handler sets `settings.virtualCameraEnabled = true` so the Settings UI bounces back, and calls `engine.reapply()` so the active profile re-routes to the virtual camera (disable's synchronous teardown had pointed the system-preferred camera at the real fallback).
+
+Activate cancels keep the existing `.failed(message)` behavior because "user said no" to an activation means leave the camera off. Distinguishing the two cases by the activator's state at failure time (`.off` for deactivate, `.activating`/`.needsApproval` for activate) is robust without needing a separate "kind of request" flag.
+
+Logged as `.notice` rather than `.error` because the auth cancel is an expected user action, not a bug.
+
+PRs: builds on #79 and #80; mirrors the closure-callback pattern (`onVisibilityConfirmed`) introduced in #79.
+
 - **When we ship a Phase 1 fix or feature**, ask: does this teach us
   something about the Swift port? If yes, add to "Lessons learned."
 - **When the user gives feedback or hits a bug**, ask: should this be
