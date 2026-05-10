@@ -82,6 +82,64 @@ Things a real user might ask for. Not in v1, but kept here for v2 prioritization
 - *Crash and error reporting* (opt-in telemetry for unhandled crashes,
   plus an in-app viewer for recent OSLog failures so the user notices
   silent breakage without running `log show`)
+- *Localization.* All in-app strings are currently English literals;
+  v2 would migrate to `LocalizedStringResource` / `String(localized:)`
+  with `.xcstrings` catalogs. Cool-to-have, not a v1 gate.
+- *Live virtual-camera preview in Settings → Camera tab.* Settings UI
+  becomes a consumer of the virtual camera the same way Zoom is.
+  Doubles as a self-diagnostic so users can see the feed without
+  opening Zoom. Caveat: host-as-consumer interaction has a known bug
+  class (see CHANGELOG "Self-source feedback loop on late consumer
+  connect", 2026-05-05); relevant lesson when implementing.
+
+---
+
+## v1 graduation criteria
+
+What needs to be true to commit to a stable v1.0 feature surface and tag
+`v1.0.0`. The "Already met" bullets capture what's done today; the gate
+is the short forward-looking list at the bottom.
+
+### Already met (as of 2026-05-09)
+
+- **Virtual camera path battle-tested.** The visibility-race cluster
+  (PRs #79, #80, #81) closed out the bug class that was surfacing
+  repeatedly. Hold-last-frame, format conversion, and the
+  extension-activation flow are all stable.
+- **Wizard validated on external users.** 2 external users completed
+  Add Profile without help.
+- **Save Logs for Support shipped (PR #78).** External users have a
+  path to surface bugs.
+- **Sparkle release flow stable.** 15 v0.2.x releases shipped;
+  auto-update working end-to-end.
+- **Engine has substantial test coverage.** Resolver tiebreak fixes
+  (PRs #69, #70, #71) covered. Pure logic at 73-100% line coverage
+  across the engine target.
+
+### Forward-looking gate
+
+- **Soak time.** No new critical-class bug PR landing on `main` for
+  14 consecutive days. Today (2026-05-09) shipped 3 visibility-race
+  fixes; clock starts now.
+- **`tools/todo.md` Active section is empty at tag time.** Graduation
+  lands at a stable resting point, not mid-feature.
+- **Author judgment.** A few more weeks of daily use without surprise.
+  No mechanical trigger; the author calls when ready.
+
+### Explicitly NOT v1 gates
+
+These were considered and deferred:
+
+- *Crash + error reporting:* listed in Scope creep candidates for v2.
+- *App-target test coverage at engine parity:* active fun work in the
+  persistent todo, not a gate. Target is 80% line coverage on non-UI
+  files; SwiftUI views and OS-integration code excluded by design
+  (they need snapshot or integration tests, not unit tests).
+- *Live virtual-camera preview in Settings:* listed in Scope creep
+  candidates for v2.
+- *Localization:* listed in Scope creep candidates for v2.
+- *External user count threshold:* considered, dropped as a gate
+  because chasing a number distracts from quality signal.
 
 ---
 
