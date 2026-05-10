@@ -300,8 +300,13 @@ private struct GeneralSettingsTab: View {
             }
 
             Section {
+                Toggle("Receive dev updates", isOn: $settings.devUpdates)
+                Text("Opt in to small in-flight features. Dev releases ship more often than the stable line and usually carry one or two finished tweaks at a time. Off by default.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
                 Toggle("Receive experimental updates", isOn: $settings.experimentalUpdates)
-                Text("Opt in to early-access builds. Experimental releases may include unfinished features and be less stable than the regular release line. Off by default.")
+                Text("Opt in to moonshot builds. Experimental releases may include unfinished features and break things. Off by default. Independent of the dev toggle above; flip either, both, or neither.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)

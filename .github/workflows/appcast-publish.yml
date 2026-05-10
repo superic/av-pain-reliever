@@ -120,6 +120,7 @@ jobs:
           # Settings → General → Updates → "Receive experimental
           # updates" see those items.
           case "$VERSION_TAG" in
+              *-dev*)          export CHANNEL=dev ;;
               *-experimental*) export CHANNEL=experimental ;;
               *)               export CHANNEL= ;;
           esac

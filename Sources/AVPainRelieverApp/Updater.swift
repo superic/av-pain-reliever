@@ -98,7 +98,16 @@ final class Updater {
         settings.$experimentalUpdates
             .removeDuplicates()
             .dropFirst()
-            .sink { [weak self] _ in
+            .sink { [weak self] enabled in
+                Self.logger.notice("experimentalUpdates → \(enabled, privacy: .public); forcing background check")
+                self?.controller.updater.checkForUpdatesInBackground()
+            }
+            .store(in: &cancellables)
+        settings.$devUpdates
+            .removeDuplicates()
+            .dropFirst()
+            .sink { [weak self] enabled in
+                Self.logger.notice("devUpdates → \(enabled, privacy: .public); forcing background check")
                 self?.controller.updater.checkForUpdatesInBackground()
             }
             .store(in: &cancellables)
@@ -229,10 +238,15 @@ final class Updater {
 /// Sparkle delegate that controls which release channels the user is
 /// willing to receive. Default-empty allow-list means Sparkle only
 /// considers feed items WITHOUT a `<sparkle:channel>` tag — i.e.
-/// stable. When the user opts in via Settings, we return
-/// `["experimental"]` and items tagged with that channel become
-/// eligible. Multiple channels can be allowed simultaneously; for
-/// now there's only one experimental channel.
+/// stable. When the user opts in via Settings, the relevant channel
+/// names get added to the returned set:
+///
+/// - `experimentalUpdates` → `"experimental"` (moonshot work)
+/// - `devUpdates` → `"dev"` (small in-flight features)
+///
+/// The two toggles are independent. Sparkle considers feed items
+/// matching ANY of the allowed channels, so a user with both flipped
+/// on sees the union (stable + dev + experimental).
 ///
 /// Held strongly by `Updater` because Sparkle stores its delegates
 /// as weak references — without our retention, the delegate would
@@ -247,6 +261,9 @@ private final class ChannelGatingDelegate: NSObject, SPUUpdaterDelegate {
     }
 
     func allowedChannels(for updater: SPUUpdater) -> Set<String> {
-        settings.experimentalUpdates ? ["experimental"] : []
+        var channels: Set<String> = []
+        if settings.devUpdates { channels.insert("dev") }
+        if settings.experimentalUpdates { channels.insert("experimental") }
+        return channels
     }
 }

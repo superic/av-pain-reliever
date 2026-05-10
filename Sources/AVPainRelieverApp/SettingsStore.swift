@@ -22,6 +22,7 @@ final class SettingsStore: ObservableObject {
         static let launchAtLogin = "launchAtLogin"
         static let virtualCameraEnabled = "virtualCameraEnabled"
         static let experimentalUpdates = "experimentalUpdates"
+        static let devUpdates = "devUpdates"
         static let statsTrackingEnabled = "statsTrackingEnabled"
         static let statsStartDate = "statsStartDate"
         static let perProfileCounts = "perProfileCounts"
@@ -113,14 +114,25 @@ final class SettingsStore: ObservableObject {
         didSet { write(virtualCameraEnabled, forKey: Key.virtualCameraEnabled) }
     }
 
+    /// Opt-in to updates from the `dev` Sparkle channel. Default off.
+    /// When on, the Updater's `allowedChannels` delegate hook adds
+    /// `"dev"` to the returned set, so feed items tagged
+    /// `<sparkle:channel>dev</sparkle:channel>` become eligible.
+    /// Project convention: dev releases carry small in-flight features
+    /// that ship more frequently than the stable line. Independent of
+    /// `experimentalUpdates`; users can opt in to either, both, or
+    /// neither.
+    @Published var devUpdates: Bool {
+        didSet { write(devUpdates, forKey: Key.devUpdates) }
+    }
+
     /// Opt-in to updates from the `experimental` Sparkle channel.
-    /// Default off — only stable releases reach the user. When on,
-    /// the Updater's allowedChannels delegate hook returns
-    /// `["experimental"]`, so feed items tagged
-    /// `<sparkle:channel>experimental</sparkle:channel>` become
-    /// eligible upgrades. Used to gate the v0.2.x virtual-camera
-    /// builds behind a deliberate user choice while the feature is
-    /// still maturing.
+    /// Default off. When on, the Updater's `allowedChannels` delegate
+    /// hook adds `"experimental"` to the returned set, so feed items
+    /// tagged `<sparkle:channel>experimental</sparkle:channel>` become
+    /// eligible. Project convention: experimental releases carry
+    /// moonshot work that may break things. Independent of
+    /// `devUpdates`; users can opt in to either, both, or neither.
     @Published var experimentalUpdates: Bool {
         didSet { write(experimentalUpdates, forKey: Key.experimentalUpdates) }
     }
@@ -269,6 +281,7 @@ final class SettingsStore: ObservableObject {
         self.launchAtLogin = (defaults.object(forKey: Key.launchAtLogin) as? Bool) ?? false
         self.virtualCameraEnabled = (defaults.object(forKey: Key.virtualCameraEnabled) as? Bool) ?? false
         self.experimentalUpdates = (defaults.object(forKey: Key.experimentalUpdates) as? Bool) ?? false
+        self.devUpdates = (defaults.object(forKey: Key.devUpdates) as? Bool) ?? false
         // Stats tracking ships off by default for privacy. Every
         // record / increment method early-returns when this is false.
         self.statsTrackingEnabled = (defaults.object(forKey: Key.statsTrackingEnabled) as? Bool) ?? false
