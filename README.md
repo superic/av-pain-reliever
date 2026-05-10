@@ -1,20 +1,18 @@
 <p align="center">
-  <img src="docs/og-card.png" alt="AV Pain Reliever — Your laptop knows where it is." width="800">
+  <img src="docs/og-card.png" alt="AV Pain Reliever. Your laptop knows where it is." width="800">
 </p>
 
-> Auto-switch your microphone, speakers, and camera when you change desks.
-
-When you carry a MacBook between locations — your home office, a work desk, a conference room, a café — your audio defaults usually need fixing every time. Different microphone, different speakers, sometimes a different camera. **AV Pain Reliever** notices which dock you've connected to and automatically:
+You carry your MacBook to a few different desks during the week. Home office, work desk, conference room, café. Each one has a different microphone, different speakers, maybe a different camera. The audio is wrong until you fix it. **AV Pain Reliever** notices which dock you've connected to and handles it for you:
 
 - Sets your **system default microphone** for that location.
 - Sets your **system default speaker** for that location.
 - Sets your **system preferred camera** for that location.
 
-Configure your video apps (Zoom, Slack, Teams) once to follow the system, and after that the right setup is active the moment you plug in. Unplug and it returns to your laptop's built-in mic and speakers.
+Set your video apps (Zoom, Slack, Teams) once to follow the system default. After that, plug in and the right setup kicks in. Unplug, and you're back to the laptop's built-in mic and speakers.
 
-Some apps — Zoom, Slack, Teams — keep their own camera selection that ignores the system default. For those, AV Pain Reliever can also act as a **virtual camera** that always streams whatever camera the active profile names. See *Virtual camera* below.
+Some apps (Zoom, Slack, Teams) keep their own camera selection that ignores the system default. For those, AV Pain Reliever can also act as a **virtual camera** that streams whichever real camera the active profile names. See *Virtual camera* below.
 
-The app lives in your menu bar — no Dock icon, no windows in your way.
+The app lives in your menu bar. No Dock icon, no windows in your way.
 
 ---
 
@@ -41,7 +39,7 @@ To stop it: click the menu bar icon → **Quit**.
 
 The first time you launch, the welcome window walks you through capturing the dock you're at right now:
 
-1. **Name the location.** "Home Office", "Work Desk", "Studio", "Conference Room" — anything that makes sense to you.
+1. **Name the location.** Whatever makes sense to you: "Home Office", "Work Desk", "Studio", "Conference Room".
 2. **Pick which USB devices identify this location.** Untick anything that travels with you (keyboards, mice, phones).
 3. **Pick the audio and camera defaults.** Pre-filled with your current System Settings.
 4. **Save.**
@@ -56,10 +54,10 @@ When you connect to a new dock the app doesn't recognise, the menu bar shows **"
 
 Click the menu bar icon for:
 
-- **Switch to** — manually apply a different profile.
-- **Add Profile…** — capture the dock you're at right now (⌘N).
-- **Settings…** — notifications, menu bar appearance, profile management, Launch at Login (⌘,).
-- **About** — version and updates.
+- **Switch to**: manually apply a different profile.
+- **Add Profile…**: capture the dock you're at right now (⌘N).
+- **Settings…**: notifications, menu bar appearance, profile management, Launch at Login (⌘,).
+- **About**: version and updates.
 
 ---
 
@@ -67,7 +65,7 @@ Click the menu bar icon for:
 
 Zoom, Slack, and Teams remember the camera you pick *inside their own settings* and ignore the system default. So even after AV Pain Reliever changes your system camera, those apps keep using whatever you last chose in their picker.
 
-The virtual camera fixes that. Once turned on, **AV Pain Reliever** appears as a camera in any video app's picker. Pick it once and it then streams whichever real camera the active profile names — built-in, USB capture card, iPhone Continuity Camera, anything you can configure in a profile. When the profile changes, the picture follows.
+The virtual camera fixes that. Once turned on, **AV Pain Reliever** appears as a camera in any video app's picker. Pick it once and it streams whichever real camera the active profile names: built-in, USB capture card, iPhone Continuity Camera, anything you can configure in a profile. When the profile changes, the picture follows.
 
 To enable:
 
@@ -82,7 +80,7 @@ To turn it off, flip the toggle back. The "AV Pain Reliever" entry stops showing
 
 ## Privacy
 
-The app makes no network calls beyond checking for its own updates. No analytics, no telemetry, no third-party services. Your profiles are stored as a plain text file on your Mac (`~/Library/Application Support/AVPainReliever/profiles.toml`) — you can read it, back it up, or edit it by hand.
+The app makes no network calls beyond checking for its own updates. No analytics, no telemetry, no third-party services. Your profiles are stored as a plain text file on your Mac (`~/Library/Application Support/AVPainReliever/profiles.toml`). You can read it, back it up, or edit it by hand.
 
 ---
 
@@ -92,4 +90,4 @@ Questions or bug reports: [open an issue](https://github.com/superic/av-pain-rel
 
 ---
 
-For developers: see [CHANGELOG.md](CHANGELOG.md) for the project journal, [docs/](docs/) for architecture / decisions / virtual camera / release docs, and [CLAUDE.md](CLAUDE.md) for repo orientation. Licensed MIT — see [LICENSE](LICENSE).
+For developers: see [CHANGELOG.md](CHANGELOG.md) for the project journal, [docs/](docs/) for architecture / decisions / virtual camera / release docs, and [CLAUDE.md](CLAUDE.md) for repo orientation. MIT licensed. See [LICENSE](LICENSE).
