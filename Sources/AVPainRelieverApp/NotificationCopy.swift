@@ -33,14 +33,17 @@ enum NotificationCopy {
         return title(forSlug: slug, dayOfYear: day)
     }
 
-    /// Title for the "your profiles.toml was corrupt; we moved it to
-    /// the Trash" toast. Operational, not playful: the user needs to
-    /// know what happened so they can recover.
+    /// Title for the "your profiles.toml was corrupt; we renamed it"
+    /// toast. Operational, not playful: the user needs to know what
+    /// happened so they can recover.
     static let configCorruptedTitle = "Couldn't read profiles.toml"
 
-    /// Body for the same toast. The Show in Finder action button
-    /// reveals the file in the Trash; the body explains the rest.
-    static let configCorruptedBody = "Moved the broken copy to the Trash. Started fresh from defaults."
+    /// Body for the same toast. Names the renamed copy so a user who
+    /// dismisses the toast before clicking Show in Finder still has a
+    /// filename to grep for.
+    static func configCorruptedBody(filename: String) -> String {
+        "Saved the broken copy as \(filename) right next to it. Started fresh from defaults."
+    }
 
     /// Title for the worst-case branch: parse failed AND we couldn't
     /// move the file aside (filesystem error, read-only parent).

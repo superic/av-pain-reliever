@@ -57,7 +57,7 @@ universal format support. v0.1.x will keep getting patch releases
 in parallel for anyone who doesn't need any of this. **Money.**
 ```
 
-### Quarantine corrupt profiles.toml to the Trash instead of silently overwriting (2026-05-10)
+### Quarantine corrupt profiles.toml in place instead of silently overwriting (2026-05-10)
 
 A latent bug in `ProfileBootstrapper.loadOrBootstrap` came up while we were thinking about resilience: if `profiles.toml` failed to parse (syntax error, schema violation), the bootstrapper logged a warning and then unconditionally called `writeStarterConfig`, which atomically replaced the user's file with the 1-profile starter. Every custom profile, fingerprint, audio + camera selection: gone, silently. Triggered on every `bootEngine` call (launch, wizard save), and trivially reachable now that the auto-reload watcher fires on any out-of-band edit.
 
@@ -72,13 +72,15 @@ public enum LoadOutcome {
 }
 ```
 
-On parse failure, the bootstrapper now moves the corrupt file to the user's **Trash** via `FileManager.trashItem` (with a `QuarantineOp` closure seam so tests don't pollute the real Trash). macOS handles collision naming and provides the standard right-click "Put Back" recovery affordance, which is far more discoverable than a sibling file in the hidden Application Support directory. If `trashItem` throws (read-only volume, etc.) the bootstrapper returns `.unrecoverable` and the original file is left untouched.
+On parse failure, the bootstrapper renames the corrupt file in place to a timestamped sibling: `profiles.corrupted-{YYYY-MM-DD-HHMMSS-mmm}.toml`. The broken copy stays right next to the active config in Application Support so the user finds both when they navigate there. Considered the user's Trash (via `FileManager.trashItem`) and rejected it as too aggressive: Trash gets auto-emptied on some users' machines, "moved to Trash" sounds like deletion in user-facing copy, and the file ends up mixed with unrelated deleted items. A sibling rename keeps the data right where it belongs, indefinitely.
 
-AppDelegate switches on the outcome after `bootEngine` and posts a UNUserNotification on the `.quarantinedAndReset` or `.unrecoverable` branches. The `notificationsEnabled` toggle does NOT gate this notification (that toggle is for friendly per-switch toasts; corruption is operational and the user needs to know regardless). The corrupt-config toast carries a **Show in Finder** action button that reveals the trashed file with one click. To support that, `Notifier` grew a `NotificationAction` enum so callers can pick from pre-registered button labels (currently `openWizard` and `showInFinder`), since `UNUserNotificationCenter` requires categories up-front.
+A `QuarantineOp` closure seam keeps tests deterministic (they pass their own renamer instead of touching the real user filesystem). If the rename itself fails (read-only parent, etc.) the bootstrapper returns `.unrecoverable` and the original file is left untouched.
+
+AppDelegate switches on the outcome after `bootEngine` and posts a UNUserNotification on the `.quarantinedAndReset` or `.unrecoverable` branches. The `notificationsEnabled` toggle does NOT gate this notification (that toggle is for friendly per-switch toasts; corruption is operational and the user needs to know regardless). The corrupt-config toast carries a **Show in Finder** action button that reveals the renamed file with one click. The body also names the renamed file inline so a user who dismisses the toast still has a filename to grep. To support per-action button labels, `Notifier` grew a `NotificationAction` enum so callers pick from pre-registered category labels (currently `openWizard` and `showInFinder`), since `UNUserNotificationCenter` requires categories up-front.
 
 Order of operations in `bootEngine`: `configReloadGate.stamp(configMTime())` happens immediately after `loadOrBootstrap` returns, before any user-visible work. The quarantine + starter-write path produces several filesystem events the watcher will see; stamping early ensures its debounced callback finds the new mtime and treats it as an echo rather than firing a redundant second `bootEngine`.
 
-Tests cover the bootstrap matrix with the closure seam: valid load, missing-file bootstrap, malformed TOML quarantine, schema-violation quarantine, URL propagation through the outcome, `.unrecoverable` when the quarantine op throws, and the `LoadOutcome.profiles` accessor. Each runs against a fresh scratch dir; the production `trashCorruptFile` is exercised indirectly via integration.
+Tests cover the bootstrap matrix with the closure seam plus one test that exercises the real default rename: valid load, missing-file bootstrap, malformed TOML quarantine, schema-violation quarantine, URL propagation through the outcome, `.unrecoverable` when the quarantine op throws, the `LoadOutcome.profiles` accessor, and the default `renameCorruptFileInPlace` filename shape. Each runs against a fresh scratch dir.
 
 ### M2 lessons (gotchas the architecture or first attempts hit)
 

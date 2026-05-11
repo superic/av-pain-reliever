@@ -21,10 +21,10 @@ public enum LoadOutcome {
 }
 
 /// Closure that moves a corrupt config file out of the way and returns
-/// its new URL. The default implementation moves the file to the
-/// user's Trash so recovery uses the standard Finder affordance
-/// (right-click, Put Back). Tests inject a sibling-rename closure to
-/// keep their scratch directories self-contained.
+/// its new URL. The default implementation renames it in place to a
+/// timestamped sibling so the broken copy stays right next to the
+/// active config and isn't subject to Trash auto-empty. Tests inject
+/// their own closure to keep their scratch directories deterministic.
 public typealias QuarantineOp = (URL) throws -> URL
 
 /// Discovers an existing profiles config or bootstraps a new one.
@@ -58,12 +58,12 @@ public struct ProfileBootstrapper {
     }
 
     /// URL-parameterized loader. Tests pass a scratch directory and a
-    /// sibling-rename `quarantine` closure so they don't reach into
-    /// the user's real Trash. Production uses the default Trash op.
+    /// deterministic `quarantine` closure. Production uses the
+    /// default in-place rename.
     public func loadOrBootstrap(
         from tomlURL: URL,
         logger: ApplierLogger,
-        quarantine: QuarantineOp = ProfileBootstrapper.trashCorruptFile
+        quarantine: QuarantineOp = ProfileBootstrapper.renameCorruptFileInPlace
     ) -> LoadOutcome {
         if FileManager.default.fileExists(atPath: tomlURL.path) {
             do {
@@ -104,18 +104,30 @@ public struct ProfileBootstrapper {
         }
     }
 
-    /// Default quarantine op: move the corrupt file to the user's
-    /// Trash. macOS handles collision naming (adds a numeric suffix if
-    /// the Trash already holds `profiles.toml`). Returns the resulting
-    /// URL inside the Trash so the host can offer a reveal-in-Finder
-    /// action. Throws if `trashItem` fails (read-only volume, etc.).
-    public static func trashCorruptFile(_ tomlURL: URL) throws -> URL {
-        var resultingURL: NSURL?
-        try FileManager.default.trashItem(at: tomlURL, resultingItemURL: &resultingURL)
-        guard let url = resultingURL as URL? else {
-            throw CocoaError(.fileWriteUnknown)
-        }
-        return url
+    /// Default quarantine op: rename the corrupt file in place to a
+    /// timestamped sibling. The broken copy stays in the Application
+    /// Support directory next to the active config, so the user finds
+    /// both when they open the folder. Filename pattern:
+    /// `profiles.corrupted-{YYYY-MM-DD-HHMMSS-mmm}.toml`. Millisecond
+    /// suffix prevents back-to-back corrupt saves from colliding.
+    /// Throws if the move fails (read-only parent, etc.) so the
+    /// caller can fall back to `.unrecoverable`.
+    public static func renameCorruptFileInPlace(_ tomlURL: URL) throws -> URL {
+        let timestamp = quarantineTimestamp(from: Date())
+        let parent = tomlURL.deletingLastPathComponent()
+        let destination = parent.appendingPathComponent("profiles.corrupted-\(timestamp).toml")
+        try FileManager.default.moveItem(at: tomlURL, to: destination)
+        return destination
+    }
+
+    /// Filename-safe timestamp: `YYYY-MM-DD-HHMMSS-mmm` in UTC. Used
+    /// only by the default quarantine op; not part of the public API.
+    private static func quarantineTimestamp(from date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd-HHmmss-SSS"
+        formatter.timeZone = TimeZone(identifier: "UTC")
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        return formatter.string(from: date)
     }
 
     /// Default `profiles.toml` content, written on first launch when

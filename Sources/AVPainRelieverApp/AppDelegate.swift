@@ -441,7 +441,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         case .quarantinedAndReset(_, let quarantinedAs):
             notifier.notify(
                 title: NotificationCopy.configCorruptedTitle,
-                body: NotificationCopy.configCorruptedBody,
+                body: NotificationCopy.configCorruptedBody(
+                    filename: quarantinedAs.lastPathComponent
+                ),
                 iconSymbol: Theme.Symbol.warning,
                 action: .showInFinder,
                 onAction: {

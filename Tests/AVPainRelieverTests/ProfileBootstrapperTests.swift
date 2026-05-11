@@ -151,6 +151,31 @@ struct ProfileBootstrapperTests {
         }
     }
 
+    @Test("default in-place rename produces a profiles.corrupted-{timestamp}.toml sibling")
+    func defaultQuarantineRenamesInPlace() throws {
+        let dir = try makeScratchDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let url = dir.appendingPathComponent("profiles.toml")
+        let corrupt = "[profiles.foo\nbroken"
+        try corrupt.write(to: url, atomically: true, encoding: .utf8)
+
+        let outcome = ProfileBootstrapper().loadOrBootstrap(
+            from: url,
+            logger: SilentLogger()
+        )
+
+        guard case .quarantinedAndReset(_, let movedURL) = outcome else {
+            Issue.record("expected .quarantinedAndReset, got \(outcome)")
+            return
+        }
+        let name = movedURL.lastPathComponent
+        #expect(name.hasPrefix("profiles.corrupted-"))
+        #expect(name.hasSuffix(".toml"))
+        #expect(movedURL.deletingLastPathComponent().path == dir.path)
+        let preserved = try String(contentsOf: movedURL, encoding: .utf8)
+        #expect(preserved == corrupt)
+    }
+
     @Test("LoadOutcome.profiles returns [] for .unrecoverable and the inner array otherwise")
     func loadOutcomeProfilesAccessor() {
         let p: [Profile] = []
