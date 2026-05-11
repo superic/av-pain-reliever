@@ -56,6 +56,19 @@ These are settled and validated by the shipped Swift implementation:
   integrate with app-specific audio APIs (no aggregate device hacks, no
   per-app `defaults` plist editing). Engine only ever
   touches system default input/output. Confirmed by user 2026-04-30.
+- **No Mac App Store distribution.** Confirmed 2026-05-10 after weighing
+  the costs: the app runs unsandboxed today (IOKit USB watching, CMIO
+  camera-extension installation, CoreAudio default-device switching all
+  rely on direct entitlements), and we've invested heavily in Sparkle +
+  dev/stable channels + the `dev/build` sign-notarize-staple flow.
+  Moving to the App Store means a sandbox rework (real risk of App Review
+  pushback on a virtual-camera-plus-audio-switcher) and throwing out the
+  release infrastructure. Wins (discoverability, payment infrastructure,
+  trust signal beyond notarization) don't justify the cost at current
+  user-base scale. Direct distribution via notarized Developer-ID
+  binaries on GitHub stays the path. Revisit if a real distribution
+  ceiling emerges, monetization becomes interesting, or a reviewer
+  roundup gates on App Store presence.
 
 ---
 
