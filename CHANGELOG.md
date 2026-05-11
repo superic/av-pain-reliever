@@ -57,6 +57,24 @@ universal format support. v0.1.x will keep getting patch releases
 in parallel for anyone who doesn't need any of this. **Money.**
 ```
 
+### README "Release channels" block + correct `releases/latest` redirect (2026-05-11)
+
+The README's install step linked GitHub's `/releases/latest` for stable downloads, but every recent release was published without the `prerelease` flag set, so `/releases/latest` was returning whatever tag was newest (dev tags included). A user clicking "latest" today gets `v0.2.0.17-dev.4` instead of the most recent stable.
+
+Fix has two pieces. First, `release.yml` now sets `--prerelease` on `*-dev*` / `*-experimental*` tags and `--prerelease=false` on bare tags (same tag-pattern logic the appcast already uses to pick a Sparkle channel). `/releases/latest` now correctly returns the latest stable. Second, the README gets a new "Release channels" block:
+
+```html
+<!-- BEGIN CURRENT RELEASES -->
+- **Stable** — [latest](https://github.com/superic/av-pain-reliever/releases/latest)
+- **Dev** — _no current release_
+- **Experimental** — _no current release_
+<!-- END CURRENT RELEASES -->
+```
+
+The Dev and Experimental rows get auto-rewritten by `appcast-publish.yml` on every release-published event: same workflow that already commits `appcast.xml` back to main now also runs `scripts/update-readme-channel.awk` against the README and folds the change into the same commit. Stable stays free via the `/releases/latest` redirect. No manual README maintenance on tag.
+
+`scripts/update-readme-channel.awk` is a 50-line awk script with start-of-line anchors on the BEGIN/END markers so it can't accidentally eat a lookalike bullet outside the block (same defensive style as `upsert-appcast-item.awk`). Five test cases in `scripts/test-update-readme-channel.sh` cover both channels, the no-op empty-channel case, lines outside the markers, and idempotency. Wired into `test.yml`.
+
 ### Trace `.debug` lines for `ProfileConfigWatcher` (2026-05-11)
 
 The watcher logged only on error paths. Matched the `IOKitUSBWatcher` convention from the 2026-05-09 verbose-logging release: six new `.debug` calls covering start (with bound fd numbers), stop, dir-source events, file-source events with mask, inode-staleness rebinds, and debounce arming. All under category `config-watcher`. Diagnostic only: `.debug` is off the persistence path, so this doesn't change Save Logs for Support exports. Stream via `log stream --predicate 'subsystem == "com.ericwillis.avpainreliever" AND category == "config-watcher"' --level debug --style compact`.
