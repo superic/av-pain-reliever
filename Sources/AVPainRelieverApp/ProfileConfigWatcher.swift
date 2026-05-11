@@ -62,6 +62,7 @@ final class ProfileConfigWatcher {
         stop()
         bindDir()
         bindFileIfPresent()
+        Self.logger.debug("config-watcher: started (dirFD=\(dirFD), fileFD=\(fileFD))")
     }
 
     /// Tear down both watches. Idempotent.
@@ -80,6 +81,7 @@ final class ProfileConfigWatcher {
             close(fileFD)
             fileFD = -1
         }
+        Self.logger.debug("config-watcher: stopped")
     }
 
     private func bindDir() {
@@ -97,6 +99,7 @@ final class ProfileConfigWatcher {
         )
         src.setEventHandler { [weak self] in
             guard let self else { return }
+            Self.logger.debug("config-watcher: dir event")
             self.scheduleReload()
             self.refreshFileBindingIfStale()
         }
@@ -114,7 +117,9 @@ final class ProfileConfigWatcher {
             queue: .main
         )
         src.setEventHandler { [weak self] in
-            self?.scheduleReload()
+            guard let self else { return }
+            Self.logger.debug("config-watcher: file event mask=\(src.data.rawValue)")
+            self.scheduleReload()
             // Don't try to rebind from this handler. The dir-source
             // sees the same rename/delete as an entry-list change and
             // owns the rebind via `refreshFileBindingIfStale`.
@@ -133,6 +138,7 @@ final class ProfileConfigWatcher {
         let pathInode = inodeAtPath(url.path)
         let fdInode = inodeForFD(fileFD)
         guard pathInode != fdInode else { return }
+        Self.logger.debug("config-watcher: file inode changed (\(fdInode as Any) → \(pathInode as Any)), rebinding")
         fileSource?.cancel()
         fileSource = nil
         if fileFD >= 0 {
@@ -154,6 +160,7 @@ final class ProfileConfigWatcher {
     }
 
     private func scheduleReload() {
+        Self.logger.debug("config-watcher: debounce armed")
         debounceTimer?.cancel()
         let t = DispatchSource.makeTimerSource(queue: .main)
         t.schedule(deadline: .now() + debounceInterval)
