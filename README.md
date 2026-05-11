@@ -33,6 +33,16 @@ The app updates itself in the background. To check manually, open **About → Ch
 
 To stop it: click the menu bar icon → **Quit**.
 
+### Release channels
+
+Most users want the stable channel. Dev and experimental are opt-in via **Settings → General → Updates** inside the app; once enabled, Sparkle auto-updates from that channel.
+
+<!-- BEGIN CURRENT RELEASES -->
+- **Stable** — [latest](https://github.com/superic/av-pain-reliever/releases/latest)
+- **Dev** — _no current release_
+- **Experimental** — _no current release_
+<!-- END CURRENT RELEASES -->
+
 ---
 
 ## First-run setup

@@ -80,3 +80,10 @@ jobs:
         # `<item>`. Without this, a future workflow tweak could
         # re-introduce the 2026-05-10 live-feed-broke bug.
         run: scripts/test-upsert-appcast.sh
+
+      - name: README channel-link updater regression
+        # Tiny shell-test harness for scripts/update-readme-channel.awk.
+        # Pins behavior of the README "Release channels" block updater
+        # so the appcast-publish workflow keeps producing a valid
+        # README on every release.
+        run: scripts/test-update-readme-channel.sh

@@ -226,6 +226,18 @@ jobs:
                   --generate-notes \
                   --title "$VERSION_TAG"
           fi
+          # Mark dev / experimental tags as prerelease so GitHub's
+          # `/releases/latest` redirect correctly returns the most
+          # recent STABLE release rather than the most recent dev tag.
+          # Same tag-pattern decision the appcast workflow uses to
+          # pick a Sparkle channel. Idempotent: re-running on the same
+          # tag is a no-op.
+          case "$VERSION_TAG" in
+              *-dev*|*-experimental*)
+                  gh release edit "$VERSION_TAG" --prerelease ;;
+              *)
+                  gh release edit "$VERSION_TAG" --prerelease=false ;;
+          esac
 
       # Appcast publishing happens in a separate workflow
       # (.github/workflows/appcast-publish.yml) triggered by

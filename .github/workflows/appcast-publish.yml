@@ -159,7 +159,25 @@ jobs:
               -f scripts/upsert-appcast-item.awk \
               appcast.xml > appcast.xml.new
           mv appcast.xml.new appcast.xml
-          git add appcast.xml
+          # Refresh README's "Release channels" block for dev /
+          # experimental tags so the published tag-pinned URL is
+          # always current. Stable uses GitHub's /releases/latest
+          # redirect and never needs a rewrite — empty $CHANNEL passes
+          # through untouched. Tag-pattern matches what the appcast
+          # signing step already computed; both decisions share the
+          # same source of truth (the tag suffix).
+          case "$VERSION_TAG" in
+              *-dev*)          README_CHANNEL=dev ;;
+              *-experimental*) README_CHANNEL=experimental ;;
+              *)               README_CHANNEL= ;;
+          esac
+          awk \
+              -v channel="$README_CHANNEL" \
+              -v tag="$VERSION_TAG" \
+              -f scripts/update-readme-channel.awk \
+              README.md > README.md.new
+          mv README.md.new README.md
+          git add appcast.xml README.md
           git commit -m "appcast: publish $VERSION_TAG
 
           [skip ci]"
