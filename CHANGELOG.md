@@ -1036,6 +1036,25 @@ The Scope creep candidates list grew by two entries to keep the canonical list c
 
 Doc-only PR; no code changes.
 
+### Profile config auto-reload; Advanced menu loses two manual buttons (2026-05-10)
+
+The menu bar's Advanced submenu had two affordances that pre-dated everything automatic in the engine: **Re-evaluate Now** (force the engine to re-check current USB state) and **Reload Config** (re-read `profiles.toml` and rebuild the engine). Re-thinking both:
+
+- **Re-evaluate Now** was a legacy diagnostic. `IOKitUSBWatcher` doesn't realistically miss events in practice, and `engine.evaluate()` only re-applies when the resolved profile differs from current — so re-running with the same USB state is a no-op for an already-active profile (i.e. it can't fix "Zoom stole my audio default" the way users sometimes assume). The menu-bar pill already shows what the engine resolved to, so the "sanity check" use case is also handled. Removed cleanly, plus the `reevaluate()` method on `AppDelegate` it was the only caller of.
+
+- **Reload Config** had one legitimate use case: a user hand-edits `profiles.toml` (or some sync tool writes to it) and wants the change picked up without quitting + relaunching. Narrow but real. Replaced with a `ProfileConfigWatcher` that uses `DispatchSource.makeFileSystemObjectSource` to watch the TOML for out-of-band changes. Now the user just edits the file and the engine reloads on its own.
+
+The watcher's design notes:
+- **kqueue source on the open fd**, event mask `[.write, .extend, .delete, .rename, .attrib]`, scheduled on `.main` so callbacks land on the main thread and AppDelegate's @MainActor state is safe to mutate directly. 250 ms debounce coalesces editor-side multi-write saves (vim swap-file dance, autosave bursts).
+- **Atomic-rename handling**: the writer pattern used by both `ProfileWriter` and most text editors writes a tempfile then renames it over the target, which unlinks the old inode our fd points at. The watcher sees `.delete` / `.rename`, cancels the source, closes the fd, and the cancel handler re-opens the path 20 ms later so the watch re-binds to the new inode. A `shouldWatch` flag lets a concurrent `stop()` short-circuit the rebind cleanly.
+- **mtime-gated dedupe**: `AppDelegate.handleConfigFileChanged` stats the file and compares to `lastLoadedConfigMTime` (stamped by `bootEngine()` after a successful read). If the file's current mtime is no newer than the last loaded snapshot, the watcher's callback is an echo of the app's own write and gets ignored. Without this, the wizard's force-apply flow (which sets `pendingForceApplyName` then drives a synchronous `reloadConfig()`) would get stomped by the watcher's 250 ms-later callback re-running the resolver against a cleared `pendingForceApplyName`.
+
+Lifecycle: started in `applicationDidFinishLaunching` right after `bootEngine()` (so the file is guaranteed to exist by the time the watcher opens it), stopped in `applicationWillTerminate`.
+
+Tests: four cases for `ProfileConfigWatcher` — fires on atomic-rename write, debounces a burst of writes into a small number of callbacks, `stop()` halts subsequent callbacks even when the file changes, and a missing-file start is tolerated without crashing (the watcher logs and stays inactive). Uses a 50 ms debounce to keep wall-clock time per test under a second.
+
+Net for the Advanced menu: two rows + a divider gone. Now it's just Check for Updates, Reveal Log in Console, Save Logs for Support. The diagnostic surface stays, the manual housekeeping buttons retire.
+
 ### Wizard remembers audio and camera devices across disconnects (2026-05-10)
 
 The Add Profile wizard's audio and camera pickers only listed *currently-attached* devices, because `AudioController.availableDevices()` and `CameraController.availableCameras()` hit live CoreAudio / `AVCaptureDevice.DiscoverySession`. So a user sitting at their home desk couldn't swap the Conference Room profile's Yeti or external camera without first physically going back to the conference room. That's exactly the kind of friction the wizard was supposed to eliminate.

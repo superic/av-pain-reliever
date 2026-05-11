@@ -263,24 +263,12 @@ private struct MenuContentView: View {
 
         // Power-user / diagnostic actions live under Advanced so the
         // top-level menu stays focused on the things people actually
-        // use day-to-day (Switch / Add / Settings). Re-evaluate +
-        // Reload are useful when the engine's state has drifted from
-        // reality (a missed USB event, a hand-edited config); the
-        // log link is for diagnosing what the engine saw.
+        // use day-to-day (Switch / Add / Settings). The earlier
+        // "Re-evaluate Now" and "Reload Config" entries lived here
+        // too — both are gone: USB events drive evaluation
+        // automatically, and `ProfileConfigWatcher` reloads the
+        // engine on any out-of-band edit to `profiles.toml`.
         Menu {
-            Button {
-                delegate.reevaluate()
-            } label: {
-                Label("Re-evaluate Now", systemImage: "arrow.clockwise")
-            }
-            .keyboardShortcut("r")
-            Button {
-                delegate.reloadConfig()
-            } label: {
-                Label("Reload Config", systemImage: "doc.text")
-            }
-            .keyboardShortcut("l")
-            Divider()
             Button {
                 delegate.checkForUpdates()
             } label: {

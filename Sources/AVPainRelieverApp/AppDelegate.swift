@@ -77,6 +77,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
 
     private var engine: Engine?
 
+    /// Watches `profiles.toml` for out-of-band edits and triggers a
+    /// reload automatically. Replaces the old "Reload Config" menu
+    /// item — users who hand-edit the TOML (or whose sync tools
+    /// write to it) get the changes picked up without a click.
+    private var configWatcher: ProfileConfigWatcher?
+
+    /// Mtime of `profiles.toml` at the last `bootEngine()`. Powers
+    /// the dedupe gate in `handleConfigFileChanged()`; full rationale
+    /// lives there.
+    private var lastLoadedConfigMTime: Date?
+
     /// Owns the lifecycle of the embedded Camera Extension and the
     /// host capture pipeline. SwiftUI views observe this directly
     /// so the Settings UI can show a live status badge as the
@@ -278,6 +289,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         ) {
             updater = Updater(settings: settings)
         }
+        // Auto-reload on out-of-band edits to profiles.toml. Starts
+        // after `bootEngine()` has run inside the init/launch path
+        // (via `maybeShowWelcomeWindow`'s upstream chain) so the file
+        // is guaranteed to exist by the time the watcher opens it.
+        configWatcher = ProfileConfigWatcher(
+            url: ProfileBootstrapper.canonicalTOMLURL
+        ) { [weak self] in
+            self?.handleConfigFileChanged()
+        }
+        configWatcher?.start()
         maybeShowWelcomeWindow()
     }
 
@@ -356,8 +377,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
     }
 
     /// Tear down any existing engine, re-read the config from disk,
-    /// and start a fresh engine. Called on launch and on the menu's
-    /// "Reload Config" action. Notification state
+    /// and start a fresh engine. Called on launch, from the wizard's
+    /// save flow, and indirectly (via `reloadConfig()` from the
+    /// mtime-gated `handleConfigFileChanged()`) when the config
+    /// watcher detects an out-of-band edit. New callers that
+    /// originate from a file event should route through
+    /// `handleConfigFileChanged()` so the dedupe gate isn't
+    /// bypassed. Notification state
     /// (lastNotifiedName, notifiedUnknownLocation) is intentionally
     /// preserved across reloads — a reload that lands on the same
     /// profile is silent, while one that lands on a different profile
@@ -368,6 +394,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         let logger = ConsoleLogger()
         let profiles = ProfileBootstrapper().loadOrBootstrap(logger: logger)
         availableProfiles = ProfileDisplayOrder.displayOrder(profiles)
+        // Stamp the file's mtime so the config-watcher can recognize
+        // this load as the source of truth and skip a redundant
+        // reload if its debounced callback fires for the same write.
+        lastLoadedConfigMTime = configMTime()
         // Self-heal stats orphaned by anything that bypassed
         // `forgetProfile` (hand-edits to profiles.toml, or migration
         // from a build that predates the delete-time hook).
@@ -478,27 +508,44 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        configWatcher?.stop()
         engine?.stop()
     }
 
-    /// Menu-bar entry point — force an immediate re-evaluation
-    /// without waiting for the next USB event or for the debounce
-    /// window to elapse. Useful when the user knows a state change
-    /// happened that the engine hasn't observed (e.g., plugging in
-    /// something the watcher missed, or just sanity-checking what the
-    /// engine resolves to right now).
-    func reevaluate() {
-        logger.debug("reevaluate")
-        engine?.evaluate()
-    }
-
-    /// Menu-bar entry point — re-read the config file from disk and
-    /// rebuild the engine with the new profile list. The user clicks
-    /// this after editing profiles.toml (or .lua) and wants the
-    /// changes picked up without a full app restart.
+    /// Re-read the config file from disk and rebuild the engine with
+    /// the new profile list. Drives the post-wizard refresh and the
+    /// post-delete refresh; the config watcher calls this when
+    /// `profiles.toml` changes out-of-band.
     func reloadConfig() {
         logger.debug("reloadConfig")
         bootEngine()
+    }
+
+    /// Called by `ProfileConfigWatcher` after debouncing a file
+    /// event. Gates on mtime so we don't double-reload when the app
+    /// itself just wrote the file: bootEngine stamps
+    /// `lastLoadedConfigMTime`, and a watcher callback whose stat
+    /// mtime is no newer than that stamp is an echo we can ignore.
+    /// Without this gate, the wizard's force-apply flow (which sets
+    /// `pendingForceApplyName` then reloads synchronously) could be
+    /// undone by the watcher's 250 ms-later callback re-running the
+    /// resolver against a cleared `pendingForceApplyName`.
+    private func handleConfigFileChanged() {
+        let currentMTime = configMTime()
+        if let stamped = lastLoadedConfigMTime, let current = currentMTime, current <= stamped {
+            logger.debug("config-watcher: ignoring (mtime \(current) <= last loaded \(stamped))")
+            return
+        }
+        logger.info("config-watcher: external change detected, reloading")
+        reloadConfig()
+    }
+
+    private func configMTime() -> Date? {
+        let path = ProfileBootstrapper.canonicalTOMLURL.path
+        guard let attrs = try? FileManager.default.attributesOfItem(atPath: path) else {
+            return nil
+        }
+        return attrs[.modificationDate] as? Date
     }
 
     /// Menu-bar entry point — force-apply a specific profile,
