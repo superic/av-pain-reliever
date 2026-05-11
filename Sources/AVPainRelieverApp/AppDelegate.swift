@@ -393,12 +393,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         engine?.stop()
 
         let logger = ConsoleLogger()
-        let profiles = ProfileBootstrapper().loadOrBootstrap(logger: logger)
-        availableProfiles = ProfileDisplayOrder.displayOrder(profiles)
-        // Stamp the file's mtime so the config-watcher can recognize
-        // this load as the source of truth and skip a redundant
-        // reload if its debounced callback fires for the same write.
+        let loadOutcome = ProfileBootstrapper().loadOrBootstrap(logger: logger)
+        let profiles = loadOutcome.profiles
+        // Stamp the mtime as the first thing after bootstrap returns,
+        // before any user-visible work. The quarantine + starter-write
+        // path produces several FS events that the watcher will see;
+        // stamping early ensures its debounced callback finds the new
+        // mtime and treats it as an echo.
         configReloadGate.stamp(configMTime())
+        availableProfiles = ProfileDisplayOrder.displayOrder(profiles)
+        notifyOfLoadOutcome(loadOutcome)
         // Self-heal stats orphaned by anything that bypassed
         // `forgetProfile` (hand-edits to profiles.toml, or migration
         // from a build that predates the delete-time hook).
@@ -422,6 +426,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         }
         engine.start()
         self.engine = engine
+    }
+
+    /// Surface bootstrap outcomes that need user attention. Clean
+    /// loads are silent; corruption and unrecoverable cases always
+    /// fire (the `notificationsEnabled` toggle gates the friendly
+    /// per-switch toast, not operational data-loss alerts). The
+    /// corruption toast carries an action that reveals the moved-
+    /// aside file in Finder so recovery is one click.
+    private func notifyOfLoadOutcome(_ outcome: LoadOutcome) {
+        switch outcome {
+        case .loaded, .bootstrapped:
+            return
+        case .quarantinedAndReset(_, let quarantinedAs):
+            notifier.notify(
+                title: NotificationCopy.configCorruptedTitle,
+                body: NotificationCopy.configCorruptedBody,
+                iconSymbol: Theme.Symbol.warning,
+                action: .showInFinder,
+                onAction: {
+                    NSWorkspace.shared.activateFileViewerSelecting([quarantinedAs])
+                }
+            )
+        case .unrecoverable:
+            notifier.notify(
+                title: NotificationCopy.configUnrecoverableTitle,
+                body: NotificationCopy.configUnrecoverableBody,
+                iconSymbol: Theme.Symbol.warning
+            )
+        }
     }
 
     private func handleProfileApplied(_ profile: Profile) {
@@ -497,6 +530,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
             title: "New location detected",
             body: NotificationCopy.unknownLocationBody(deviceCount: devices.count),
             iconSymbol: "questionmark.circle",
+            action: .openWizard,
             onAction: { [weak self] in
                 // UN delivers the action callback on the main queue
                 // already, so no extra hop is needed. Toggle the

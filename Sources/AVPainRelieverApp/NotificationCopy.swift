@@ -33,6 +33,25 @@ enum NotificationCopy {
         return title(forSlug: slug, dayOfYear: day)
     }
 
+    /// Title for the "your profiles.toml was corrupt; we moved it to
+    /// the Trash" toast. Operational, not playful: the user needs to
+    /// know what happened so they can recover.
+    static let configCorruptedTitle = "Couldn't read profiles.toml"
+
+    /// Body for the same toast. The Show in Finder action button
+    /// reveals the file in the Trash; the body explains the rest.
+    static let configCorruptedBody = "Moved the broken copy to the Trash. Started fresh from defaults."
+
+    /// Title for the worst-case branch: parse failed AND we couldn't
+    /// move the file aside (filesystem error, read-only parent).
+    /// Engine runs with an empty profile list until the user resolves
+    /// it.
+    static let configUnrecoverableTitle = "Couldn't recover profiles.toml"
+
+    /// Body for the worst-case branch. Points at the Advanced menu's
+    /// Save Logs for Support entry.
+    static let configUnrecoverableBody = "Use Advanced > Save Logs for Support and send us the log."
+
     /// Body text for the "new location detected" toast — warmer than
     /// the bare "N USB devices attached" version, while still telling
     /// the user the next concrete action they can take.
