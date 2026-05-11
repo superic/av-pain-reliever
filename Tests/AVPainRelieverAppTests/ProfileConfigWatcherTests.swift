@@ -3,10 +3,12 @@ import Foundation
 @testable import AVPainRelieverApp
 
 /// Coverage for the file-system watcher that replaced the menu's
-/// "Reload Config" button. The watcher debounces filesystem events,
-/// fires its callback on the main actor, and re-binds across the
-/// atomic-rename pattern that `String.write(to:atomically:)` and
-/// most text editors use to save.
+/// "Reload Config" button. See `ProfileConfigWatcher` for the design
+/// rationale.
+///
+/// Each test gets its own scratch subdirectory so unrelated activity
+/// in the system temp root (other processes, leftover test files)
+/// can't trip the dir-watch and flake the assertions.
 ///
 /// Tests use a short debounce (50 ms) to keep wall-clock time small;
 /// production uses 250 ms. Wait windows are intentionally generous
@@ -16,10 +18,10 @@ import Foundation
 struct ProfileConfigWatcherTests {
     @Test("fires onChange after an atomic-rename write")
     func firesOnAtomicWrite() async throws {
-        let url = FileManager.default.temporaryDirectory
-            .appendingPathComponent("cfg-\(UUID()).toml")
+        let dir = try makeScratchDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let url = dir.appendingPathComponent("profiles.toml")
         try "initial".write(to: url, atomically: true, encoding: .utf8)
-        defer { try? FileManager.default.removeItem(at: url) }
 
         let recorder = FireRecorder()
         let watcher = ProfileConfigWatcher(
@@ -44,20 +46,16 @@ struct ProfileConfigWatcherTests {
         #expect(recorder.count == 1)
     }
 
-    @Test("debounces a burst of rapid writes into substantially fewer callbacks")
+    @Test("debounces a burst of rapid writes into a single callback")
     func debounceCoalescesBurstWrites() async throws {
-        // A burst of saves within the debounce window should land as
-        // a small number of onChange calls. Models a text editor's
-        // multi-step save (vim swap-file dance, autosave bursts).
-        // Each atomic rename also resets the source via the rebind
-        // path, so the strictest claim we can make is "callbacks
-        // strictly fewer than writes" — a broken debounce would
-        // produce one fire per write, which is what this asserts
-        // against. A properly working debounce produces one or two.
-        let url = FileManager.default.temporaryDirectory
-            .appendingPathComponent("cfg-burst-\(UUID()).toml")
+        // Models a text editor's multi-step save (vim swap-file
+        // dance, autosave bursts). All child writes fall inside the
+        // same dir-level kqueue window and the debounce timer
+        // collapses them to one fire.
+        let dir = try makeScratchDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let url = dir.appendingPathComponent("profiles.toml")
         try "seed".write(to: url, atomically: true, encoding: .utf8)
-        defer { try? FileManager.default.removeItem(at: url) }
 
         let recorder = FireRecorder()
         let watcher = ProfileConfigWatcher(
@@ -81,16 +79,15 @@ struct ProfileConfigWatcherTests {
         // last write.
         try await Task.sleep(for: .milliseconds(400))
 
-        #expect(recorder.count >= 1)
-        #expect(recorder.count < writeCount)
+        #expect(recorder.count == 1)
     }
 
     @Test("stop prevents further callbacks even if the file changes")
     func stopHaltsCallbacks() async throws {
-        let url = FileManager.default.temporaryDirectory
-            .appendingPathComponent("cfg-stop-\(UUID()).toml")
+        let dir = try makeScratchDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let url = dir.appendingPathComponent("profiles.toml")
         try "seed".write(to: url, atomically: true, encoding: .utf8)
-        defer { try? FileManager.default.removeItem(at: url) }
 
         let recorder = FireRecorder()
         let watcher = ProfileConfigWatcher(
@@ -109,12 +106,14 @@ struct ProfileConfigWatcherTests {
         #expect(recorder.count == 0)
     }
 
-    @Test("missing file at start leaves the watcher inactive without crashing")
-    func missingFileIsTolerated() async throws {
-        let url = FileManager.default.temporaryDirectory
-            .appendingPathComponent("cfg-missing-\(UUID()).toml")
-        // Do not create the file.
-        defer { try? FileManager.default.removeItem(at: url) }
+    @Test("missing file at start, then created → watcher picks it up")
+    func missingFileThenCreated() async throws {
+        // Parent dir exists, but the target file doesn't. The previous
+        // file-fd watcher would stay inactive forever; the dir-fd
+        // watcher picks up the create event.
+        let dir = try makeScratchDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let url = dir.appendingPathComponent("profiles.toml")
 
         let recorder = FireRecorder()
         let watcher = ProfileConfigWatcher(
@@ -126,13 +125,144 @@ struct ProfileConfigWatcherTests {
         watcher.start()
         defer { watcher.stop() }
 
-        // Even after a write, the watcher hasn't bound to anything,
-        // so the callback never fires. We're confirming "no crash"
-        // more than anything else.
-        try "now-exists".write(to: url, atomically: true, encoding: .utf8)
-        try await Task.sleep(for: .milliseconds(200))
+        try await Task.sleep(for: .milliseconds(50))
 
-        #expect(recorder.count == 0)
+        try "first-write".write(to: url, atomically: true, encoding: .utf8)
+        try await Task.sleep(for: .milliseconds(400))
+
+        #expect(recorder.count >= 1)
+    }
+
+    @Test("fires onChange after an in-place write (no rename)")
+    func firesOnInPlaceWrite() async throws {
+        // `atomically: false` writes to the existing inode in place.
+        let dir = try makeScratchDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let url = dir.appendingPathComponent("profiles.toml")
+        try "initial".write(to: url, atomically: true, encoding: .utf8)
+
+        let recorder = FireRecorder()
+        let watcher = ProfileConfigWatcher(
+            url: url,
+            debounceInterval: .milliseconds(50)
+        ) {
+            recorder.bump()
+        }
+        watcher.start()
+        defer { watcher.stop() }
+
+        try await Task.sleep(for: .milliseconds(50))
+
+        try "in-place-modified".write(to: url, atomically: false, encoding: .utf8)
+
+        try await Task.sleep(for: .milliseconds(400))
+
+        #expect(recorder.count == 1)
+    }
+
+    @Test("in-place edit after atomic rename still fires onChange")
+    func atomicRenameThenInPlaceWrite() async throws {
+        // After an atomic write replaces the inode, a follow-up
+        // in-place edit must still fire onChange.
+        let dir = try makeScratchDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let url = dir.appendingPathComponent("profiles.toml")
+        try "seed".write(to: url, atomically: true, encoding: .utf8)
+
+        let recorder = FireRecorder()
+        let watcher = ProfileConfigWatcher(
+            url: url,
+            debounceInterval: .milliseconds(50)
+        ) {
+            recorder.bump()
+        }
+        watcher.start()
+        defer { watcher.stop() }
+
+        try await Task.sleep(for: .milliseconds(50))
+
+        try "atomic".write(to: url, atomically: true, encoding: .utf8)
+        try await Task.sleep(for: .milliseconds(300))
+        let countAfterAtomic = recorder.count
+        #expect(countAfterAtomic >= 1)
+
+        try "in-place".write(to: url, atomically: false, encoding: .utf8)
+        try await Task.sleep(for: .milliseconds(300))
+
+        #expect(recorder.count > countAfterAtomic)
+    }
+
+    @Test("atomic rename after in-place edit still fires onChange")
+    func inPlaceWriteThenAtomicRename() async throws {
+        // Symmetric to the atomic-then-in-place case. After an
+        // in-place edit (which doesn't change the inode), a follow-up
+        // atomic rename swaps the inode and the file source must
+        // rebind cleanly to keep firing.
+        let dir = try makeScratchDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let url = dir.appendingPathComponent("profiles.toml")
+        try "seed".write(to: url, atomically: true, encoding: .utf8)
+
+        let recorder = FireRecorder()
+        let watcher = ProfileConfigWatcher(
+            url: url,
+            debounceInterval: .milliseconds(50)
+        ) {
+            recorder.bump()
+        }
+        watcher.start()
+        defer { watcher.stop() }
+
+        try await Task.sleep(for: .milliseconds(50))
+
+        try "in-place".write(to: url, atomically: false, encoding: .utf8)
+        try await Task.sleep(for: .milliseconds(300))
+        let countAfterInPlace = recorder.count
+        #expect(countAfterInPlace >= 1)
+
+        try "atomic".write(to: url, atomically: true, encoding: .utf8)
+        try await Task.sleep(for: .milliseconds(300))
+
+        #expect(recorder.count > countAfterInPlace)
+    }
+
+    @Test("file deleted after start, then recreated → watcher picks it up")
+    func deletedThenRecreated() async throws {
+        let dir = try makeScratchDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let url = dir.appendingPathComponent("profiles.toml")
+        try "seed".write(to: url, atomically: true, encoding: .utf8)
+
+        let recorder = FireRecorder()
+        let watcher = ProfileConfigWatcher(
+            url: url,
+            debounceInterval: .milliseconds(50)
+        ) {
+            recorder.bump()
+        }
+        watcher.start()
+        defer { watcher.stop() }
+
+        try await Task.sleep(for: .milliseconds(50))
+
+        // Delete: the debounce may fire, but because the target is
+        // missing the handler skips onChange. Record whatever happened
+        // and verify the post-recreate count strictly exceeds it.
+        try FileManager.default.removeItem(at: url)
+        try await Task.sleep(for: .milliseconds(200))
+        let countAfterDelete = recorder.count
+
+        try "back-again".write(to: url, atomically: true, encoding: .utf8)
+        try await Task.sleep(for: .milliseconds(400))
+
+        #expect(recorder.count > countAfterDelete)
+    }
+
+    private func makeScratchDir() throws -> URL {
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("cfg-watcher-\(UUID())")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir
     }
 }
 

@@ -11,28 +11,39 @@ import Foundation
 /// writes don't trigger a double-reload that would stomp on
 /// force-apply state.
 ///
-/// Implementation notes:
-/// - kqueue via `DispatchSource.makeFileSystemObjectSource` on the
-///   open file descriptor. Events run on the main queue so the
-///   caller's `onChange` is safe to mutate UI state.
-/// - On `.delete` or `.rename` (atomic-replace pattern used by
-///   `ProfileWriter` and most text editors), the watcher cancels
-///   the source, closes the old fd, then re-opens the path so we
-///   re-bind to the new inode.
-/// - 250 ms debounce coalesces editor-side multi-write saves (vim
-///   et al.) into one callback.
-/// - If the file is missing at start, the watcher logs and stays
-///   inactive. The bootstrapper creates the file on first launch,
-///   so in practice the file always exists by the time the watcher
-///   starts.
+/// Two kqueue sources cover the editor-save matrix:
+/// - **Parent-directory source** with mask `[.write]` fires on
+///   entry-list changes (create, delete, rename). Catches the
+///   atomic-rename pattern used by `String.write(atomically: true)`,
+///   TextEdit, and editors with `files.atomicSave`-style settings.
+///   Also lets the watcher recover when the file is missing at
+///   start, or is deleted and recreated out of band.
+/// - **File source** with mask `[.write, .extend, .attrib, .delete,
+///   .rename]` fires on content writes to the file inode. Catches
+///   in-place writers like VS Code's default save on macOS, vim
+///   without `backupcopy=no`, and `sed -i`.
+///
+/// The dir-source owns the file-source's lifecycle. After any
+/// directory event it stat-compares the path's current inode to the
+/// file fd's inode and rebinds when they differ. That removes the
+/// source-firing-order race that would otherwise leave the file
+/// source bound to an orphan inode after an atomic rename.
+///
+/// Both sources route through one debounce timer, so a save that
+/// trips both (an atomic rename also fires the file fd's `.rename`)
+/// coalesces into one `onChange` call. The debounce handler confirms
+/// the target file still exists before firing, so sibling-only
+/// directory writes are no-ops.
+@MainActor
 final class ProfileConfigWatcher {
     private let url: URL
     private let onChange: @MainActor () -> Void
     private let debounceInterval: DispatchTimeInterval
-    private var fd: Int32 = -1
-    private var source: DispatchSourceFileSystemObject?
+    private var dirFD: Int32 = -1
+    private var fileFD: Int32 = -1
+    private var dirSource: DispatchSourceFileSystemObject?
+    private var fileSource: DispatchSourceFileSystemObject?
     private var debounceTimer: DispatchSourceTimer?
-    private var shouldWatch = false
     private static let logger = ConsoleLogger(category: "config-watcher")
 
     init(
@@ -45,75 +56,101 @@ final class ProfileConfigWatcher {
         self.onChange = onChange
     }
 
-    /// Open the file and arm the kqueue watch. Safe to call
-    /// repeatedly; re-arming closes the old source first.
+    /// Open both watches and arm the kqueue sources. Safe to call
+    /// repeatedly; re-arming closes the old sources first.
     func start() {
         stop()
-        shouldWatch = true
-        openAndWatch()
+        bindDir()
+        bindFileIfPresent()
     }
 
-    /// Tear down the watch. Idempotent. Once stopped, any in-flight
-    /// rebind callback from a prior atomic-rename event will see
-    /// `shouldWatch == false` and exit without re-opening.
+    /// Tear down both watches. Idempotent.
     func stop() {
-        shouldWatch = false
         debounceTimer?.cancel()
         debounceTimer = nil
-        source?.cancel()
-        source = nil
-        if fd >= 0 {
-            close(fd)
-            fd = -1
+        dirSource?.cancel()
+        dirSource = nil
+        fileSource?.cancel()
+        fileSource = nil
+        if dirFD >= 0 {
+            close(dirFD)
+            dirFD = -1
+        }
+        if fileFD >= 0 {
+            close(fileFD)
+            fileFD = -1
         }
     }
 
-    private func openAndWatch() {
-        guard shouldWatch else { return }
-        let opened = open(url.path, O_EVTONLY)
+    private func bindDir() {
+        let dirPath = url.deletingLastPathComponent().path
+        let opened = open(dirPath, O_EVTONLY)
         guard opened >= 0 else {
-            Self.logger.info("config-watcher inactive: could not open \(url.path) (errno=\(errno))")
+            Self.logger.info("config-watcher inactive: could not open dir \(dirPath) (errno=\(errno))")
             return
         }
-        fd = opened
-
+        dirFD = opened
         let src = DispatchSource.makeFileSystemObjectSource(
-            fileDescriptor: fd,
-            eventMask: [.write, .extend, .delete, .rename, .attrib],
+            fileDescriptor: dirFD,
+            eventMask: [.write],
             queue: .main
         )
-
         src.setEventHandler { [weak self] in
             guard let self else { return }
-            let mask = src.data
-            Self.logger.debug("config-watcher event mask=\(mask.rawValue)")
             self.scheduleReload()
-            if mask.contains(.delete) || mask.contains(.rename) {
-                // Atomic replace: the inode we have open is now
-                // detached from the path. Cancel + re-open after the
-                // cancel handler runs.
-                src.cancel()
-            }
+            self.refreshFileBindingIfStale()
         }
-
-        src.setCancelHandler { [weak self] in
-            guard let self else { return }
-            if self.fd >= 0 {
-                close(self.fd)
-                self.fd = -1
-            }
-            // Re-bind to the new inode for atomic-replace flows. A
-            // small delay lets the rename settle before the open.
-            // `shouldWatch` lets a concurrent stop() short-circuit
-            // the rebind cleanly.
-            DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(20)) { [weak self] in
-                guard let self, self.shouldWatch else { return }
-                self.openAndWatch()
-            }
-        }
-
         src.resume()
-        source = src
+        dirSource = src
+    }
+
+    private func bindFileIfPresent() {
+        let opened = open(url.path, O_EVTONLY)
+        guard opened >= 0 else { return }
+        fileFD = opened
+        let src = DispatchSource.makeFileSystemObjectSource(
+            fileDescriptor: fileFD,
+            eventMask: [.write, .extend, .attrib, .delete, .rename],
+            queue: .main
+        )
+        src.setEventHandler { [weak self] in
+            self?.scheduleReload()
+            // Don't try to rebind from this handler. The dir-source
+            // sees the same rename/delete as an entry-list change and
+            // owns the rebind via `refreshFileBindingIfStale`.
+        }
+        src.resume()
+        fileSource = src
+    }
+
+    /// Compare the path's current inode to the one our file fd holds.
+    /// Atomic-rename replaces the path's inode without touching the fd,
+    /// so a mismatch means the fd is bound to a now-orphan inode and
+    /// the file-source must be rebound. Avoids the source-ordering
+    /// race where the dir-source might run before the file-source's
+    /// own `.rename` handler.
+    private func refreshFileBindingIfStale() {
+        let pathInode = inodeAtPath(url.path)
+        let fdInode = inodeForFD(fileFD)
+        guard pathInode != fdInode else { return }
+        fileSource?.cancel()
+        fileSource = nil
+        if fileFD >= 0 {
+            close(fileFD)
+            fileFD = -1
+        }
+        bindFileIfPresent()
+    }
+
+    private func inodeAtPath(_ path: String) -> UInt64? {
+        var s = stat()
+        return stat(path, &s) == 0 ? UInt64(s.st_ino) : nil
+    }
+
+    private func inodeForFD(_ fd: Int32) -> UInt64? {
+        guard fd >= 0 else { return nil }
+        var s = stat()
+        return fstat(fd, &s) == 0 ? UInt64(s.st_ino) : nil
     }
 
     private func scheduleReload() {
@@ -123,6 +160,17 @@ final class ProfileConfigWatcher {
         t.setEventHandler { [weak self] in
             guard let self else { return }
             self.debounceTimer = nil
+            guard FileManager.default.fileExists(atPath: self.url.path) else {
+                Self.logger.debug("config-watcher debounce fired but target missing; skip")
+                return
+            }
+            // If a multi-step atomic save's dir event landed while
+            // the target was transiently absent, the file source was
+            // lost. The file exists now; rebind so the next in-place
+            // edit isn't missed.
+            if self.fileFD < 0 {
+                self.bindFileIfPresent()
+            }
             MainActor.assumeIsolated {
                 self.onChange()
             }
@@ -133,9 +181,12 @@ final class ProfileConfigWatcher {
 
     deinit {
         // Best-effort fd close. Main-thread state mutations from stop()
-        // aren't safe from deinit, so only the syscall happens here.
-        if fd >= 0 {
-            close(fd)
+        // aren't safe from deinit, so only the syscalls happen here.
+        if dirFD >= 0 {
+            close(dirFD)
+        }
+        if fileFD >= 0 {
+            close(fileFD)
         }
     }
 }

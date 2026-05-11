@@ -83,10 +83,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
     /// write to it) get the changes picked up without a click.
     private var configWatcher: ProfileConfigWatcher?
 
-    /// Mtime of `profiles.toml` at the last `bootEngine()`. Powers
-    /// the dedupe gate in `handleConfigFileChanged()`; full rationale
-    /// lives there.
-    private var lastLoadedConfigMTime: Date?
+    /// Dedupe gate for the config watcher: tracks the mtime of
+    /// `profiles.toml` at the last `bootEngine()` and decides whether
+    /// a watcher callback represents an app-originated echo or a real
+    /// external change. See `ConfigReloadGate` for semantics.
+    private var configReloadGate = ConfigReloadGate()
 
     /// Owns the lifecycle of the embedded Camera Extension and the
     /// host capture pipeline. SwiftUI views observe this directly
@@ -397,7 +398,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         // Stamp the file's mtime so the config-watcher can recognize
         // this load as the source of truth and skip a redundant
         // reload if its debounced callback fires for the same write.
-        lastLoadedConfigMTime = configMTime()
+        configReloadGate.stamp(configMTime())
         // Self-heal stats orphaned by anything that bypassed
         // `forgetProfile` (hand-edits to profiles.toml, or migration
         // from a build that predates the delete-time hook).
@@ -522,18 +523,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
     }
 
     /// Called by `ProfileConfigWatcher` after debouncing a file
-    /// event. Gates on mtime so we don't double-reload when the app
-    /// itself just wrote the file: bootEngine stamps
-    /// `lastLoadedConfigMTime`, and a watcher callback whose stat
-    /// mtime is no newer than that stamp is an echo we can ignore.
-    /// Without this gate, the wizard's force-apply flow (which sets
-    /// `pendingForceApplyName` then reloads synchronously) could be
-    /// undone by the watcher's 250 ms-later callback re-running the
-    /// resolver against a cleared `pendingForceApplyName`.
+    /// event. Routes through `ConfigReloadGate` so an app-originated
+    /// write (already loaded by `bootEngine()`) doesn't echo back as
+    /// a redundant reload that would stomp on transient state like
+    /// `pendingForceApplyName`.
     private func handleConfigFileChanged() {
-        let currentMTime = configMTime()
-        if let stamped = lastLoadedConfigMTime, let current = currentMTime, current <= stamped {
-            logger.debug("config-watcher: ignoring (mtime \(current) <= last loaded \(stamped))")
+        let current = configMTime()
+        guard configReloadGate.shouldReload(currentMTime: current) else {
+            logger.debug("config-watcher: ignoring echo (mtime \(current as Any))")
             return
         }
         logger.info("config-watcher: external change detected, reloading")
