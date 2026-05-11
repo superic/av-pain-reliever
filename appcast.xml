@@ -646,5 +646,25 @@
                        type="application/octet-stream"
                        sparkle:edSignature="sYfwBs+Df5Y3TzXSui7ZBGL6v2KB8nlx4PmuHKhrG2cvZx31L3DDLp5nrPsHPpybkv/l438s11DUZdugMOkSCw==" length="3200939" />
         </item>
+        <item>
+            <title>Version 0.2.0.17-dev.4</title>
+            <description><![CDATA[
+<p>Tiny one, dev.4. Nothing you'll notice. Behind the scenes, the file watcher now leaves a paper trail: started here, saw a save there, file inode changed (old to new), debounce armed, all that. Internal-only, no user-visible behavior changes. Money.</p>
+<p>Why bother shipping it: when somebody files a "I saved my profile file and nothing happened" report, the saved support log finally has enough breadcrumbs to tell us which layer dropped the event. Today it just said "watcher inactive" or nothing at all. Not useful.</p>
+<p>If you want to watch it live, the magic words are:</p>
+<pre class="notranslate"><code class="notranslate">log stream --predicate 'subsystem == "com.ericwillis.avpainreliever" AND category == "config-watcher"' --level debug --style compact
+</code></pre>
+<p>The trace is <code class="notranslate">.debug</code> level which means it doesn't land in <strong>Save Logs for Support</strong> captures (those grab <code class="notranslate">.notice</code> and above only). So it doesn't bulk up your reports. Live diagnostic only.</p>
+<p>Carry on.</p>
+]]></description>
+            <pubDate>Mon, 11 May 2026 03:54:20 +0000</pubDate>
+            <sparkle:channel>dev</sparkle:channel>
+            <sparkle:version>0.2.0.17-dev.4</sparkle:version>
+            <sparkle:shortVersionString>0.2.0.17-dev.4</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/superic/av-pain-reliever/releases/download/v0.2.0.17-dev.4/AVPainReliever.app.zip"
+                       type="application/octet-stream"
+                       sparkle:edSignature="HbbJjKLRNGWHsyrf/KDYYF1pWLj+Ph2UjE3gaK6GGivnvccl8RFooXSIkO74nIRgUJ+1RVABfXzutK5TFPSSBw==" length="3203918" />
+        </item>
     </channel>
 </rss>
