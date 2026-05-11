@@ -623,5 +623,28 @@
                        type="application/octet-stream"
                        sparkle:edSignature="jsYCD2cjDzc4mm6cY46QtnDfDxYdt27zm1p/zPycaILgD2ymk20x5zw0tA7hIsMzEOK1gC31KwwicZiMQeInAg==" length="3189079" />
         </item>
+        <item>
+            <title>Version 0.2.0.17-dev.3</title>
+            <description><![CDATA[
+<p>Quick one, dev.3. If you hand-edit profiles.toml and save a typo, the app no longer eats your config. Money.</p>
+<p>Here's what was happening: parse error in profiles.toml meant the app wrote the default starter file right over the top of yours. Custom profiles, fingerprints, audio + camera selections — every one of them, gone. Silently. Auto-reload made that catastrophically easy: one bad save, 250 ms later, gone. Not how we do business.</p>
+<p>Now when the parser chokes:</p>
+<ul>
+<li>Your broken file gets renamed to <strong>profiles.corrupted-{timestamp}.toml</strong> right next to the active config. Same folder, different name, you can fix it and copy the sections back at your leisure.</li>
+<li>A notification fires titled <strong>"Couldn't read profiles.toml"</strong> with a <strong>Show in Finder</strong> button that opens the Application Support folder with your broken file selected. One click, you're staring at the data you almost lost.</li>
+<li>The freshly-installed starter takes over so the engine has something to apply while you sort it out. Once you fix the TOML and save, auto-reload picks it up like nothing happened.</li>
+</ul>
+<p>If the rename itself fails (read-only volume, permissions weirdness), the app leaves your broken file alone and tells you to grab logs via <strong>Advanced → Save Logs for Support</strong>. Strictly better than the old behavior, which was to overwrite anyway. Money.</p>
+<p>Hit anything weird, that same Save Logs button is your friend.</p>
+]]></description>
+            <pubDate>Mon, 11 May 2026 03:18:20 +0000</pubDate>
+            <sparkle:channel>dev</sparkle:channel>
+            <sparkle:version>0.2.0.17-dev.3</sparkle:version>
+            <sparkle:shortVersionString>0.2.0.17-dev.3</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/superic/av-pain-reliever/releases/download/v0.2.0.17-dev.3/AVPainReliever.app.zip"
+                       type="application/octet-stream"
+                       sparkle:edSignature="sYfwBs+Df5Y3TzXSui7ZBGL6v2KB8nlx4PmuHKhrG2cvZx31L3DDLp5nrPsHPpybkv/l438s11DUZdugMOkSCw==" length="3200939" />
+        </item>
     </channel>
 </rss>
