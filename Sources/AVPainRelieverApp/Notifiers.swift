@@ -2,6 +2,19 @@ import Foundation
 import AppKit
 import UserNotifications
 
+/// Identifies which action-button label to attach to a notification.
+/// UN's action API requires categories registered up-front (you can't
+/// set a button title per-call), so callers pick one of the pre-
+/// registered cases instead of passing free text.
+public enum NotificationAction {
+    /// "Open Wizard" - jumps into the Add Profile flow. Used by the
+    /// unknown-location toast.
+    case openWizard
+    /// "Show in Finder" - reveals a URL in Finder. Used by the
+    /// config-corrupted toast to surface the moved-aside file.
+    case showInFinder
+}
+
 /// Surface a transient banner-style notification to the user. The
 /// engine never instantiates a notifier; the app target picks the
 /// bundled vs unbundled backend, and tests inject a recording mock.
@@ -14,31 +27,29 @@ public protocol Notifier {
     /// attached to the notification. Backends that can't surface a
     /// thumbnail simply post the title + body unchanged.
     ///
-    /// `onAction` fires when the user clicks the inline button (NOT
-    /// when they click the body). Best-effort: backends that can't
-    /// render an action button drop the handler and it never fires.
-    /// The button label is owned by the backend (the UN backend
-    /// registers a single category up front so all action toasts
-    /// share the same label) — callers don't pass it per-call.
+    /// `action` and `onAction` are paired. `action` picks the button
+    /// label from the pre-registered set; `onAction` fires when the
+    /// user clicks the button. Backends that can't render action
+    /// buttons (AppleScript fallback) drop both. Pass `nil` for both
+    /// to post a plain toast.
     func notify(
         title: String,
         body: String?,
         iconSymbol: String?,
+        action: NotificationAction?,
         onAction: (() -> Void)?
     )
 }
 
 extension Notifier {
-    /// Convenience for action-less, icon-less notifications. Forwards
-    /// to the full method so backends only have to implement one
-    /// signature.
+    /// Convenience for action-less, icon-less notifications.
     public func notify(title: String, body: String?) {
-        notify(title: title, body: body, iconSymbol: nil, onAction: nil)
+        notify(title: title, body: body, iconSymbol: nil, action: nil, onAction: nil)
     }
 
     /// Convenience for a notification with just an icon thumbnail.
     public func notify(title: String, body: String?, iconSymbol: String?) {
-        notify(title: title, body: body, iconSymbol: iconSymbol, onAction: nil)
+        notify(title: title, body: body, iconSymbol: iconSymbol, action: nil, onAction: nil)
     }
 }
 
@@ -54,11 +65,13 @@ extension Notifier {
 /// `Settings → Send notifications` toggle still gates whether we
 /// even *try* to post — denying both layers is intentional.
 public final class UserNotificationsNotifier: NSObject, Notifier, UNUserNotificationCenterDelegate {
-    /// Identifier for the lone category we register at startup. It
-    /// carries a single "Open Wizard" action so the unknown-location
-    /// toast can offer a one-click jump into Add Profile.
-    private static let actionCategoryID = "av-pain-reliever.action"
-    private static let actionID = "av-pain-reliever.openWizard"
+    /// Pre-registered action categories. UN requires categories
+    /// up-front; you can't set a button title per-call. Each case in
+    /// `NotificationAction` maps to one of these category IDs.
+    private static let openWizardCategoryID = "av-pain-reliever.openWizard"
+    private static let showInFinderCategoryID = "av-pain-reliever.showInFinder"
+    private static let openWizardActionID = "av-pain-reliever.action.openWizard"
+    private static let showInFinderActionID = "av-pain-reliever.action.showInFinder"
 
     /// Open-action handler keyed by request UUID. We hold each
     /// closure until the corresponding notification is dismissed or
@@ -79,32 +92,37 @@ public final class UserNotificationsNotifier: NSObject, Notifier, UNUserNotifica
             // than logged. The system's own Notification Center
             // settings UI is the place to fix this.
         }
-        // Register one category with one action. Per Apple's API,
-        // categories must be set up-front; you can't attach arbitrary
-        // buttons per-notification. So the action button label is
-        // fixed at the category level instead of taken per-call from
-        // the protocol — see the `notify(...)` signature, which
-        // intentionally drops the `actionTitle` parameter for that
-        // reason. If we ever need a second action type, register
-        // another category here and gate on it inside `notify`.
-        let openAction = UNNotificationAction(
-            identifier: Self.actionID,
-            title: "Open Wizard",
-            options: [.foreground]
-        )
-        let category = UNNotificationCategory(
-            identifier: Self.actionCategoryID,
-            actions: [openAction],
+        // Register one category per `NotificationAction` case. UN
+        // requires categories up-front and won't accept per-call
+        // button titles; the call site picks a category by enum case.
+        let openWizard = UNNotificationCategory(
+            identifier: Self.openWizardCategoryID,
+            actions: [UNNotificationAction(
+                identifier: Self.openWizardActionID,
+                title: "Open Wizard",
+                options: [.foreground]
+            )],
             intentIdentifiers: [],
             options: []
         )
-        center.setNotificationCategories([category])
+        let showInFinder = UNNotificationCategory(
+            identifier: Self.showInFinderCategoryID,
+            actions: [UNNotificationAction(
+                identifier: Self.showInFinderActionID,
+                title: "Show in Finder",
+                options: [.foreground]
+            )],
+            intentIdentifiers: [],
+            options: []
+        )
+        center.setNotificationCategories([openWizard, showInFinder])
     }
 
     public func notify(
         title: String,
         body: String?,
         iconSymbol: String?,
+        action: NotificationAction?,
         onAction: (() -> Void)?
     ) {
         let content = UNMutableNotificationContent()
@@ -112,12 +130,15 @@ public final class UserNotificationsNotifier: NSObject, Notifier, UNUserNotifica
         if let body { content.body = body }
         content.sound = .default
 
-        // Attach the action category when the caller provided a
-        // handler. The button label is the category's pre-registered
-        // "Open Wizard" — UN doesn't take per-notification button
-        // labels, so the protocol surface drops the param entirely.
-        if onAction != nil {
-            content.categoryIdentifier = Self.actionCategoryID
+        // Pick the pre-registered category matching the requested
+        // action. UN doesn't accept per-call button labels.
+        if let action {
+            switch action {
+            case .openWizard:
+                content.categoryIdentifier = Self.openWizardCategoryID
+            case .showInFinder:
+                content.categoryIdentifier = Self.showInFinderCategoryID
+            }
         }
 
         // When the caller supplied an SF Symbol name, render it to a
@@ -244,9 +265,11 @@ public final class UserNotificationsNotifier: NSObject, Notifier, UNUserNotifica
     ) {
         let identifier = response.notification.request.identifier
         let handler = handlersQueue.sync { actionHandlers.removeValue(forKey: identifier) }
-        if response.actionIdentifier == Self.actionID, let handler {
-            // Hop to main since the handler typically opens a SwiftUI
-            // window. UN delivers on a private queue.
+        let isActionTap = response.actionIdentifier == Self.openWizardActionID
+            || response.actionIdentifier == Self.showInFinderActionID
+        if isActionTap, let handler {
+            // Hop to main since handlers typically touch SwiftUI or
+            // NSWorkspace. UN delivers on a private queue.
             DispatchQueue.main.async {
                 handler()
             }
@@ -279,15 +302,12 @@ public struct AppleScriptNotifier: Notifier {
         title: String,
         body: String?,
         iconSymbol: String?,
+        action: NotificationAction?,
         onAction: (() -> Void)?
     ) {
         // osascript notifications can't render an action button or a
-        // custom thumbnail — ignore `iconSymbol` and `onAction` and
-        // post a plain toast. Dev users see the message; the
-        // equivalent action is also reachable from the menu's
-        // "Set Up This Location…" button when in unknown-location
-        // state.
-        _ = (iconSymbol, onAction)
+        // custom thumbnail. Ignore all extras and post a plain toast.
+        _ = (iconSymbol, action, onAction)
         notifyPlain(title: title, body: body)
     }
 

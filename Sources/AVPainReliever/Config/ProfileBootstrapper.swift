@@ -1,18 +1,44 @@
 import Foundation
 
-/// Discovers an existing profiles config or bootstraps a new one for
-/// fresh installs. Wraps the read / seed dance the host's first
-/// launch performs:
+/// Outcome of a `ProfileBootstrapper.loadOrBootstrap` call. Carries
+/// the resolved profile list and, when corruption was recovered from,
+/// the URL of the moved-aside copy so the host can show the user
+/// where to find their data.
+public enum LoadOutcome {
+    case loaded([Profile])
+    case bootstrapped([Profile])
+    case quarantinedAndReset([Profile], quarantinedAs: URL)
+    case unrecoverable
+
+    public var profiles: [Profile] {
+        switch self {
+        case .loaded(let p), .bootstrapped(let p), .quarantinedAndReset(let p, _):
+            return p
+        case .unrecoverable:
+            return []
+        }
+    }
+}
+
+/// Closure that moves a corrupt config file out of the way and returns
+/// its new URL. The default implementation renames it in place to a
+/// timestamped sibling so the broken copy stays right next to the
+/// active config and isn't subject to Trash auto-empty. Tests inject
+/// their own closure to keep their scratch directories deterministic.
+public typealias QuarantineOp = (URL) throws -> URL
+
+/// Discovers an existing profiles config or bootstraps a new one.
+/// Three branches:
 ///
-///   1. `~/Library/Application Support/AVPainReliever/profiles.toml` —
-///      the canonical Swift-app config; load it directly.
-///   2. The file doesn't exist — write a starter `profiles.toml` so
-///      the engine has a working "laptop" fallback to apply on first
-///      launch instead of running idle.
-///
-/// Lives in the engine library so the host AppDelegate can stay a
-/// thin caller and the bootstrap behavior is testable without the
-/// app target.
+///   1. File parses cleanly: load and return.
+///   2. File doesn't exist: write the starter so the engine has a
+///      "laptop" fallback to apply.
+///   3. File exists but won't parse (typo, schema violation): move
+///      the corrupt copy out of the way before writing a starter, and
+///      surface its new location in `LoadOutcome` so the host can
+///      tell the user. Without this branch, a single bad save (a typo
+///      caught by the auto-reload watcher) would silently overwrite
+///      every custom profile.
 public struct ProfileBootstrapper {
     public init() {}
 
@@ -25,22 +51,41 @@ public struct ProfileBootstrapper {
                 "Library/Application Support/AVPainReliever/profiles.toml"
             )
 
-    /// Load profiles from the canonical TOML, falling through to a
-    /// starter-config write if the file doesn't exist. Logs each
-    /// branch via `ApplierLogger` so the host's console pipeline gets
-    /// a uniform audit trail. Returns an empty array only when every
-    /// fallback failed; the engine then runs idle until the user
-    /// creates a config.
-    public func loadOrBootstrap(logger: ApplierLogger) -> [Profile] {
-        let tomlURL = Self.canonicalTOMLURL
+    /// Load profiles from the canonical TOML. Production entry point;
+    /// delegates to the URL-taking overload for test reach.
+    public func loadOrBootstrap(logger: ApplierLogger) -> LoadOutcome {
+        loadOrBootstrap(from: Self.canonicalTOMLURL, logger: logger)
+    }
 
+    /// URL-parameterized loader. Tests pass a scratch directory and a
+    /// deterministic `quarantine` closure. Production uses the
+    /// default in-place rename.
+    public func loadOrBootstrap(
+        from tomlURL: URL,
+        logger: ApplierLogger,
+        quarantine: QuarantineOp = ProfileBootstrapper.renameCorruptFileInPlace
+    ) -> LoadOutcome {
         if FileManager.default.fileExists(atPath: tomlURL.path) {
             do {
                 let profiles = try ConfigLoader().loadProfiles(from: tomlURL)
                 logger.info("loaded \(profiles.count) profiles from \(tomlURL.path)")
-                return profiles
+                return .loaded(profiles)
             } catch {
-                logger.warn("failed to load \(tomlURL.path): \(error)")
+                logger.warn("failed to parse \(tomlURL.path): \(error)")
+                // Move the corrupt file aside before any write. If the
+                // quarantine op fails, the user's broken-but-recoverable
+                // file stays in place; the destructive overwrite that
+                // used to happen on this path is gone.
+                do {
+                    let quarantineURL = try quarantine(tomlURL)
+                    try writeStarterConfig(at: tomlURL)
+                    let starterProfiles = try ConfigLoader().loadProfiles(from: tomlURL)
+                    logger.info("moved corrupt config to \(quarantineURL.path); wrote fresh starter")
+                    return .quarantinedAndReset(starterProfiles, quarantinedAs: quarantineURL)
+                } catch {
+                    logger.warn("could not recover from corrupt config: \(error). Leaving file in place, engine runs idle.")
+                    return .unrecoverable
+                }
             }
         }
 
@@ -51,12 +96,38 @@ public struct ProfileBootstrapper {
         do {
             try writeStarterConfig(at: tomlURL)
             let profiles = try ConfigLoader().loadProfiles(from: tomlURL)
-            logger.info("first launch — wrote a starter config to \(tomlURL.path) (\(profiles.count) profile)")
-            return profiles
+            logger.info("first launch: wrote a starter config to \(tomlURL.path) (\(profiles.count) profile)")
+            return .bootstrapped(profiles)
         } catch {
-            logger.warn("failed to write starter config to \(tomlURL.path): \(error) — engine will run idle until a config is created")
-            return []
+            logger.warn("failed to write starter config to \(tomlURL.path): \(error). Engine will run idle until a config is created.")
+            return .unrecoverable
         }
+    }
+
+    /// Default quarantine op: rename the corrupt file in place to a
+    /// timestamped sibling. The broken copy stays in the Application
+    /// Support directory next to the active config, so the user finds
+    /// both when they open the folder. Filename pattern:
+    /// `profiles.corrupted-{YYYY-MM-DD-HHMMSS-mmm}.toml`. Millisecond
+    /// suffix prevents back-to-back corrupt saves from colliding.
+    /// Throws if the move fails (read-only parent, etc.) so the
+    /// caller can fall back to `.unrecoverable`.
+    public static func renameCorruptFileInPlace(_ tomlURL: URL) throws -> URL {
+        let timestamp = quarantineTimestamp(from: Date())
+        let parent = tomlURL.deletingLastPathComponent()
+        let destination = parent.appendingPathComponent("profiles.corrupted-\(timestamp).toml")
+        try FileManager.default.moveItem(at: tomlURL, to: destination)
+        return destination
+    }
+
+    /// Filename-safe timestamp: `YYYY-MM-DD-HHMMSS-mmm` in UTC. Used
+    /// only by the default quarantine op; not part of the public API.
+    private static func quarantineTimestamp(from date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd-HHmmss-SSS"
+        formatter.timeZone = TimeZone(identifier: "UTC")
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        return formatter.string(from: date)
     }
 
     /// Default `profiles.toml` content, written on first launch when

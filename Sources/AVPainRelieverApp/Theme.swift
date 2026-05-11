@@ -42,6 +42,10 @@ enum Theme {
         static let usbSection = "externaldrive.connected.to.line.below"
         static let audioSection = "speaker.wave.2.fill"
         static let cameraSection = "camera.fill"
+
+        /// Warning thumbnail for operational notifications (config
+        /// corruption, unrecoverable load failures).
+        static let warning = "exclamationmark.triangle"
     }
 
     enum Copy {
