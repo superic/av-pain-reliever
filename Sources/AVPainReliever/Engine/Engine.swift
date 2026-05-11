@@ -117,10 +117,9 @@ public final class Engine {
 
     /// Force an immediate evaluate-and-apply pass, bypassing the
     /// debounce window. Cancels any pending debounced evaluation
-    /// first so we don't fire twice in quick succession. Useful for
-    /// menu-bar "Re-evaluate Now" actions and for tests that want a
-    /// deterministic trigger without driving the debouncer.
-    /// No-op when the engine isn't started.
+    /// first so we don't fire twice in quick succession. Used by
+    /// tests that want a deterministic trigger without driving the
+    /// debouncer. No-op when the engine isn't started.
     public func evaluate() {
         guard started else { return }
         debouncer?.cancel()
