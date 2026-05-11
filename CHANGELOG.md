@@ -57,6 +57,10 @@ universal format support. v0.1.x will keep getting patch releases
 in parallel for anyone who doesn't need any of this. **Money.**
 ```
 
+### Trace `.debug` lines for `ProfileConfigWatcher` (2026-05-11)
+
+The watcher logged only on error paths. Matched the `IOKitUSBWatcher` convention from the 2026-05-09 verbose-logging release: six new `.debug` calls covering start (with bound fd numbers), stop, dir-source events, file-source events with mask, inode-staleness rebinds, and debounce arming. All under category `config-watcher`. Diagnostic only: `.debug` is off the persistence path, so this doesn't change Save Logs for Support exports. Stream via `log stream --predicate 'subsystem == "com.ericwillis.avpainreliever" AND category == "config-watcher"' --level debug --style compact`.
+
 ### Quarantine corrupt profiles.toml in place instead of silently overwriting (2026-05-10)
 
 A latent bug in `ProfileBootstrapper.loadOrBootstrap` came up while we were thinking about resilience: if `profiles.toml` failed to parse (syntax error, schema violation), the bootstrapper logged a warning and then unconditionally called `writeStarterConfig`, which atomically replaced the user's file with the 1-profile starter. Every custom profile, fingerprint, audio + camera selection: gone, silently. Triggered on every `bootEngine` call (launch, wizard save), and trivially reachable now that the auto-reload watcher fires on any out-of-band edit.
