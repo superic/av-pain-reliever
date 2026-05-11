@@ -598,5 +598,30 @@
                        type="application/octet-stream"
                        sparkle:edSignature="PISB/P95h/rIkYnwPvnA9GmNXcXJh8WeG/ux0/R2nSR6YZkdQyNvGHrDpOg1rtdLGZtY6TlE3xfKqqmHRRrCDw==" length="3172040" />
         </item>
+        <item>
+            <title>Version 0.2.0.17-dev.2</title>
+            <description><![CDATA[
+<p>Here's a small one, dev.2. The config file you've been hand-editing? You're done clicking Reload. Save it. Reload happens. Money.</p>
+<p>What's new:</p>
+<ul>
+<li>
+<p><strong>Auto-reload on file edit.</strong> Hand-edit <code class="notranslate">~/Library/Application Support/AVPainReliever/profiles.toml</code> in any text editor (TextEdit, VS Code, vim, doesn't matter, doesn't care). Save the file, the engine reloads within a quarter second. Audio defaults switch, camera switches, notification pops if the active profile changed. You stay in your editor.</p>
+</li>
+<li>
+<p><strong>Two buttons retired from Advanced.</strong> "Re-evaluate Now" and "Reload Config" are gone. The first was a legacy diagnostic that didn't really do anything you couldn't get from looking at the menu bar pill. The second is now redundant — the auto-reload watcher does the same job continuously, no click required. Same capability, cleaner submenu.</p>
+</li>
+</ul>
+<p>Under the hood there are two kqueue sources running together. One watches the parent directory for atomic-rename saves. The other watches the file inode for in-place saves. Whichever way your editor commits the bytes, we catch it. Belt-and-suspenders rebind handles the rare multi-step save dance. And there's a small mtime gate so the wizard's force-apply doesn't get undone by the watcher's 250 ms-later callback. Subtle, load-bearing.</p>
+<p>Hit anything weird, save logs under Advanced → Save Logs for Support. Money.</p>
+]]></description>
+            <pubDate>Mon, 11 May 2026 01:53:56 +0000</pubDate>
+            <sparkle:channel>dev</sparkle:channel>
+            <sparkle:version>0.2.0.17-dev.2</sparkle:version>
+            <sparkle:shortVersionString>0.2.0.17-dev.2</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/superic/av-pain-reliever/releases/download/v0.2.0.17-dev.2/AVPainReliever.app.zip"
+                       type="application/octet-stream"
+                       sparkle:edSignature="jsYCD2cjDzc4mm6cY46QtnDfDxYdt27zm1p/zPycaILgD2ymk20x5zw0tA7hIsMzEOK1gC31KwwicZiMQeInAg==" length="3189079" />
+        </item>
     </channel>
 </rss>
