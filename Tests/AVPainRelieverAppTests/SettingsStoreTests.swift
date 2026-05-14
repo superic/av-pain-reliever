@@ -50,10 +50,15 @@ struct SettingsStoreTests {
     func launchAtLoginPersists() {
         let defaults = makeSuite()
         do {
-            let store = SettingsStore(defaults: defaults)
+            // Pass an explicit no-op `applyLoginItem` so the didSet
+            // doesn't reach `SMAppService.mainApp.register()`. Under
+            // `swift test` the main app resolves to
+            // `swiftpm-testing-helper`, and macOS would register the
+            // test runner as a login item every time this test ran.
+            let store = SettingsStore(defaults: defaults, applyLoginItem: { _ in })
             store.launchAtLogin = true
         }
-        let reopened = SettingsStore(defaults: defaults)
+        let reopened = SettingsStore(defaults: defaults, applyLoginItem: { _ in })
         #expect(reopened.launchAtLogin == true)
     }
 

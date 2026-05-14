@@ -95,12 +95,15 @@ final class SettingsStore: ObservableObject {
 
     /// Whether the app should auto-launch at login. Default off so a
     /// fresh user has to opt in (per macOS background-task etiquette).
-    /// `LaunchAtLogin.apply(enabled:)` mirrors this state into the
-    /// system's launch services.
+    /// The injected `applyLoginItem` mirrors this state into the
+    /// system's launch services in production, and is a no-op in
+    /// tests (otherwise `SMAppService.mainApp.register()` would run
+    /// from `swiftpm-testing-helper` and register the test runner
+    /// itself as a login item — see `LaunchAtLogin.swift`).
     @Published var launchAtLogin: Bool {
         didSet {
             write(launchAtLogin, forKey: Key.launchAtLogin)
-            LaunchAtLogin.apply(enabled: launchAtLogin)
+            applyLoginItem(launchAtLogin)
         }
     }
 
@@ -309,8 +312,21 @@ final class SettingsStore: ObservableObject {
         Self.logger.debug("wrote key=\(key) value=\(rendered)")
     }
 
-    init(defaults: UserDefaults = .standard) {
+    /// Closure invoked from `launchAtLogin.didSet` to mirror the
+    /// toggle into `SMAppService.mainApp`. Production passes
+    /// `LaunchAtLogin.apply(enabled:)`; tests pass a no-op so
+    /// `swiftpm-testing-helper` never registers itself as a login
+    /// item. Held as an `@MainActor`-isolated property because the
+    /// enclosing class is `@MainActor` and the closure may touch
+    /// main-actor state.
+    private let applyLoginItem: LoginItemApplier
+
+    init(
+        defaults: UserDefaults = .standard,
+        applyLoginItem: @escaping LoginItemApplier = LaunchAtLogin.apply(enabled:)
+    ) {
         self.defaults = defaults
+        self.applyLoginItem = applyLoginItem
         // Default-on toggles use `object(forKey:) == nil` to distinguish
         // "never set" (use default) from "set to false" (respect
         // user's choice). `bool(forKey:)` returns false for missing

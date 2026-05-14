@@ -90,6 +90,14 @@ Final shape (in `WindowChrome.swift`):
 
 The `WindowCenteringView` logs decision points under a new `window-center` category so future regressions of this class are diagnosable in one `log stream` run. Diagnostic only: `.debug` is off the persistence path, so Save Logs for Support exports are unchanged.
 
+### Don't register `swiftpm-testing-helper` as a login item from tests (2026-05-12)
+
+`SettingsStoreTests.launchAtLoginPersists` toggled `store.launchAtLogin = true`, which fired the `@Published` `didSet` and called `LaunchAtLogin.apply(enabled: true)`. Under `swift test`, that resolves to `SMAppService.mainApp` from inside the `swiftpm-testing-helper` process, registering the **test runner** as a login item every time the suite ran. macOS Sequoia surfaces this as a "Login Item Added" banner ("`swiftpm-testing-helper` will open automatically when you log in"), which had silently accumulated across many test runs over the past week.
+
+Fix is a `LoginItemApplier` typealias and an injected applier closure on `SettingsStore.init`. Production passes the real `LaunchAtLogin.apply(enabled:)`; tests pass `{ _ in }`. The one test that mutates `launchAtLogin` now injects the no-op explicitly so `SMAppService` never gets called from the test helper. Existing tests that construct `SettingsStore` without mutating `launchAtLogin` are safe because Swift's `didSet` doesn't fire during initialization, so they continue using the default production applier without ever invoking it.
+
+Cleanup for users on the affected machine: open **System Settings → Login Items & Extensions** and remove `swiftpm-testing-helper` from **Open at Login**. After that, the bug is gone for good.
+
 ### Trace `.debug` lines for `ProfileConfigWatcher` (2026-05-11)
 
 The watcher logged only on error paths. Matched the `IOKitUSBWatcher` convention from the 2026-05-09 verbose-logging release: six new `.debug` calls covering start (with bound fd numbers), stop, dir-source events, file-source events with mask, inode-staleness rebinds, and debounce arming. All under category `config-watcher`. Diagnostic only: `.debug` is off the persistence path, so this doesn't change Save Logs for Support exports. Stream via `log stream --predicate 'subsystem == "com.ericwillis.avpainreliever" AND category == "config-watcher"' --level debug --style compact`.
