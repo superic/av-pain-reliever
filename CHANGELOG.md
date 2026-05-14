@@ -75,17 +75,20 @@ The Dev and Experimental rows get auto-rewritten by `appcast-publish.yml` on eve
 
 `scripts/update-readme-channel.awk` is a 50-line awk script with start-of-line anchors on the BEGIN/END markers so it can't accidentally eat a lookalike bullet outside the block (same defensive style as `upsert-appcast-item.awk`). Five test cases in `scripts/test-update-readme-channel.sh` cover both channels, the no-op empty-channel case, lines outside the markers, and idempotency. Wired into `test.yml`.
 
-### Window centering no longer flashes (2026-05-12)
+### Settings, About, Welcome, and Add Profile windows now center on every open (2026-05-12)
 
-Settings, About, Welcome, and Add Profile windows would sometimes open at their last-known position, then visibly snap to center a moment later. The original `WindowCenterer` in `WindowChrome.swift` deferred `window.center()` through a `DispatchQueue.main.async` hop, which fired *after* AppKit ordered the window front — the user saw both the pre-center frame and the snap.
+The four utility windows sometimes opened off-center on the wrong monitor, sometimes briefly at their last-known position before snapping to center. Root cause turned out to be a sequence of races between the helper's centering, AppKit's `frameAutosaveName` restoration, and SwiftUI's `Settings`-scene state restoration. Diagnostic logging across four iterations was the only way to see it clearly.
 
-Rewrote the helper as a custom `NSView` subclass that overrides `viewDidMoveToWindow()`. That callback fires while the view is being attached to its window but before the window is shown, so the centering lands before any pixels paint.
+Final shape (in `WindowChrome.swift`):
 
-First attempt at this used a single `hasCentered` latch that only released on view re-hosting (theme change, scene restoration). That worked for the initial open but missed the close-and-reopen case: SwiftUI's `Settings` scene keeps the view hierarchy alive across close (the window is hidden, not destroyed), so `viewDidMoveToWindow` only fires the first time. Closing and reopening left the window at its last-moved position.
+- A custom `NSView` subclass (`WindowCenteringView`) attaches `NSWindow.willCloseNotification` and `NSWindow.didBecomeKeyNotification` observers in `viewDidMoveToWindow`.
+- `didBecomeKeyNotification` is the **single source of truth** for centering. On every become-key with a cleared `hasCentered` latch, the window re-centers on the cursor's screen. `willCloseNotification` clears the latch so the next open re-centers.
+- Centering is intentionally NOT done in `viewDidMoveToWindow`. The diagnostic logs showed SwiftUI's `Settings` scene restoring its last-session frame between `viewDidMoveToWindow` and `didBecomeKey` (~30 ms gap), which would clobber any pre-show centering. `didBecomeKey` fires after that restoration, so it's the only reliable hook.
+- `frameAutosaveName` is cleared if SwiftUI assigns one, as belt-and-suspenders against AppKit's restoration on top of SwiftUI's.
+- Centering uses the screen with the mouse cursor, not `NSWindow.center()`'s "screen the saved frame is on" default. For a menu-bar app, the cursor's monitor is the one the user is looking at; the saved-frame's monitor may have been from a different session. Y-axis placement matches AppKit's `center()` heuristic (about a third from the top) so the windows still feel like macOS-native utility windows.
+- Focus-return (user clicks another app then back to the window) does NOT fire `willClose`, so the latch stays set and the window keeps its user-moved position.
 
-Fix uses two `NSWindow` notifications to coordinate the latch: `willCloseNotification` resets it; `didBecomeKeyNotification` re-centers iff the latch is clear. Net behavior: every real close/reopen cycle re-centers. Click-away-and-click-back doesn't fire `willClose`, so the latch stays set and the window keeps its user-moved position.
-
-While in there, switched from `NSWindow.center()` (which uses the screen the window's saved frame is on, or main if none) to centering on the screen with the mouse cursor. For a menu-bar app the user may click the menu bar on one monitor while the saved frame is on another; the cursor's screen is the screen they're looking at. The y-axis placement matches AppKit's `center()` heuristic (about a third from the top), so the windows still feel like macOS-native utility windows rather than dead-center-on-screen modals.
+The `WindowCenteringView` logs decision points under a new `window-center` category so future regressions of this class are diagnosable in one `log stream` run. Diagnostic only: `.debug` is off the persistence path, so Save Logs for Support exports are unchanged.
 
 ### Trace `.debug` lines for `ProfileConfigWatcher` (2026-05-11)
 
