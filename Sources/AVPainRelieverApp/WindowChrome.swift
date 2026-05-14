@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import OSLog
 
 /// SwiftUI view modifier that locks the hosting `NSWindow` to a fixed,
 /// dialog-style chrome: title bar + close button only. The yellow
@@ -126,6 +127,10 @@ private struct WindowCenterer: NSViewRepresentable {
 ///     doesn't fire `willClose`, so the latch stays true and the
 ///     window stays where the user left it.
 private final class WindowCenteringView: NSView {
+    private static let logger = Logger(
+        subsystem: "com.ericwillis.avpainreliever",
+        category: "window-center"
+    )
     private var hasCentered = false
     private var willCloseObserver: NSObjectProtocol?
     private var didBecomeKeyObserver: NSObjectProtocol?
@@ -133,9 +138,23 @@ private final class WindowCenteringView: NSView {
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         teardownObservers()
-        guard let window = window else { return }
+        guard let window = window else {
+            Self.logger.debug("viewDidMoveToWindow: window=nil; nothing to do")
+            return
+        }
+        // Defuse macOS's frame autosave so SwiftUI/AppKit doesn't
+        // restore the previous frame AFTER our centering and clobber
+        // it. Setting the name to empty string disables autosaving
+        // on the window. Must run BEFORE the first center so the
+        // restore (if any) happens before, not after.
+        if !window.frameAutosaveName.isEmpty {
+            Self.logger.debug("viewDidMoveToWindow: clearing frameAutosaveName=\(window.frameAutosaveName, privacy: .public)")
+            window.setFrameAutosaveName("")
+        }
         if !hasCentered {
+            Self.logger.debug("viewDidMoveToWindow: centering, current frame=\(NSStringFromRect(window.frame), privacy: .public)")
             centerOnCursorScreen(window)
+            Self.logger.debug("viewDidMoveToWindow: centered, new frame=\(NSStringFromRect(window.frame), privacy: .public)")
             hasCentered = true
         }
         attachObservers(to: window)
@@ -148,8 +167,7 @@ private final class WindowCenteringView: NSView {
             object: window,
             queue: .main
         ) { [weak self] _ in
-            // Window is about to be hidden. Clear the latch so the
-            // next time it becomes key, we re-center.
+            Self.logger.debug("willClose: clearing latch")
             self?.hasCentered = false
         }
         didBecomeKeyObserver = center.addObserver(
@@ -157,8 +175,14 @@ private final class WindowCenteringView: NSView {
             object: window,
             queue: .main
         ) { [weak self] _ in
-            guard let self, !self.hasCentered, let window = self.window else { return }
+            guard let self, let window = self.window else { return }
+            if self.hasCentered {
+                Self.logger.debug("didBecomeKey: latched, leaving frame=\(NSStringFromRect(window.frame), privacy: .public)")
+                return
+            }
+            Self.logger.debug("didBecomeKey: centering, current frame=\(NSStringFromRect(window.frame), privacy: .public)")
             self.centerOnCursorScreen(window)
+            Self.logger.debug("didBecomeKey: centered, new frame=\(NSStringFromRect(window.frame), privacy: .public)")
             self.hasCentered = true
         }
     }
