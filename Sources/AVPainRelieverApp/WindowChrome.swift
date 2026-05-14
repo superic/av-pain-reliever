@@ -142,22 +142,17 @@ private final class WindowCenteringView: NSView {
             Self.logger.debug("viewDidMoveToWindow: window=nil; nothing to do")
             return
         }
-        // Defuse macOS's frame autosave so SwiftUI/AppKit doesn't
-        // restore the previous frame AFTER our centering and clobber
-        // it. Setting the name to empty string disables autosaving
-        // on the window. Must run BEFORE the first center so the
-        // restore (if any) happens before, not after.
+        // Defuse AppKit's frame autosave (if any) so a saved frame
+        // can't be restored. SwiftUI's Settings scene has its own
+        // state-restoration mechanism on top of this that fires
+        // BETWEEN viewDidMoveToWindow and didBecomeKey, which is why
+        // we don't try to center here — see the didBecomeKey handler.
         if !window.frameAutosaveName.isEmpty {
             Self.logger.debug("viewDidMoveToWindow: clearing frameAutosaveName=\(window.frameAutosaveName, privacy: .public)")
             window.setFrameAutosaveName("")
         }
-        if !hasCentered {
-            Self.logger.debug("viewDidMoveToWindow: centering, current frame=\(NSStringFromRect(window.frame), privacy: .public)")
-            centerOnCursorScreen(window)
-            Self.logger.debug("viewDidMoveToWindow: centered, new frame=\(NSStringFromRect(window.frame), privacy: .public)")
-            hasCentered = true
-        }
         attachObservers(to: window)
+        Self.logger.debug("viewDidMoveToWindow: observers attached, current frame=\(NSStringFromRect(window.frame), privacy: .public)")
     }
 
     private func attachObservers(to window: NSWindow) {
