@@ -87,9 +87,10 @@ struct CenteredOnScreen: ViewModifier {
 }
 
 extension View {
-    /// Center the hosting window on the active screen on first open.
-    /// Idempotent across re-hosting; the window is only centered once
-    /// per view instance so a user-moved window isn't yanked back.
+    /// Center the hosting window on the cursor's screen on every
+    /// open, including reopens after the user closes the window. A
+    /// click-away-and-back focus return doesn't recenter — only a
+    /// real close/reopen cycle does.
     func centeredOnScreen() -> some View {
         modifier(CenteredOnScreen())
     }
@@ -107,20 +108,71 @@ private struct WindowCenterer: NSViewRepresentable {
     }
 }
 
-/// Centers its hosting window the first time the view is attached.
-/// `viewDidMoveToWindow` runs after the window exists but before it
-/// is ordered front, so the center call lands before the user sees
-/// anything. The `hasCentered` latch guards against SwiftUI re-hosting
-/// the view later (theme change, scene restoration), which would
-/// otherwise re-center and clobber a user-moved window.
+/// Centers its hosting window on first attach AND on every reopen
+/// after a close.
+///
+/// SwiftUI's `Settings` scene keeps the view hierarchy alive across
+/// the window's close/reopen cycle (the window is hidden, not
+/// destroyed), so `viewDidMoveToWindow` only fires the first time the
+/// window is ever opened. Relying on it alone leaves the window at
+/// its user-moved position on the second open, which feels broken.
+///
+/// Two `NSWindow` notifications coordinate a "re-center on next open
+/// but never on focus-return" semantic:
+///   - `willCloseNotification` resets `hasCentered = false` so the
+///     next `didBecomeKey` re-centers.
+///   - `didBecomeKeyNotification` centers iff `!hasCentered`, then
+///     re-sets the latch. Clicking away from the window and back
+///     doesn't fire `willClose`, so the latch stays true and the
+///     window stays where the user left it.
 private final class WindowCenteringView: NSView {
     private var hasCentered = false
+    private var willCloseObserver: NSObjectProtocol?
+    private var didBecomeKeyObserver: NSObjectProtocol?
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
-        guard !hasCentered, let window = window else { return }
-        hasCentered = true
-        centerOnCursorScreen(window)
+        teardownObservers()
+        guard let window = window else { return }
+        if !hasCentered {
+            centerOnCursorScreen(window)
+            hasCentered = true
+        }
+        attachObservers(to: window)
+    }
+
+    private func attachObservers(to window: NSWindow) {
+        let center = NotificationCenter.default
+        willCloseObserver = center.addObserver(
+            forName: NSWindow.willCloseNotification,
+            object: window,
+            queue: .main
+        ) { [weak self] _ in
+            // Window is about to be hidden. Clear the latch so the
+            // next time it becomes key, we re-center.
+            self?.hasCentered = false
+        }
+        didBecomeKeyObserver = center.addObserver(
+            forName: NSWindow.didBecomeKeyNotification,
+            object: window,
+            queue: .main
+        ) { [weak self] _ in
+            guard let self, !self.hasCentered, let window = self.window else { return }
+            self.centerOnCursorScreen(window)
+            self.hasCentered = true
+        }
+    }
+
+    private func teardownObservers() {
+        let center = NotificationCenter.default
+        if let willCloseObserver { center.removeObserver(willCloseObserver) }
+        if let didBecomeKeyObserver { center.removeObserver(didBecomeKeyObserver) }
+        willCloseObserver = nil
+        didBecomeKeyObserver = nil
+    }
+
+    deinit {
+        teardownObservers()
     }
 
     /// Center on the screen currently containing the mouse cursor.

@@ -79,7 +79,11 @@ The Dev and Experimental rows get auto-rewritten by `appcast-publish.yml` on eve
 
 Settings, About, Welcome, and Add Profile windows would sometimes open at their last-known position, then visibly snap to center a moment later. The original `WindowCenterer` in `WindowChrome.swift` deferred `window.center()` through a `DispatchQueue.main.async` hop, which fired *after* AppKit ordered the window front — the user saw both the pre-center frame and the snap.
 
-Rewrote the helper as a custom `NSView` subclass that overrides `viewDidMoveToWindow()`. That callback fires while the view is being attached to its window but before the window is shown, so the centering lands before any pixels paint. A `hasCentered` latch prevents re-centering on view re-hosting (theme change, scene restoration), so a user-moved window isn't yanked back.
+Rewrote the helper as a custom `NSView` subclass that overrides `viewDidMoveToWindow()`. That callback fires while the view is being attached to its window but before the window is shown, so the centering lands before any pixels paint.
+
+First attempt at this used a single `hasCentered` latch that only released on view re-hosting (theme change, scene restoration). That worked for the initial open but missed the close-and-reopen case: SwiftUI's `Settings` scene keeps the view hierarchy alive across close (the window is hidden, not destroyed), so `viewDidMoveToWindow` only fires the first time. Closing and reopening left the window at its last-moved position.
+
+Fix uses two `NSWindow` notifications to coordinate the latch: `willCloseNotification` resets it; `didBecomeKeyNotification` re-centers iff the latch is clear. Net behavior: every real close/reopen cycle re-centers. Click-away-and-click-back doesn't fire `willClose`, so the latch stays set and the window keeps its user-moved position.
 
 While in there, switched from `NSWindow.center()` (which uses the screen the window's saved frame is on, or main if none) to centering on the screen with the mouse cursor. For a menu-bar app the user may click the menu bar on one monitor while the saved frame is on another; the cursor's screen is the screen they're looking at. The y-axis placement matches AppKit's `center()` heuristic (about a third from the top), so the windows still feel like macOS-native utility windows rather than dead-center-on-screen modals.
 
