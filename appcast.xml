@@ -683,5 +683,25 @@
                        type="application/octet-stream"
                        sparkle:edSignature="mZ753szGnoUoBPQSZN2wrnyCtVqfke2I+QA+vHjhPfOYTY4i16GbV4DQcUh7/mhvdT/sh1IEQqwBD2LyVbe7DQ==" length="3213915" />
         </item>
+        <item>
+            <title>Version 0.2.0.17</title>
+            <description><![CDATA[
+<p>Five dev releases of soak time, no bug reports, time to call it stable. Here's the headlines.</p>
+<p><strong>You can edit profiles from anywhere now.</strong> Used to be: you're sitting at home, you want to swap the Conference Room dock's mic from the Yeti to an AT2020, you couldn't, because the Yeti's not plugged in, it's not in the dropdown, stuck till Tuesday. Done. The wizard remembers every audio device and camera selection each profile has used. Open Edit on any profile from anywhere — its saved devices show up, marked "(not connected)" if they aren't, and you swap them right there. Per-profile, so the home dock's CalDigit doesn't leak into Conference Room's mic picker. That'd be amateur hour.</p>
+<p><strong>Hand-edit <code class="notranslate">profiles.toml</code> and it just works.</strong> No more "Reload Config" click in the Advanced menu. Save the file in any editor — VS Code, vim, TextEdit, doesn't matter — and within a quarter second the engine reloads. Audio defaults switch, camera switches, notification pops if the active profile changed. The "Re-evaluate Now" button is gone too. Two fewer rows in the Advanced submenu, same capabilities, less clicking.</p>
+<p><strong>A typo in <code class="notranslate">profiles.toml</code> no longer eats your config.</strong> Used to be: you save a broken TOML, the app silently overwrites it with the 1-profile starter, every custom profile gone. That was nuts. Now: broken copy gets renamed to <code class="notranslate">profiles.corrupted-{timestamp}.toml</code> right next to the active config. A notification pops with a <strong>Show in Finder</strong> button. Click it, your data's sitting right there, fix the typo, copy the section back. Money.</p>
+<p><strong>Windows actually open centered.</strong> Settings, About, Add Profile — they used to flash through some random position before snapping, or just stay off-center on the wrong monitor. Done. Center on every open, on the screen your cursor is on. Move it, close it, reopen — centered again. Click away to another app, click back — <em>not</em> centered again (that'd be obnoxious).</p>
+<p><strong>Plus polish:</strong> bigger confetti when you add a profile and it falls slower so you can actually see it. Sparkle's update-available window stops carrying extra chrome it doesn't need.</p>
+<p><strong>And a new release channel.</strong> There's a "dev" track now, separate from experimental. Opt in via <strong>Settings → General → Updates</strong> and you get small in-flight features as they ship, on a slightly faster cadence. Independent of the experimental moonshot track. Stay on stable, opt into one, opt into both — pick your pace.</p>
+<p>That's the update. Five fixes worth of polish, plus a config file that won't betray you anymore. Money.</p>
+]]></description>
+            <pubDate>Thu, 14 May 2026 02:05:44 +0000</pubDate>
+            <sparkle:version>0.2.0.17</sparkle:version>
+            <sparkle:shortVersionString>0.2.0.17</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/superic/av-pain-reliever/releases/download/v0.2.0.17/AVPainReliever.app.zip"
+                       type="application/octet-stream"
+                       sparkle:edSignature="rJnylzFzFyeXbQNzh3dqBUjmdpOyb+rDA6n5SHeYbj4V8DpQ4Xux14zSpYoIhUgIxF+wX4La2ymOwBxc+NC3Cg==" length="3213912" />
+        </item>
     </channel>
 </rss>
