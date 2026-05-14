@@ -159,24 +159,78 @@ jobs:
               -f scripts/upsert-appcast-item.awk \
               appcast.xml > appcast.xml.new
           mv appcast.xml.new appcast.xml
-          # Refresh README's "Release channels" block for dev /
-          # experimental tags so the published tag-pinned URL is
-          # always current. Stable uses GitHub's /releases/latest
-          # redirect and never needs a rewrite — empty $CHANNEL passes
-          # through untouched. Tag-pattern matches what the appcast
-          # signing step already computed; both decisions share the
-          # same source of truth (the tag suffix).
+          # Refresh README's "Release channels" block. Three cases:
+          #
+          #   1. *-dev*           → rewrite the Dev row to the new tag.
+          #   2. *-experimental*  → rewrite the Experimental row.
+          #   3. bare stable tag  → reset Dev and Experimental rows to
+          #                         "no current release" IF their
+          #                         current tag is a prerelease of the
+          #                         SAME stable version we're shipping
+          #                         (e.g. dev row says v0.2.0.17-dev.5
+          #                         and we ship v0.2.0.17). A newer
+          #                         prerelease on a different major/
+          #                         minor/patch (e.g. experimental
+          #                         v0.3.0-experimental.1 while we
+          #                         ship stable v0.2.0.17) is left
+          #                         alone.
+          #
+          # Note: macOS / GNU `sort -V` is NOT a semver comparator. It
+          # places `v0.2.0.17` BEFORE `v0.2.0.17-dev.5`, opposite of
+          # semver. So instead of version-comparing, we use a simpler
+          # rule that captures the actual intent: strip the prerelease
+          # suffix from both tags and compare for equality.
+          #
+          # Helpers are inline so the workflow stays self-contained.
+          # Bash 3.2 compatible.
+          readme_row_tag() {
+              # Extract the tag from a "**$1** — [<tag>](...)" row, or
+              # echo empty if the row reads "_no current release_".
+              grep -oE "\*\*$1\*\* — \[[^]]+\]" README.md \
+                  | sed -E 's/.*\[(.+)\]/\1/' || true
+          }
+          strip_prerelease() {
+              # v0.2.0.17-dev.5 → v0.2.0.17; v0.2.0.17 → v0.2.0.17.
+              echo "$1" | sed -E 's/-.*$//'
+          }
+          reset_row_if_obsolete() {
+              # $1 = display label ("Dev"/"Experimental"), $2 = channel arg.
+              local current
+              current=$(readme_row_tag "$1")
+              if [ -z "$current" ]; then
+                  return  # already reset
+              fi
+              if [ "$(strip_prerelease "$current")" = "$(strip_prerelease "$VERSION_TAG")" ]; then
+                  awk \
+                      -v channel="$2" \
+                      -v tag="" \
+                      -f scripts/update-readme-channel.awk \
+                      README.md > README.md.new
+                  mv README.md.new README.md
+              fi
+          }
           case "$VERSION_TAG" in
-              *-dev*)          README_CHANNEL=dev ;;
-              *-experimental*) README_CHANNEL=experimental ;;
-              *)               README_CHANNEL= ;;
+              *-dev*)
+                  awk \
+                      -v channel=dev \
+                      -v tag="$VERSION_TAG" \
+                      -f scripts/update-readme-channel.awk \
+                      README.md > README.md.new
+                  mv README.md.new README.md
+                  ;;
+              *-experimental*)
+                  awk \
+                      -v channel=experimental \
+                      -v tag="$VERSION_TAG" \
+                      -f scripts/update-readme-channel.awk \
+                      README.md > README.md.new
+                  mv README.md.new README.md
+                  ;;
+              *)
+                  reset_row_if_obsolete Dev dev
+                  reset_row_if_obsolete Experimental experimental
+                  ;;
           esac
-          awk \
-              -v channel="$README_CHANNEL" \
-              -v tag="$VERSION_TAG" \
-              -f scripts/update-readme-channel.awk \
-              README.md > README.md.new
-          mv README.md.new README.md
           git add appcast.xml README.md
           git commit -m "appcast: publish $VERSION_TAG
 
