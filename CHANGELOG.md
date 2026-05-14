@@ -75,6 +75,14 @@ The Dev and Experimental rows get auto-rewritten by `appcast-publish.yml` on eve
 
 `scripts/update-readme-channel.awk` is a 50-line awk script with start-of-line anchors on the BEGIN/END markers so it can't accidentally eat a lookalike bullet outside the block (same defensive style as `upsert-appcast-item.awk`). Five test cases in `scripts/test-update-readme-channel.sh` cover both channels, the no-op empty-channel case, lines outside the markers, and idempotency. Wired into `test.yml`.
 
+### Window centering no longer flashes (2026-05-12)
+
+Settings, About, Welcome, and Add Profile windows would sometimes open at their last-known position, then visibly snap to center a moment later. The original `WindowCenterer` in `WindowChrome.swift` deferred `window.center()` through a `DispatchQueue.main.async` hop, which fired *after* AppKit ordered the window front — the user saw both the pre-center frame and the snap.
+
+Rewrote the helper as a custom `NSView` subclass that overrides `viewDidMoveToWindow()`. That callback fires while the view is being attached to its window but before the window is shown, so the centering lands before any pixels paint. A `hasCentered` latch prevents re-centering on view re-hosting (theme change, scene restoration), so a user-moved window isn't yanked back.
+
+While in there, switched from `NSWindow.center()` (which uses the screen the window's saved frame is on, or main if none) to centering on the screen with the mouse cursor. For a menu-bar app the user may click the menu bar on one monitor while the saved frame is on another; the cursor's screen is the screen they're looking at. The y-axis placement matches AppKit's `center()` heuristic (about a third from the top), so the windows still feel like macOS-native utility windows rather than dead-center-on-screen modals.
+
 ### Trace `.debug` lines for `ProfileConfigWatcher` (2026-05-11)
 
 The watcher logged only on error paths. Matched the `IOKitUSBWatcher` convention from the 2026-05-09 verbose-logging release: six new `.debug` calls covering start (with bound fd numbers), stop, dir-source events, file-source events with mask, inode-staleness rebinds, and debounce arming. All under category `config-watcher`. Diagnostic only: `.debug` is off the persistence path, so this doesn't change Save Logs for Support exports. Stream via `log stream --predicate 'subsystem == "com.ericwillis.avpainreliever" AND category == "config-watcher"' --level debug --style compact`.

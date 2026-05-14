@@ -69,11 +69,17 @@ private struct WindowChromeAccessor: NSViewRepresentable {
 
 // MARK: - centeredOnScreen
 
-/// SwiftUI view modifier that recenters the hosting `NSWindow` on the
-/// active screen every time the window appears. Without this, macOS
-/// remembers each window's last position and reopens it there, which
-/// produces the surprising "settings window opened in some random
-/// corner of the second monitor" experience for utility windows.
+/// SwiftUI view modifier that centers the hosting `NSWindow` on the
+/// screen with the mouse cursor when the window first appears. Without
+/// this, macOS remembers each window's last position and reopens it
+/// there, producing the surprising "settings window opened in some
+/// random corner of the second monitor" experience for utility windows.
+///
+/// Centers **synchronously** in `viewDidMoveToWindow`, before AppKit
+/// orders the window front. An earlier implementation used a
+/// `DispatchQueue.main.async` hop, which deferred the centering past
+/// the show, producing a visible flash where the window appeared at
+/// its saved position and then snapped to center one runloop later.
 struct CenteredOnScreen: ViewModifier {
     func body(content: Content) -> some View {
         content.background(WindowCenterer())
@@ -81,8 +87,9 @@ struct CenteredOnScreen: ViewModifier {
 }
 
 extension View {
-    /// Center the hosting window on the active screen on every open.
-    /// Idempotent — safe to combine with `dialogWindowChrome()`.
+    /// Center the hosting window on the active screen on first open.
+    /// Idempotent across re-hosting; the window is only centered once
+    /// per view instance so a user-moved window isn't yanked back.
     func centeredOnScreen() -> some View {
         modifier(CenteredOnScreen())
     }
@@ -90,16 +97,54 @@ extension View {
 
 private struct WindowCenterer: NSViewRepresentable {
     func makeNSView(context: Context) -> NSView {
-        let view = NSView(frame: .zero)
-        DispatchQueue.main.async { [weak view] in
-            view?.window?.center()
-        }
-        return view
+        WindowCenteringView()
     }
 
     func updateNSView(_ nsView: NSView, context: Context) {
         // No-op on update. Centering on every state change would
-        // fight the user if they manually move the window mid-
-        // session. We only center on open.
+        // fight the user if they manually moved the window mid-
+        // session.
+    }
+}
+
+/// Centers its hosting window the first time the view is attached.
+/// `viewDidMoveToWindow` runs after the window exists but before it
+/// is ordered front, so the center call lands before the user sees
+/// anything. The `hasCentered` latch guards against SwiftUI re-hosting
+/// the view later (theme change, scene restoration), which would
+/// otherwise re-center and clobber a user-moved window.
+private final class WindowCenteringView: NSView {
+    private var hasCentered = false
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        guard !hasCentered, let window = window else { return }
+        hasCentered = true
+        centerOnCursorScreen(window)
+    }
+
+    /// Center on the screen currently containing the mouse cursor.
+    /// For a menu-bar app the user may click the menu bar on monitor
+    /// A while the saved frame is on monitor B; the cursor's screen
+    /// is the screen they're looking at. Falls back to `NSWindow.center()`
+    /// (main screen) when no screen contains the cursor — typically
+    /// only happens during screen-reconfiguration races.
+    private func centerOnCursorScreen(_ window: NSWindow) {
+        let cursor = NSEvent.mouseLocation
+        guard let screen = NSScreen.screens.first(where: { $0.frame.contains(cursor) })
+            ?? NSScreen.main
+        else {
+            window.center()
+            return
+        }
+        let visible = screen.visibleFrame
+        var frame = window.frame
+        frame.origin.x = visible.origin.x + (visible.width - frame.width) / 2
+        // Match AppKit's `NSWindow.center()` heuristic: place the
+        // window above geometric center (about a third from the top
+        // of the screen), which reads as "primary attention" for a
+        // utility window rather than "bottom-of-the-stack."
+        frame.origin.y = visible.origin.y + (visible.height - frame.height) * 2 / 3
+        window.setFrame(frame, display: true)
     }
 }
