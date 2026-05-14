@@ -39,7 +39,7 @@ Most users want the stable channel. Dev and experimental are opt-in via **Settin
 
 <!-- BEGIN CURRENT RELEASES -->
 - **Stable** — [latest](https://github.com/superic/av-pain-reliever/releases/latest)
-- **Dev** — [v0.2.0.17-dev.4](https://github.com/superic/av-pain-reliever/releases/tag/v0.2.0.17-dev.4)
+- **Dev** — [v0.2.0.17-dev.5](https://github.com/superic/av-pain-reliever/releases/tag/v0.2.0.17-dev.5)
 - **Experimental** — _no current release_
 <!-- END CURRENT RELEASES -->
 

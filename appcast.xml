@@ -666,5 +666,22 @@
                        type="application/octet-stream"
                        sparkle:edSignature="HbbJjKLRNGWHsyrf/KDYYF1pWLj+Ph2UjE3gaK6GGivnvccl8RFooXSIkO74nIRgUJ+1RVABfXzutK5TFPSSBw==" length="3203918" />
         </item>
+        <item>
+            <title>Version 0.2.0.17-dev.5</title>
+            <description><![CDATA[
+<p>A polish pass, dev.5. Two fixes. Money.</p>
+<p><strong>Windows actually open centered now.</strong> Settings, About, Add Profile — they all used to flash through some random saved position before snapping to center, or sometimes just stay off-center on the wrong monitor. Done. Every time you open one, it lands centered on the screen your cursor is on. Move it, close it, reopen — centered again. Click another app, click back — <em>not</em> centered again (that'd be obnoxious). The polish you don't notice until it's there.</p>
+<p><strong>A weird "swiftpm-testing-helper added to your login items" notification that you may have seen.</strong> That was a self-inflicted wound from running the test suite. Test code was triggering a real macOS API that registers the <em>current process</em> as a login item — and under <code class="notranslate">swift test</code> the current process is the test runner. Every test run, another registration. macOS Sequoia finally got loud about it. Test code now uses a no-op stub for that path. If you saw the notification, pop into <strong>System Settings → Login Items &amp; Extensions</strong> and remove <code class="notranslate">swiftpm-testing-helper</code> from "Open at Login" — fix prevents future registrations but doesn't undo the existing one. One-time cleanup.</p>
+<p>Carry on.</p>
+]]></description>
+            <pubDate>Thu, 14 May 2026 01:35:24 +0000</pubDate>
+            <sparkle:channel>dev</sparkle:channel>
+            <sparkle:version>0.2.0.17-dev.5</sparkle:version>
+            <sparkle:shortVersionString>0.2.0.17-dev.5</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/superic/av-pain-reliever/releases/download/v0.2.0.17-dev.5/AVPainReliever.app.zip"
+                       type="application/octet-stream"
+                       sparkle:edSignature="mZ753szGnoUoBPQSZN2wrnyCtVqfke2I+QA+vHjhPfOYTY4i16GbV4DQcUh7/mhvdT/sh1IEQqwBD2LyVbe7DQ==" length="3213915" />
+        </item>
     </channel>
 </rss>
