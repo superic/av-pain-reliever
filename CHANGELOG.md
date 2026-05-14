@@ -75,6 +75,21 @@ The Dev and Experimental rows get auto-rewritten by `appcast-publish.yml` on eve
 
 `scripts/update-readme-channel.awk` is a 50-line awk script with start-of-line anchors on the BEGIN/END markers so it can't accidentally eat a lookalike bullet outside the block (same defensive style as `upsert-appcast-item.awk`). Five test cases in `scripts/test-update-readme-channel.sh` cover both channels, the no-op empty-channel case, lines outside the markers, and idempotency. Wired into `test.yml`.
 
+### Settings, About, Welcome, and Add Profile windows now center on every open (2026-05-12)
+
+The four utility windows sometimes opened off-center on the wrong monitor, sometimes briefly at their last-known position before snapping to center. Root cause turned out to be a sequence of races between the helper's centering, AppKit's `frameAutosaveName` restoration, and SwiftUI's `Settings`-scene state restoration. Diagnostic logging across four iterations was the only way to see it clearly.
+
+Final shape (in `WindowChrome.swift`):
+
+- A custom `NSView` subclass (`WindowCenteringView`) attaches `NSWindow.willCloseNotification` and `NSWindow.didBecomeKeyNotification` observers in `viewDidMoveToWindow`.
+- `didBecomeKeyNotification` is the **single source of truth** for centering. On every become-key with a cleared `hasCentered` latch, the window re-centers on the cursor's screen. `willCloseNotification` clears the latch so the next open re-centers.
+- Centering is intentionally NOT done in `viewDidMoveToWindow`. The diagnostic logs showed SwiftUI's `Settings` scene restoring its last-session frame between `viewDidMoveToWindow` and `didBecomeKey` (~30 ms gap), which would clobber any pre-show centering. `didBecomeKey` fires after that restoration, so it's the only reliable hook.
+- `frameAutosaveName` is cleared if SwiftUI assigns one, as belt-and-suspenders against AppKit's restoration on top of SwiftUI's.
+- Centering uses the screen with the mouse cursor, not `NSWindow.center()`'s "screen the saved frame is on" default. For a menu-bar app, the cursor's monitor is the one the user is looking at; the saved-frame's monitor may have been from a different session. Y-axis placement matches AppKit's `center()` heuristic (about a third from the top) so the windows still feel like macOS-native utility windows.
+- Focus-return (user clicks another app then back to the window) does NOT fire `willClose`, so the latch stays set and the window keeps its user-moved position.
+
+The `WindowCenteringView` logs decision points under a new `window-center` category so future regressions of this class are diagnosable in one `log stream` run. Diagnostic only: `.debug` is off the persistence path, so Save Logs for Support exports are unchanged.
+
 ### Trace `.debug` lines for `ProfileConfigWatcher` (2026-05-11)
 
 The watcher logged only on error paths. Matched the `IOKitUSBWatcher` convention from the 2026-05-09 verbose-logging release: six new `.debug` calls covering start (with bound fd numbers), stop, dir-source events, file-source events with mask, inode-staleness rebinds, and debounce arming. All under category `config-watcher`. Diagnostic only: `.debug` is off the persistence path, so this doesn't change Save Logs for Support exports. Stream via `log stream --predicate 'subsystem == "com.ericwillis.avpainreliever" AND category == "config-watcher"' --level debug --style compact`.

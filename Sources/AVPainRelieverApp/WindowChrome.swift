@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import OSLog
 
 /// SwiftUI view modifier that locks the hosting `NSWindow` to a fixed,
 /// dialog-style chrome: title bar + close button only. The yellow
@@ -69,11 +70,17 @@ private struct WindowChromeAccessor: NSViewRepresentable {
 
 // MARK: - centeredOnScreen
 
-/// SwiftUI view modifier that recenters the hosting `NSWindow` on the
-/// active screen every time the window appears. Without this, macOS
-/// remembers each window's last position and reopens it there, which
-/// produces the surprising "settings window opened in some random
-/// corner of the second monitor" experience for utility windows.
+/// SwiftUI view modifier that centers the hosting `NSWindow` on the
+/// screen with the mouse cursor when the window first appears. Without
+/// this, macOS remembers each window's last position and reopens it
+/// there, producing the surprising "settings window opened in some
+/// random corner of the second monitor" experience for utility windows.
+///
+/// Centers **synchronously** in `viewDidMoveToWindow`, before AppKit
+/// orders the window front. An earlier implementation used a
+/// `DispatchQueue.main.async` hop, which deferred the centering past
+/// the show, producing a visible flash where the window appeared at
+/// its saved position and then snapped to center one runloop later.
 struct CenteredOnScreen: ViewModifier {
     func body(content: Content) -> some View {
         content.background(WindowCenterer())
@@ -81,8 +88,10 @@ struct CenteredOnScreen: ViewModifier {
 }
 
 extension View {
-    /// Center the hosting window on the active screen on every open.
-    /// Idempotent — safe to combine with `dialogWindowChrome()`.
+    /// Center the hosting window on the cursor's screen on every
+    /// open, including reopens after the user closes the window. A
+    /// click-away-and-back focus return doesn't recenter — only a
+    /// real close/reopen cycle does.
     func centeredOnScreen() -> some View {
         modifier(CenteredOnScreen())
     }
@@ -90,16 +99,123 @@ extension View {
 
 private struct WindowCenterer: NSViewRepresentable {
     func makeNSView(context: Context) -> NSView {
-        let view = NSView(frame: .zero)
-        DispatchQueue.main.async { [weak view] in
-            view?.window?.center()
-        }
-        return view
+        WindowCenteringView()
     }
 
     func updateNSView(_ nsView: NSView, context: Context) {
         // No-op on update. Centering on every state change would
-        // fight the user if they manually move the window mid-
-        // session. We only center on open.
+        // fight the user if they manually moved the window mid-
+        // session.
+    }
+}
+
+/// Centers its hosting window on first attach AND on every reopen
+/// after a close.
+///
+/// SwiftUI's `Settings` scene keeps the view hierarchy alive across
+/// the window's close/reopen cycle (the window is hidden, not
+/// destroyed), so `viewDidMoveToWindow` only fires the first time the
+/// window is ever opened. Relying on it alone leaves the window at
+/// its user-moved position on the second open, which feels broken.
+///
+/// Two `NSWindow` notifications coordinate a "re-center on next open
+/// but never on focus-return" semantic:
+///   - `willCloseNotification` resets `hasCentered = false` so the
+///     next `didBecomeKey` re-centers.
+///   - `didBecomeKeyNotification` centers iff `!hasCentered`, then
+///     re-sets the latch. Clicking away from the window and back
+///     doesn't fire `willClose`, so the latch stays true and the
+///     window stays where the user left it.
+private final class WindowCenteringView: NSView {
+    private static let logger = Logger(
+        subsystem: "com.ericwillis.avpainreliever",
+        category: "window-center"
+    )
+    private var hasCentered = false
+    private var willCloseObserver: NSObjectProtocol?
+    private var didBecomeKeyObserver: NSObjectProtocol?
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        teardownObservers()
+        guard let window = window else {
+            Self.logger.debug("viewDidMoveToWindow: window=nil; nothing to do")
+            return
+        }
+        // Defuse AppKit's frame autosave (if any) so a saved frame
+        // can't be restored. SwiftUI's Settings scene has its own
+        // state-restoration mechanism on top of this that fires
+        // BETWEEN viewDidMoveToWindow and didBecomeKey, which is why
+        // we don't try to center here — see the didBecomeKey handler.
+        if !window.frameAutosaveName.isEmpty {
+            Self.logger.debug("viewDidMoveToWindow: clearing frameAutosaveName=\(window.frameAutosaveName, privacy: .public)")
+            window.setFrameAutosaveName("")
+        }
+        attachObservers(to: window)
+        Self.logger.debug("viewDidMoveToWindow: observers attached, current frame=\(NSStringFromRect(window.frame), privacy: .public)")
+    }
+
+    private func attachObservers(to window: NSWindow) {
+        let center = NotificationCenter.default
+        willCloseObserver = center.addObserver(
+            forName: NSWindow.willCloseNotification,
+            object: window,
+            queue: .main
+        ) { [weak self] _ in
+            Self.logger.debug("willClose: clearing latch")
+            self?.hasCentered = false
+        }
+        didBecomeKeyObserver = center.addObserver(
+            forName: NSWindow.didBecomeKeyNotification,
+            object: window,
+            queue: .main
+        ) { [weak self] _ in
+            guard let self, let window = self.window else { return }
+            if self.hasCentered {
+                Self.logger.debug("didBecomeKey: latched, leaving frame=\(NSStringFromRect(window.frame), privacy: .public)")
+                return
+            }
+            Self.logger.debug("didBecomeKey: centering, current frame=\(NSStringFromRect(window.frame), privacy: .public)")
+            self.centerOnCursorScreen(window)
+            Self.logger.debug("didBecomeKey: centered, new frame=\(NSStringFromRect(window.frame), privacy: .public)")
+            self.hasCentered = true
+        }
+    }
+
+    private func teardownObservers() {
+        let center = NotificationCenter.default
+        if let willCloseObserver { center.removeObserver(willCloseObserver) }
+        if let didBecomeKeyObserver { center.removeObserver(didBecomeKeyObserver) }
+        willCloseObserver = nil
+        didBecomeKeyObserver = nil
+    }
+
+    deinit {
+        teardownObservers()
+    }
+
+    /// Center on the screen currently containing the mouse cursor.
+    /// For a menu-bar app the user may click the menu bar on monitor
+    /// A while the saved frame is on monitor B; the cursor's screen
+    /// is the screen they're looking at. Falls back to `NSWindow.center()`
+    /// (main screen) when no screen contains the cursor — typically
+    /// only happens during screen-reconfiguration races.
+    private func centerOnCursorScreen(_ window: NSWindow) {
+        let cursor = NSEvent.mouseLocation
+        guard let screen = NSScreen.screens.first(where: { $0.frame.contains(cursor) })
+            ?? NSScreen.main
+        else {
+            window.center()
+            return
+        }
+        let visible = screen.visibleFrame
+        var frame = window.frame
+        frame.origin.x = visible.origin.x + (visible.width - frame.width) / 2
+        // Match AppKit's `NSWindow.center()` heuristic: place the
+        // window above geometric center (about a third from the top
+        // of the screen), which reads as "primary attention" for a
+        // utility window rather than "bottom-of-the-stack."
+        frame.origin.y = visible.origin.y + (visible.height - frame.height) * 2 / 3
+        window.setFrame(frame, display: true)
     }
 }
