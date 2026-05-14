@@ -104,7 +104,44 @@ run_case "no rewrite outside the markers" \
 <!-- END CURRENT RELEASES -->
 - **Dev** — also outside, also untouched"
 
-# Case 5: idempotency — running twice with the same inputs is the
+# Case 5: empty tag for dev resets the row to "no current release".
+# Used when a stable release ships and dev no longer has anything
+# newer than stable; the workflow calls with tag="" to clear the row.
+run_case "dev with empty tag resets to 'no current release'" \
+    "dev" "" \
+"<!-- BEGIN CURRENT RELEASES -->
+- **Stable** — [latest](https://github.com/superic/av-pain-reliever/releases/latest)
+- **Dev** — [v0.2.0.17-dev.5](https://github.com/superic/av-pain-reliever/releases/tag/v0.2.0.17-dev.5)
+- **Experimental** — _no current release_
+<!-- END CURRENT RELEASES -->" \
+"<!-- BEGIN CURRENT RELEASES -->
+- **Stable** — [latest](https://github.com/superic/av-pain-reliever/releases/latest)
+- **Dev** — _no current release_
+- **Experimental** — _no current release_
+<!-- END CURRENT RELEASES -->"
+
+# Case 6: same reset behavior for experimental.
+run_case "experimental with empty tag resets to 'no current release'" \
+    "experimental" "" \
+"<!-- BEGIN CURRENT RELEASES -->
+- **Experimental** — [v0.3.0-experimental.1](https://github.com/superic/av-pain-reliever/releases/tag/v0.3.0-experimental.1)
+<!-- END CURRENT RELEASES -->" \
+"<!-- BEGIN CURRENT RELEASES -->
+- **Experimental** — _no current release_
+<!-- END CURRENT RELEASES -->"
+
+# Case 7: reset is idempotent — calling reset on an already-reset
+# row is a no-op.
+run_case "reset on an already-reset row is a no-op" \
+    "dev" "" \
+"<!-- BEGIN CURRENT RELEASES -->
+- **Dev** — _no current release_
+<!-- END CURRENT RELEASES -->" \
+"<!-- BEGIN CURRENT RELEASES -->
+- **Dev** — _no current release_
+<!-- END CURRENT RELEASES -->"
+
+# Case 8: idempotency — running twice with the same inputs is the
 # same as running once. Catches a class of bug where a sub() pattern
 # accidentally re-eats its own output.
 INPUT="<!-- BEGIN CURRENT RELEASES -->

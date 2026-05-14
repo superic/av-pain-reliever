@@ -57,6 +57,22 @@ universal format support. v0.1.x will keep getting patch releases
 in parallel for anyone who doesn't need any of this. **Money.**
 ```
 
+### Stable release auto-clears the Dev/Experimental README rows (2026-05-13)
+
+Follow-on to #100. The README's "Release channels" block had three rows; Dev and Experimental were auto-filled on every dev/experimental release publish, but **when a stable release shipped, the obsolete prerelease rows kept pointing at their last tag.** Looked confusing: "Dev: v0.2.0.17-dev.5" sitting under "Stable: latest" once the stable is what `latest` resolves to anyway.
+
+`scripts/update-readme-channel.awk` gains an empty-tag semantic: pass `tag=""` and the addressed row gets reset to `_no current release_` instead of rewritten with a new link.
+
+`appcast-publish.yml` grows a three-way `case` on `$VERSION_TAG`:
+
+- `*-dev*` → rewrite the Dev row to the new tag (unchanged).
+- `*-experimental*` → rewrite the Experimental row (unchanged).
+- bare stable tag → for each of Dev and Experimental, if the row's current tag is a prerelease of the **same** stable version (`strip-prerelease(current) == strip-prerelease(new_stable)`), reset it.
+
+The strip-and-compare rule beats version-comparison via `sort -V` because that's not a real semver comparator — `sort -V` places `v0.2.0.17` BEFORE `v0.2.0.17-dev.5`, opposite of semver. Strip-and-compare captures the actual intent: "this row is showing a prerelease of the version I'm now shipping as stable, clear it." Prerelease tags pointing at a future major/minor (e.g. experimental `v0.3.0-experimental.1` while we ship stable `v0.2.0.17`) are left alone.
+
+Tests: 3 new cases in `scripts/test-update-readme-channel.sh` (empty-tag-resets-dev, empty-tag-resets-experimental, reset-is-idempotent-on-already-reset). 8 total in the harness.
+
 ### README "Release channels" block + correct `releases/latest` redirect (2026-05-11)
 
 The README's install step linked GitHub's `/releases/latest` for stable downloads, but every recent release was published without the `prerelease` flag set, so `/releases/latest` was returning whatever tag was newest (dev tags included). A user clicking "latest" today gets `v0.2.0.17-dev.4` instead of the most recent stable.

@@ -11,15 +11,19 @@
 #            channel is anything else (e.g. empty for stable),
 #            every line passes through unchanged.
 #   tag      The new tag (e.g. "v0.2.0.17-dev.5"). The URL gets
-#            rewritten to point at /releases/tag/<tag>.
+#            rewritten to point at /releases/tag/<tag>. An EMPTY
+#            tag resets the row to "_no current release_" — used
+#            when a stable release ships and the channel no longer
+#            has anything newer than stable.
 #
 # Behavior:
 #   - Reads README from stdin.
 #   - Lines outside the BEGIN/END block pass through verbatim.
 #   - Inside the block, the line whose label matches `channel`
-#     ("Dev" or "Experimental") is replaced with a fresh markdown
-#     bullet pointing at /releases/tag/<tag>. Other lines (including
-#     the stable line) pass through.
+#     ("Dev" or "Experimental") is replaced with either a fresh
+#     markdown bullet pointing at /releases/tag/<tag>, OR (when
+#     tag is empty) the "_no current release_" placeholder. Other
+#     lines (including the stable line) pass through.
 #   - Markers themselves pass through.
 #
 # Style mirrors `scripts/upsert-appcast-item.awk`: start-of-line
@@ -51,8 +55,12 @@ BEGIN {
 
 {
     if (in_block && label != "" && $0 ~ ("\\*\\*" label "\\*\\*")) {
-        printf("- **%s** — [%s](https://github.com/superic/av-pain-reliever/releases/tag/%s)\n",
-               label, tag, tag)
+        if (tag == "") {
+            printf("- **%s** — _no current release_\n", label)
+        } else {
+            printf("- **%s** — [%s](https://github.com/superic/av-pain-reliever/releases/tag/%s)\n",
+                   label, tag, tag)
+        }
     } else {
         print
     }
