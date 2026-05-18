@@ -11,8 +11,7 @@ extension View {
     /// One place to change the convention. If we ever bump the
     /// padding, swap to a different formStyle, or add other shared
     /// chrome (background, frame, etc.), edit it here and every
-    /// caller follows. The Profiles Settings tab is intentionally
-    /// bespoke (no Form, different layout) and doesn't use this.
+    /// caller follows.
     ///
     /// **Don't wrap the Form in a container that adds horizontal
     /// padding.** e.g. avoid:
