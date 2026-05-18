@@ -75,6 +75,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
     /// the menu lands in the form with the right devices selected.
     @Published var lastUnknownDevices: Set<USBDevice> = []
 
+    /// Named-device snapshot taken at unknown-location signal time.
+    /// Populated alongside `lastUnknownDevices` via a transient
+    /// `IOKitUSBWatcher.currentDevicesNamed()` call so the
+    /// "Not a Location" dismiss button can persist real product +
+    /// vendor names instead of re-enumerating at click time (which
+    /// would race against the user unplugging in the same instant).
+    private var lastUnknownDevicesNamed: [NamedUSBDevice] = []
+
     private var engine: Engine?
 
     /// Watches `profiles.toml` for out-of-band edits and triggers a
@@ -423,6 +431,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
             // gates on `statsTrackingEnabled` internally — when the
             // user has tracking off, this is a no-op.
             self?.settings.recordDevicesSeen(devices)
+
+            // Leaving the unknown-location state when the user
+            // unplugs everything. The engine's `onUnknownLocation`
+            // only fires the entering edge; without this, the
+            // fallback profile + empty attached set keeps the flag
+            // stuck because `handleProfileApplied`'s clear branch
+            // only runs for non-empty-fingerprint profiles.
+            if devices.isEmpty {
+                self?.clearUnknownLocationState()
+            }
         }
         engine.start()
         self.engine = engine
@@ -508,18 +526,38 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         // the fallback path; getting back to a real-fingerprint
         // resolution means we're at a known place again.
         if !profile.fingerprint.isEmpty {
-            notifiedUnknownLocation = false
-            atUnknownLocation = false
-            lastUnknownDevices = []
+            clearUnknownLocationState()
         }
     }
 
     private func handleUnknownLocation(devices: Set<USBDevice>) {
+        // Honor the user's prior dismissal. Pre-existing entries on
+        // the ignored list short-circuit before we touch any UI
+        // state, so a known-uninteresting device set (phone on the
+        // couch, random USB stick) never resurrects the menu prompt
+        // or the toast on subsequent plug-ins.
+        let key = LocationFingerprint.canonical(for: devices)
+        if settings.isLocationIgnored(key: key) {
+            logger.debug("handleUnknownLocation: ignored fingerprint \(key) — suppressing UI")
+            clearUnknownLocationState()
+            return
+        }
+
         // Always update the status so the menu reflects the new
         // location even if we've already toasted about it. Setting
         // these every time is cheap and keeps the menu accurate.
         atUnknownLocation = true
         lastUnknownDevices = devices
+        // Capture names *now* so a later "Not a Location" click
+        // doesn't race with the user unplugging — see
+        // `lastUnknownDevicesNamed` doc comment. Filter to the
+        // engine-reported set so we don't accidentally persist
+        // names for devices that weren't part of the unknown
+        // fingerprint (the IOKit re-enumeration runs against the
+        // live system, which is a superset only on race conditions
+        // but cheap to guard against).
+        let nameWatcher = IOKitUSBWatcher(logger: ConsoleLogger(category: "unknown-location-watcher"))
+        lastUnknownDevicesNamed = nameWatcher.currentDevicesNamed().filter { devices.contains($0.device) }
 
         // One toast per "stretch of unknown-ness" — re-armed when the
         // user resolves to a specific profile. Avoids spamming when
@@ -711,6 +749,72 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
             failure.icon = AppIcon.image
             failure.runModal()
         }
+    }
+
+    /// Dismiss the current "new location" suggestion. Persists the
+    /// fingerprint of the attached device set so subsequent plug-ins
+    /// of the same combination don't re-toast or re-show the
+    /// "Set Up Location…" menu item. Reachable from the menu when
+    /// `atUnknownLocation` is true.
+    ///
+    /// Reads names from `lastUnknownDevicesNamed`, populated at
+    /// signal time, so dismissing in the middle of an unplug doesn't
+    /// lose the names — same fingerprint key, names captured when
+    /// devices were still attached.
+    func ignoreCurrentUnknownLocation() {
+        let devices = lastUnknownDevices
+        guard !devices.isEmpty else { return }
+        let key = LocationFingerprint.canonical(for: devices)
+        logger.debug("ignoreCurrentUnknownLocation: key=\(key) devices=\(devices.count)")
+
+        let namesByDevice = Dictionary(uniqueKeysWithValues: lastUnknownDevicesNamed.map { ($0.device, $0) })
+        let entries: [IgnoredLocation.Device] = devices.map { device in
+            let lookup = namesByDevice[device]
+            return IgnoredLocation.Device(
+                vendorID: device.vendorID,
+                productID: device.productID,
+                serialNumber: device.serialNumber,
+                name: lookup?.name,
+                vendorName: lookup?.vendorName
+            )
+        }
+
+        settings.ignoreLocation(IgnoredLocation(
+            key: key,
+            devices: entries,
+            dismissedAt: Date()
+        ))
+
+        // Hide the affordance immediately without waiting for the
+        // next engine evaluation.
+        clearUnknownLocationState()
+    }
+
+    /// Reset every field that participates in the unknown-location
+    /// UI. Called from each exit edge (profile match resolves, all
+    /// devices unplugged, user dismisses, fingerprint is ignored)
+    /// so the four exit sites stay in lockstep — forgetting one
+    /// field at one site is how wedge states sneak in.
+    private func clearUnknownLocationState() {
+        atUnknownLocation = false
+        lastUnknownDevices = []
+        lastUnknownDevicesNamed = []
+        notifiedUnknownLocation = false
+    }
+
+    /// Remove a previously-dismissed fingerprint from the ignored
+    /// list. Wired to the "Un-ignore" button on each row of the
+    /// Settings → Profiles "Ignored locations" section. Subsequent
+    /// plug-ins of the matching device set will re-prompt as usual.
+    func unignoreLocation(key: String) {
+        logger.debug("unignoreLocation: key=\(key)")
+        settings.unignoreLocation(key: key)
+        // Force a fresh engine evaluation so a currently-attached
+        // device set that just got un-ignored re-triggers the
+        // unknown-location prompt without the user having to
+        // unplug/replug. `engine?.evaluate()` runs synchronously and
+        // bypasses the debounce window.
+        engine?.evaluate()
     }
 
     // MARK: - Bootstrap

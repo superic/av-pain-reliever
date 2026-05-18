@@ -798,6 +798,142 @@ struct SettingsStoreTests {
         #expect(defaults.object(forKey: SettingsStore.Key.rememberedCameras) == nil)
     }
 
+    @Test("ignoreLocation persists across reloads")
+    func ignoreLocationRoundTrip() {
+        let defaults = makeSuite()
+        let entry = IgnoredLocation(
+            key: "05ac:12a8",
+            devices: [
+                IgnoredLocation.Device(
+                    vendorID: 0x05ac,
+                    productID: 0x12a8,
+                    serialNumber: nil,
+                    name: "iPhone",
+                    vendorName: "Apple Inc."
+                )
+            ],
+            dismissedAt: Date()
+        )
+        do {
+            let store = SettingsStore(defaults: defaults)
+            #expect(store.ignoredLocations.isEmpty)
+            #expect(!store.isLocationIgnored(key: entry.key))
+            store.ignoreLocation(entry)
+            #expect(store.isLocationIgnored(key: entry.key))
+        }
+        let reopened = SettingsStore(defaults: defaults)
+        #expect(reopened.ignoredLocations.count == 1)
+        #expect(reopened.isLocationIgnored(key: entry.key))
+        #expect(reopened.ignoredLocations.first?.devices.first?.displayName == "Apple Inc. — iPhone")
+    }
+
+    @Test("ignoreLocation replaces an existing entry with the same key")
+    func ignoreLocationReplacesDuplicates() {
+        let store = SettingsStore(defaults: makeSuite())
+        let first = IgnoredLocation(
+            key: "05ac:12a8",
+            devices: [],
+            dismissedAt: Date(timeIntervalSince1970: 1)
+        )
+        let second = IgnoredLocation(
+            key: "05ac:12a8",
+            devices: [
+                IgnoredLocation.Device(
+                    vendorID: 0x05ac, productID: 0x12a8,
+                    serialNumber: nil, name: "iPhone", vendorName: "Apple"
+                )
+            ],
+            dismissedAt: Date(timeIntervalSince1970: 2)
+        )
+        store.ignoreLocation(first)
+        store.ignoreLocation(second)
+        #expect(store.ignoredLocations.count == 1)
+        // The second write wins (newer dismissedAt + populated device
+        // list) — so a user who un-ignores then re-ignores gets the
+        // fresher snapshot of names, not the stale one.
+        #expect(store.ignoredLocations.first?.devices.count == 1)
+        #expect(store.ignoredLocations.first?.dismissedAt.timeIntervalSince1970 == 2)
+    }
+
+    @Test("unignoreLocation removes the matching entry and clears storage when empty")
+    func unignoreLocationClears() {
+        let defaults = makeSuite()
+        let entry = IgnoredLocation(
+            key: "05ac:12a8",
+            devices: [],
+            dismissedAt: Date()
+        )
+        let store = SettingsStore(defaults: defaults)
+        store.ignoreLocation(entry)
+        #expect(defaults.data(forKey: SettingsStore.Key.ignoredLocations) != nil)
+        store.unignoreLocation(key: entry.key)
+        #expect(store.ignoredLocations.isEmpty)
+        // Empty list clears the key entirely so a re-installation
+        // under the same defaults domain doesn't see ghost entries.
+        #expect(defaults.object(forKey: SettingsStore.Key.ignoredLocations) == nil)
+    }
+
+    @Test("constructing a fresh SettingsStore does not seed ignoredLocations on disk")
+    func freshStoreDoesNotWriteIgnoredLocations() {
+        let defaults = makeSuite()
+        _ = SettingsStore(defaults: defaults)
+        #expect(defaults.object(forKey: SettingsStore.Key.ignoredLocations) == nil)
+    }
+
+    @Test("garbage JSON in ignoredLocations is recovered to an empty list, not a crash")
+    func ignoredLocationsDecodeFailureRecovers() {
+        let defaults = makeSuite()
+        // Plant malformed bytes under the key — could happen after a
+        // future schema change, a UserDefaults corruption, or a buggy
+        // hand-edit via `defaults write`. Production says we'd rather
+        // drop the ignores than crash on launch.
+        defaults.set(Data("not valid json".utf8), forKey: SettingsStore.Key.ignoredLocations)
+
+        let store = SettingsStore(defaults: defaults)
+        #expect(store.ignoredLocations.isEmpty)
+        #expect(!store.isLocationIgnored(key: "any-key"))
+
+        // Subsequent writes must still work — a wedged read path must
+        // not poison the write path. Adding an entry should overwrite
+        // the malformed blob with a clean JSON document, and a fresh
+        // store opened against the same defaults should now see it.
+        let entry = IgnoredLocation(
+            key: "05ac:12a8",
+            devices: [],
+            dismissedAt: Date()
+        )
+        store.ignoreLocation(entry)
+        let reopened = SettingsStore(defaults: defaults)
+        #expect(reopened.ignoredLocations.count == 1)
+        #expect(reopened.isLocationIgnored(key: entry.key))
+    }
+
+    @Test("LocationFingerprint.canonical is stable regardless of insertion order")
+    func locationFingerprintIsOrderStable() {
+        let a = USBDevice(vendorID: 0x05ac, productID: 0x12a8)
+        let b = USBDevice(vendorID: 0x2188, productID: 0x6533)
+        let c = USBDevice(vendorID: 0x043e, productID: 0x9a68, serialNumber: "ABC123")
+        let s1: Set<USBDevice> = [a, b, c]
+        let s2: Set<USBDevice> = [c, a, b]
+        #expect(LocationFingerprint.canonical(for: s1) == LocationFingerprint.canonical(for: s2))
+        // Empty set produces empty string — handy for the AppDelegate
+        // short-circuit when no devices are attached.
+        #expect(LocationFingerprint.canonical(for: []) == "")
+    }
+
+    @Test("LocationFingerprint.canonical distinguishes different serials of the same vid/pid")
+    func locationFingerprintIncludesSerial() {
+        let withSerial = USBDevice(vendorID: 0x043e, productID: 0x9a68, serialNumber: "HOME")
+        let otherSerial = USBDevice(vendorID: 0x043e, productID: 0x9a68, serialNumber: "WORK")
+        let noSerial = USBDevice(vendorID: 0x043e, productID: 0x9a68, serialNumber: nil)
+        let k1 = LocationFingerprint.canonical(for: [withSerial])
+        let k2 = LocationFingerprint.canonical(for: [otherSerial])
+        let k3 = LocationFingerprint.canonical(for: [noSerial])
+        #expect(k1 != k2)
+        #expect(k1 != k3)
+        #expect(k2 != k3)
+    }
+
     @Test("stats fields persist across reloads")
     func statsFieldsRoundTrip() {
         let defaults = makeSuite()

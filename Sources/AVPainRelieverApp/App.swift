@@ -195,12 +195,28 @@ private struct MenuContentView: View {
             // step. The wizard pre-selects all currently-attached
             // devices anyway, so the user just needs to pick a name
             // and hit Save.
+            //
+            // Label kept short ("Set Up Location…" not "Set Up THIS
+            // Location…") because SwiftUI's MenuBarExtra(.menu) sizes
+            // the underlying NSMenu on first render and doesn't widen
+            // when conditional items appear later — a longer string
+            // ended up middle-truncated as "Set Up...ocation…" once
+            // the rest of the menu had been measured without it.
             Button {
                 delegate.beginAddingProfile()
                 openWindow(id: addProfileWindowID)
                 NSApp.activate(ignoringOtherApps: true)
             } label: {
-                Label("Set Up This Location…", systemImage: "plus.circle.fill")
+                Label("Set Up Location…", systemImage: "plus.circle.fill")
+            }
+            // Escape hatch: this device combination isn't a real
+            // place (phone on the couch, random USB stick). Records
+            // the fingerprint so subsequent plug-ins don't re-prompt;
+            // un-ignore lives in Settings → Profiles.
+            Button {
+                delegate.ignoreCurrentUnknownLocation()
+            } label: {
+                Label("Not a Location", systemImage: "xmark.circle")
             }
             Divider()
         }

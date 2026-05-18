@@ -51,3 +51,68 @@ struct IOKitUSBWatcherTests {
         watcher.stop()
     }
 }
+
+/// Pure-function coverage for `NamedUSBDevice.formatDisplayName`, the
+/// shared label ladder both the wizard's device picker and the
+/// Settings → Profiles "Ignored Locations" list defer to. Worth
+/// pinning all four arms because the fallback case (neither vendor
+/// nor product name) is the one IOKit hits for cheap hubs and
+/// multi-function-device legs.
+@Suite("NamedUSBDevice.formatDisplayName")
+struct NamedUSBDeviceFormatDisplayNameTests {
+    @Test("vendor + product → 'Vendor — Product'")
+    func bothPresent() {
+        #expect(
+            NamedUSBDevice.formatDisplayName(
+                vendorName: "Apple Inc.",
+                name: "iPhone"
+            ) == "Apple Inc. — iPhone"
+        )
+    }
+
+    @Test("vendor only → vendor")
+    func vendorOnly() {
+        #expect(
+            NamedUSBDevice.formatDisplayName(
+                vendorName: "LG Electronics",
+                name: nil
+            ) == "LG Electronics"
+        )
+    }
+
+    @Test("product only → product")
+    func productOnly() {
+        #expect(
+            NamedUSBDevice.formatDisplayName(
+                vendorName: nil,
+                name: "CalDigit Thunderbolt 3 Audio"
+            ) == "CalDigit Thunderbolt 3 Audio"
+        )
+    }
+
+    @Test("neither → '(unnamed device)' sentinel")
+    func neitherPresent() {
+        // The sentinel is load-bearing for the wizard — without it
+        // the device row would render an empty label, which reads
+        // as a layout bug. Pin the exact string so a future
+        // copy-edit of NamedUSBDevice.displayName doesn't silently
+        // diverge from the call sites that rely on this fallback.
+        #expect(
+            NamedUSBDevice.formatDisplayName(vendorName: nil, name: nil)
+                == "(unnamed device)"
+        )
+    }
+
+    @Test("empty strings are treated as present (no implicit nil-folding)")
+    func emptyStringsArePresent() {
+        // Sanity check on Swift Optional semantics — `Optional("")`
+        // is `.some`, not `.none`. The formatter should pass empty
+        // strings through rather than fold them into the
+        // `(unnamed device)` sentinel. Production callers that want
+        // empty == absent must filter before calling.
+        #expect(
+            NamedUSBDevice.formatDisplayName(vendorName: "", name: "")
+                == " — "
+        )
+    }
+}

@@ -36,6 +36,7 @@ final class SettingsStore: ObservableObject {
         static let rememberedAudioInputs = "rememberedAudioInputs"
         static let rememberedAudioOutputs = "rememberedAudioOutputs"
         static let rememberedCameras = "rememberedCameras"
+        static let ignoredLocations = "ignoredLocations"
     }
 
     /// Toast on profile change?  Default on — the at-a-glance signal
@@ -264,6 +265,21 @@ final class SettingsStore: ObservableObject {
         didSet { write(rememberedCameras, forKey: Key.rememberedCameras) }
     }
 
+    /// Device fingerprints the user has dismissed as "not a location"
+    /// — e.g. plugging their phone into the laptop on the couch isn't
+    /// a real place to capture, just a passing thing. The menu's "Not
+    /// a location" button writes here; the engine consults
+    /// `isLocationIgnored` and suppresses both the toast and the
+    /// "Set Up Location…" affordance for any matching key.
+    ///
+    /// Persisted as a JSON blob (Codable→Data) because the entries
+    /// carry nested structs + a Date; the dict-of-plist approach the
+    /// other caches use would force the same fields through
+    /// stringly-typed indirection on every read.
+    @Published var ignoredLocations: [IgnoredLocation] {
+        didSet { writeIgnoredLocations(ignoredLocations) }
+    }
+
     /// True when any profile's remembered-device cache has at least
     /// one entry. Drives the Settings → General "Forget unused
     /// devices" affordance, which only renders when there's
@@ -357,6 +373,66 @@ final class SettingsStore: ObservableObject {
         self.rememberedAudioInputs = (defaults.object(forKey: Key.rememberedAudioInputs) as? [String: [String]]) ?? [:]
         self.rememberedAudioOutputs = (defaults.object(forKey: Key.rememberedAudioOutputs) as? [String: [String]]) ?? [:]
         self.rememberedCameras = (defaults.object(forKey: Key.rememberedCameras) as? [String: [String]]) ?? [:]
+        self.ignoredLocations = Self.readIgnoredLocations(from: defaults)
+    }
+
+    /// Look up whether a canonical location fingerprint is on the
+    /// ignored list. Returns false for the empty list, which is the
+    /// install-default state.
+    func isLocationIgnored(key: String) -> Bool {
+        ignoredLocations.contains(where: { $0.key == key })
+    }
+
+    /// Add `entry` to the ignored list. Replaces any existing entry
+    /// with the same key (re-ignoring an un-ignored location updates
+    /// the captured device names + dismiss time without leaving a
+    /// stale duplicate). No-op if `key` is empty.
+    func ignoreLocation(_ entry: IgnoredLocation) {
+        guard !entry.key.isEmpty else { return }
+        var updated = ignoredLocations.filter { $0.key != entry.key }
+        updated.append(entry)
+        ignoredLocations = updated
+    }
+
+    /// Remove the entry with the given canonical key. No-op if no
+    /// matching entry exists.
+    func unignoreLocation(key: String) {
+        let filtered = ignoredLocations.filter { $0.key != key }
+        guard filtered.count != ignoredLocations.count else { return }
+        ignoredLocations = filtered
+    }
+
+    /// JSON-decode the persisted blob. Returns an empty list when the
+    /// key is absent OR when decoding fails (which would mean a
+    /// schema migration ate the data — we'd rather drop ignores than
+    /// crash on launch).
+    private static func readIgnoredLocations(from defaults: UserDefaults) -> [IgnoredLocation] {
+        guard let data = defaults.data(forKey: Key.ignoredLocations) else { return [] }
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return (try? decoder.decode([IgnoredLocation].self, from: data)) ?? []
+    }
+
+    /// JSON-encode and write the list. Empty list clears the key
+    /// entirely so a fresh install sees no leftover ignores from a
+    /// prior re-installation under the same domain.
+    private func writeIgnoredLocations(_ list: [IgnoredLocation]) {
+        if list.isEmpty {
+            defaults.removeObject(forKey: Key.ignoredLocations)
+            Self.logger.debug("wrote key=\(Key.ignoredLocations) value=nil (cleared)")
+            return
+        }
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        guard let data = try? encoder.encode(list) else {
+            // Silent data loss otherwise: the user's dismissals would
+            // disappear with no diagnostic trail at .debug. Surface
+            // it at .error so it appears in the support-log export.
+            Self.logger.error("encode failed for key=\(Key.ignoredLocations); \(list.count) ignored-location entries NOT persisted")
+            return
+        }
+        defaults.set(data, forKey: Key.ignoredLocations)
+        Self.logger.debug("wrote key=\(Key.ignoredLocations) value=<\(list.count) entries>")
     }
 
     /// Bump the lifetime switch counter that drives the easter-egg

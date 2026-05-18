@@ -33,6 +33,16 @@ public struct NamedUSBDevice: Hashable, Sendable, Identifiable {
     /// product name when both are available; falls back to whichever
     /// is set; falls back to `(unnamed device)` when neither is.
     public var displayName: String {
+        Self.formatDisplayName(vendorName: vendorName, name: name)
+    }
+
+    /// Shared label-formatting ladder for callers that hold the
+    /// vendor + product strings directly (e.g. the app's persisted
+    /// `IgnoredLocation.Device`, which can't carry a live
+    /// `NamedUSBDevice`). Keeps the wizard list and the Settings →
+    /// Profiles "Ignored Locations" list rendering names identically
+    /// for the same `(vendorName, name)` pair.
+    public static func formatDisplayName(vendorName: String?, name: String?) -> String {
         switch (vendorName, name) {
         case let (.some(v), .some(n)): return "\(v) — \(n)"
         case (.some(let v), .none):    return v

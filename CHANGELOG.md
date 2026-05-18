@@ -57,6 +57,43 @@ universal format support. v0.1.x will keep getting patch releases
 in parallel for anyone who doesn't need any of this. **Money.**
 ```
 
+### Slop-review follow-up on the dismiss-a-location feature (2026-05-17)
+
+Six mechanical fixes applied after `/code-quality:slop` on the dismiss-a-location diff:
+
+1. Dropped the dead pluralization branch in `IgnoredLocationRow.headline` (the `count == 1 ? "" : "s"` ternary was unreachable because the early-return handles count == 1).
+2. Replaced `Image(systemName: "cable.connector")` in `IgnoredLocationRow` with `Theme.Symbol.usbSection`. `Theme.swift` retired `cable.connector` for the stick-figure-at-small-sizes reason; the sibling `ProfileRow` was already on the replacement glyph. The row's own doc comment says "mirrors `ProfileRow`'s layout" — now it actually does.
+3. Bumped the `ignoredLocations` JSON encode-failure log line from `.debug` to `.error`. Silent data loss was logged at a level that's invisible in the support-log export.
+4. Factored `NamedUSBDevice.formatDisplayName(vendorName:name:)` as a shared static so `IgnoredLocation.Device.displayName` defers to the same fallback ladder. Removes a near-copy that had drifted on the `(nil, nil)` branch (was rendering "USB 05ac:12a8", now matches the wizard's "(unnamed device)" fallback).
+5. Extracted `AppDelegate.clearUnknownLocationState()`. The triple-clear pattern was open-coded in four sites with subtle drift — one site forgot `notifiedUnknownLocation`, another forgot `lastUnknownDevices`. One method now owns the reset; all four exit edges call it.
+6. Moved name capture from click-time (in `ignoreCurrentUnknownLocation`) to signal-time (in `handleUnknownLocation`). New private `lastUnknownDevicesNamed: [NamedUSBDevice]` is populated alongside `lastUnknownDevices` via a transient `IOKitUSBWatcher`; the dismiss button now reads the stored snapshot. Eliminates the race window where unplugging between signal and click would persist hex instead of names.
+
+All 273 tests still pass; no behavior change beyond the consistency fixes.
+
+### Dismiss-a-location: "Not a Location" + per-fingerprint ignore list (2026-05-17)
+
+Some unknown-location plug-ins aren't real places — a phone on the couch, a friend's USB stick, a random hub. The menu's "Set Up Location…" prompt was the only affordance for those, and there was no way to say "no, never ask about this combination again."
+
+Added a "Not a Location" item next to "Set Up Location…" (only visible when `atUnknownLocation` is true). Clicking it captures the canonical fingerprint of the currently-attached USB set + the device names IOKit reports for them, persists that as an entry in `SettingsStore.ignoredLocations`, and clears the in-memory unknown-location state so the menu hides the affordance immediately. Subsequent plug-ins of the same combination short-circuit in `handleUnknownLocation` — no toast, no menu prompt.
+
+Persistence model:
+
+- New struct `IgnoredLocation` (codable, `key + devices + dismissedAt`) and a `LocationFingerprint.canonical(for:)` helper that produces a stable pipe-joined `vid:pid[/serial]` string regardless of `Set<USBDevice>` enumeration order. Serials participate in the key so two physically-distinct units of the same model don't collide.
+- `SettingsStore` adds `ignoredLocations`, `isLocationIgnored(key:)`, `ignoreLocation(_:)`, `unignoreLocation(key:)`. Stored as JSON `Data` under the `ignoredLocations` UserDefaults key — the entries carry nested structs + a Date, so plist-of-dicts wasn't a clean fit. Empty list removes the key entirely, preserving the lazy-default-on-read pattern the other caches use.
+- Un-ignore path: a new "Ignored Locations" `Section` at the bottom of Settings → Profiles renders each entry with its device names + relative dismiss time and an `arrow.uturn.backward` button. `AppDelegate.unignoreLocation(key:)` removes the entry and calls `engine?.evaluate()` so a currently-attached set that just got un-ignored re-prompts without unplug/replug.
+
+Menu label also shortened from "Set Up This Location…" to "Set Up Location…". `MenuBarExtra(.menu)` sizes the underlying NSMenu on first render and doesn't widen when conditional items appear later — once the rest of the menu had been measured without the unknown-location row, the longer string ended up middle-truncated as "Set Up...ocation…". Dropping "This" keeps the label within the existing menu width.
+
+Tests: 6 new cases in `SettingsStoreTests` covering ignore round-trip, replacement on duplicate keys, un-ignore clears the UserDefaults key, fresh-store doesn't seed, and the canonical-fingerprint helper's order-independence + serial sensitivity.
+
+### Clear `atUnknownLocation` when the user unplugs back to the laptop (2026-05-17)
+
+`atUnknownLocation` is the flag behind the menu's "Set Up This Location…" affordance. The engine only fires the *entering* edge (`onUnknownLocation` when the fallback profile resolves with USB devices attached); the flag was cleared in `handleProfileApplied` only when a profile with a **non-empty fingerprint** resolved. The Laptop profile is the empty-fingerprint fallback, so the unplug-everything path (fallback + no devices) skipped the clear and the menu kept showing "Set Up This Location…" indefinitely.
+
+Repro: on Laptop with nothing attached, plug in any device that doesn't match a profile (a phone, a random USB stick), then unplug it. The "New location detected" toast fires correctly on plug-in, but "Set Up This Location…" stuck around after unplug.
+
+Fix in `engine.onDevicesEvaluated`: when the attached set is empty, clear `atUnknownLocation`, `lastUnknownDevices`, and re-arm `notifiedUnknownLocation`. `onDevicesEvaluated` fires before `onUnknownLocation` in the engine's evaluation pass, and `onUnknownLocation` requires a non-empty attached set to fire, so there's no ordering hazard — the clear sticks. The non-empty-fingerprint clear branch in `handleProfileApplied` still handles the other transition (user moves directly from unknown location to a known one without going through undocked).
+
 ### Stable release auto-clears the Dev/Experimental README rows (2026-05-13)
 
 Follow-on to #100. The README's "Release channels" block had three rows; Dev and Experimental were auto-filled on every dev/experimental release publish, but **when a stable release shipped, the obsolete prerelease rows kept pointing at their last tag.** Looked confusing: "Dev: v0.2.0.17-dev.5" sitting under "Stable: latest" once the stable is what `latest` resolves to anyway.
