@@ -38,7 +38,7 @@ struct SettingsView: View {
                 }
                 .tag(SettingsTab.general)
 
-            ProfilesSettingsTab(delegate: delegate)
+            ProfilesSettingsTab(delegate: delegate, settings: settings)
                 .tabItem {
                     Label("Profiles", systemImage: "list.bullet.rectangle")
                 }
@@ -359,6 +359,7 @@ private struct GeneralSettingsTab: View {
 
 private struct ProfilesSettingsTab: View {
     @ObservedObject var delegate: AppDelegate
+    @ObservedObject var settings: SettingsStore
     @Environment(\.openWindow) private var openWindow
     // Native SwiftUI .alert() for delete confirmation — matches the
     // Stats tab's "Reset stats?" pattern. Was an NSAlert on
@@ -367,21 +368,48 @@ private struct ProfilesSettingsTab: View {
 
     var body: some View {
         Group {
-            if delegate.availableProfiles.isEmpty {
+            if delegate.availableProfiles.isEmpty && settings.ignoredLocations.isEmpty {
                 emptyState
             } else {
                 List {
-                    ForEach(delegate.availableProfiles, id: \.name) { profile in
-                        ProfileRow(
-                            profile: profile,
-                            isActive: profile.name == delegate.activeProfileSlug,
-                            onEdit: {
-                                delegate.beginEditingProfile(profile)
-                                openWindow(id: addProfileWindowID)
-                                NSApp.activate(ignoringOtherApps: true)
-                            },
-                            onDelete: { profilePendingDeletion = profile }
-                        )
+                    if !delegate.availableProfiles.isEmpty {
+                        Section {
+                            ForEach(delegate.availableProfiles, id: \.name) { profile in
+                                ProfileRow(
+                                    profile: profile,
+                                    isActive: profile.name == delegate.activeProfileSlug,
+                                    onEdit: {
+                                        delegate.beginEditingProfile(profile)
+                                        openWindow(id: addProfileWindowID)
+                                        NSApp.activate(ignoringOtherApps: true)
+                                    },
+                                    onDelete: { profilePendingDeletion = profile }
+                                )
+                            }
+                        }
+                    }
+                    if !settings.ignoredLocations.isEmpty {
+                        // Surface "Not a Location" dismissals so the
+                        // user can audit and undo them. Sorted by
+                        // most-recent first so a fresh dismissal is
+                        // visible at the top — matches the relative-
+                        // time copy ("Dismissed 5m ago").
+                        Section {
+                            ForEach(
+                                settings.ignoredLocations.sorted { $0.dismissedAt > $1.dismissedAt }
+                            ) { ignored in
+                                IgnoredLocationRow(
+                                    ignored: ignored,
+                                    onUnignore: { delegate.unignoreLocation(key: ignored.key) }
+                                )
+                            }
+                        } header: {
+                            Text("Ignored Locations")
+                        } footer: {
+                            Text("Device combinations you've dismissed as not a real place. Un-ignore one to re-enable the “Set Up Location…” prompt the next time it's attached.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
                     }
                 }
                 .listStyle(.inset)
@@ -572,6 +600,67 @@ private struct ProfileRow: View {
             rows.append(DeviceRow(icon: Theme.Symbol.usbSection, label: "\(count) USB device\(count == 1 ? "" : "s")"))
         }
         return rows
+    }
+}
+
+/// One row in the Profiles tab's "Ignored Locations" section.
+/// Mirrors `ProfileRow`'s leading-icon + vertical-device-list layout
+/// so the two lists visually relate — same row height, same
+/// secondary-text styling, same trailing icon-only action button.
+private struct IgnoredLocationRow: View {
+    let ignored: IgnoredLocation
+    let onUnignore: () -> Void
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: "xmark.circle")
+                .font(.title3)
+                .foregroundStyle(.secondary)
+                .frame(width: 28)
+                .padding(.top, 2)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(headline)
+                    .font(.body.weight(.medium))
+                ForEach(ignored.devices, id: \.self) { device in
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        Image(systemName: Theme.Symbol.usbSection)
+                            .frame(width: 14, alignment: .center)
+                        Text(device.displayName)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                    }
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                }
+                Text("Dismissed \(relativeDismissedAt)")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+            }
+            Spacer()
+            IconButton(
+                systemImage: "arrow.uturn.backward",
+                accessibilityLabel: "Un-ignore this location",
+                action: onUnignore
+            )
+        }
+        .padding(.vertical, 6)
+    }
+
+    /// Title line. Prefers the friendliest single device name available
+    /// when there's only one device in the fingerprint — e.g. "iPhone"
+    /// — so the user instantly recognises the row. Falls back to a
+    /// device-count summary for multi-device combinations.
+    private var headline: String {
+        if ignored.devices.count == 1, let only = ignored.devices.first {
+            return only.displayName
+        }
+        return "\(ignored.devices.count) devices"
+    }
+
+    private var relativeDismissedAt: String {
+        let formatter = RelativeDateTimeFormatter()
+        formatter.unitsStyle = .full
+        return formatter.localizedString(for: ignored.dismissedAt, relativeTo: Date())
     }
 }
 
