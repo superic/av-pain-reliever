@@ -57,6 +57,14 @@ universal format support. v0.1.x will keep getting patch releases
 in parallel for anyone who doesn't need any of this. **Money.**
 ```
 
+### Profiles tab adopts the grouped-Form chrome (2026-05-18)
+
+The Profiles tab in Settings was the last surface still using `List` with `.listStyle(.inset)` — General, Camera, and Stats all render `Form(.grouped)` with rounded-card section chrome and prominent bold-icon + bold-text Section headers. Switched Profiles over to match. Apple's own System Settings renders list-style content (Login Items, Wi-Fi, Extensions) inside the same grouped-Form chrome, so the tab now reads as part of the same settings surface instead of drifting into List's sidebar aesthetic.
+
+Mechanical: `List { Section { ForEach … } }` → `Form { Section { ForEach … } header: { Label(…) } }.groupedFormChrome()`. The "Ignored Locations" header dropped its manual `HStack(Image + Text)` workaround (we'd built that because List headers default to a smaller, regular-weight style) — Form gives both sections the prominent rendering for free. Added a sibling "Profiles" header (`Label("Profiles", systemImage: "list.bullet.rectangle")`) for parity. Empty state, delete-confirmation alert, and `.safeAreaInset(.bottom)` `+` button bar untouched. Net diff: −29 / +18 lines.
+
+`GroupedFormChrome`'s doc comment claimed the Profiles tab was "intentionally bespoke" and didn't use the modifier. Stale — fixed.
+
 ### Slop-review follow-up on the dismiss-a-location feature (2026-05-17)
 
 Six mechanical fixes applied after `/code-quality:slop` on the dismiss-a-location diff:

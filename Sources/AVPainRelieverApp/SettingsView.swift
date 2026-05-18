@@ -371,7 +371,16 @@ private struct ProfilesSettingsTab: View {
             if delegate.availableProfiles.isEmpty && settings.ignoredLocations.isEmpty {
                 emptyState
             } else {
-                List {
+                // Form(.grouped) instead of List: matches the General /
+                // Stats tab's rounded-card chrome, prominent
+                // bold-icon + bold-text Section headers, and consistent
+                // row metrics. Apple's own System Settings renders
+                // list-style content (Login Items, Wi-Fi networks,
+                // Extensions) inside the same grouped-Form chrome, so
+                // the Profiles tab now reads as part of the same
+                // settings surface instead of drifting into List's
+                // sidebar-style aesthetic.
+                Form {
                     if !delegate.availableProfiles.isEmpty {
                         Section {
                             ForEach(delegate.availableProfiles, id: \.name) { profile in
@@ -386,20 +395,19 @@ private struct ProfilesSettingsTab: View {
                                     onDelete: { profilePendingDeletion = profile }
                                 )
                             }
+                        } header: {
+                            Label("Profiles", systemImage: "list.bullet.rectangle")
                         }
                     }
                     if !settings.ignoredLocations.isEmpty {
                         // Surface "Not a Location" dismissals so the
                         // user can audit and undo them. Sorted by
                         // most-recent first so a fresh dismissal is
-                        // visible at the top — matches the relative-
-                        // time copy ("Dismissed 5m ago").
+                        // visible at the top.
                         //
-                        // Helper text is rendered as the last row
-                        // inside the Section body, not in the
-                        // `footer:` slot — macOS 14's List footer
-                        // doesn't wrap, so a long string clips out
-                        // of the window (see `feedback_swiftui_form_footer`).
+                        // Helper text rendered as the last row inside
+                        // the Section body (not in `footer:`) per the
+                        // macOS 14 Form-footer-doesn't-wrap workaround.
                         Section {
                             ForEach(
                                 settings.ignoredLocations.sorted { $0.dismissedAt > $1.dismissedAt }
@@ -413,31 +421,12 @@ private struct ProfilesSettingsTab: View {
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                                 .fixedSize(horizontal: false, vertical: true)
-                                .padding(.vertical, 4)
                         } header: {
-                            // `Form { Section { … } header: { Label(…) } }` in
-                            // the General tab gets a prominent bold-icon +
-                            // bold-text rendering out of the box, but
-                            // `List { Section { … } header: { Label(…) } }`
-                            // does not — SwiftUI defaults a List header to a
-                            // smaller, regular-weight style. Match the
-                            // General tab look by rendering Image + Text
-                            // separately so the icon can keep `.title3`
-                            // sizing while the text drops to `.headline`
-                            // (body-size semibold) — `Label` would scale
-                            // the icon to the text and shrink it.
-                            HStack(spacing: 6) {
-                                Image(systemName: "bell.slash")
-                                    .font(.title3.weight(.semibold))
-                                Text("Ignored Locations")
-                                    .font(.headline)
-                            }
-                            .foregroundStyle(.primary)
-                            .padding(.top, 4)
+                            Label("Ignored Locations", systemImage: "bell.slash")
                         }
                     }
                 }
-                .listStyle(.inset)
+                .groupedFormChrome()
             }
         }
         .alert(
