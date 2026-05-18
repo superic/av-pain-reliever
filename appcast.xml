@@ -703,5 +703,25 @@
                        type="application/octet-stream"
                        sparkle:edSignature="rJnylzFzFyeXbQNzh3dqBUjmdpOyb+rDA6n5SHeYbj4V8DpQ4Xux14zSpYoIhUgIxF+wX4La2ymOwBxc+NC3Cg==" length="3213912" />
         </item>
+        <item>
+            <title>Version 0.2.0.18</title>
+            <description><![CDATA[
+<p>Couch problem? Solved. Plug your phone into your Mac to charge, plug a random USB stick in, do anything that creates a new device combination AV Pain Reliever hasn't seen before — it used to spot that, fire a "new location detected" toast, and put "Set Up Location…" in the menu. Asking you to capture the couch as a location. The couch is not a location. So now there's a <strong>"Not a Location"</strong> button right next to "Set Up Location…". One click, that exact device combination goes on the ignore list, the prompt never bothers you about it again. Money.</p>
+<p>Want to undo it? <strong>Settings → Profiles → Ignored Locations</strong> shows every dismissal with the device names and a "Dismissed 12 minutes ago" timestamp. Trash button on any row pulls it out of the ignore list, and the next time those devices attach the prompt comes back. Changed your mind, that's allowed.</p>
+<p>Couple of bugs got squashed in the same release:</p>
+<ul>
+<li><strong>"Set Up Location…" used to get stuck.</strong> Plug your phone in, unplug it, the menu still acted like you were at an unrecognized dock. The engine fired the <em>enter unknown</em> edge, the <em>exit unknown</em> edge wasn't wired. It is now. Devices go away, prompt goes away.</li>
+<li><strong>The menu label was middle-truncating</strong> as "Set Up...ocation…" on some displays because SwiftUI sized the NSMenu width before the conditional row appeared and never widened. Trimmed "This" out of the label, fits clean. Same item, same destination, no more stutter.</li>
+</ul>
+<p>That's the deal. Couch protection, ghost-prompt slayed, truncation gone. <strong>Money.</strong></p>
+]]></description>
+            <pubDate>Mon, 18 May 2026 01:00:01 +0000</pubDate>
+            <sparkle:version>0.2.0.18</sparkle:version>
+            <sparkle:shortVersionString>0.2.0.18</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/superic/av-pain-reliever/releases/download/v0.2.0.18/AVPainReliever.app.zip"
+                       type="application/octet-stream"
+                       sparkle:edSignature="8yE8oaXE3gmf22SJEoRbVMWNDHWfkBQ8VTHl7eF/9mDghgZA7gZrv72DjJKZmDIB7t2fE07P0IJ+yaETD/HMDQ==" length="3286552" />
+        </item>
     </channel>
 </rss>
