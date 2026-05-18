@@ -880,6 +880,34 @@ struct SettingsStoreTests {
         #expect(defaults.object(forKey: SettingsStore.Key.ignoredLocations) == nil)
     }
 
+    @Test("garbage JSON in ignoredLocations is recovered to an empty list, not a crash")
+    func ignoredLocationsDecodeFailureRecovers() {
+        let defaults = makeSuite()
+        // Plant malformed bytes under the key — could happen after a
+        // future schema change, a UserDefaults corruption, or a buggy
+        // hand-edit via `defaults write`. Production says we'd rather
+        // drop the ignores than crash on launch.
+        defaults.set(Data("not valid json".utf8), forKey: SettingsStore.Key.ignoredLocations)
+
+        let store = SettingsStore(defaults: defaults)
+        #expect(store.ignoredLocations.isEmpty)
+        #expect(!store.isLocationIgnored(key: "any-key"))
+
+        // Subsequent writes must still work — a wedged read path must
+        // not poison the write path. Adding an entry should overwrite
+        // the malformed blob with a clean JSON document, and a fresh
+        // store opened against the same defaults should now see it.
+        let entry = IgnoredLocation(
+            key: "05ac:12a8",
+            devices: [],
+            dismissedAt: Date()
+        )
+        store.ignoreLocation(entry)
+        let reopened = SettingsStore(defaults: defaults)
+        #expect(reopened.ignoredLocations.count == 1)
+        #expect(reopened.isLocationIgnored(key: entry.key))
+    }
+
     @Test("LocationFingerprint.canonical is stable regardless of insertion order")
     func locationFingerprintIsOrderStable() {
         let a = USBDevice(vendorID: 0x05ac, productID: 0x12a8)

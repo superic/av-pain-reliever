@@ -394,6 +394,12 @@ private struct ProfilesSettingsTab: View {
                         // most-recent first so a fresh dismissal is
                         // visible at the top — matches the relative-
                         // time copy ("Dismissed 5m ago").
+                        //
+                        // Helper text is rendered as the last row
+                        // inside the Section body, not in the
+                        // `footer:` slot — macOS 14's List footer
+                        // doesn't wrap, so a long string clips out
+                        // of the window (see `feedback_swiftui_form_footer`).
                         Section {
                             ForEach(
                                 settings.ignoredLocations.sorted { $0.dismissedAt > $1.dismissedAt }
@@ -403,12 +409,31 @@ private struct ProfilesSettingsTab: View {
                                     onUnignore: { delegate.unignoreLocation(key: ignored.key) }
                                 )
                             }
-                        } header: {
-                            Text("Ignored Locations")
-                        } footer: {
-                            Text("Device combinations you've dismissed as not a real place. Un-ignore one to re-enable the “Set Up Location…” prompt the next time it's attached.")
+                            Text("Device combinations you've dismissed as not a real place. Remove one to re-enable the “Set Up Location…” prompt the next time it's attached.")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .padding(.vertical, 4)
+                        } header: {
+                            // `Form { Section { … } header: { Label(…) } }` in
+                            // the General tab gets a prominent bold-icon +
+                            // bold-text rendering out of the box, but
+                            // `List { Section { … } header: { Label(…) } }`
+                            // does not — SwiftUI defaults a List header to a
+                            // smaller, regular-weight style. Match the
+                            // General tab look by rendering Image + Text
+                            // separately so the icon can keep `.title3`
+                            // sizing while the text drops to `.headline`
+                            // (body-size semibold) — `Label` would scale
+                            // the icon to the text and shrink it.
+                            HStack(spacing: 6) {
+                                Image(systemName: "bell.slash")
+                                    .font(.title3.weight(.semibold))
+                                Text("Ignored Locations")
+                                    .font(.headline)
+                            }
+                            .foregroundStyle(.primary)
+                            .padding(.top, 4)
                         }
                     }
                 }
@@ -613,7 +638,14 @@ private struct IgnoredLocationRow: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
-            Image(systemName: "xmark.circle")
+            // questionmark.circle mirrors the menu-bar icon shown
+            // when the engine is *at* an unknown location — visual
+            // consistency between "we don't know this place" and
+            // "you told us not to ask about this place." `xmark.circle`
+            // here read as an actionable remove-button next to the
+            // text, which fought the actual remove control on the
+            // trailing edge.
+            Image(systemName: "questionmark.circle")
                 .font(.title3)
                 .foregroundStyle(.secondary)
                 .frame(width: 28)
@@ -637,9 +669,15 @@ private struct IgnoredLocationRow: View {
                     .foregroundStyle(.tertiary)
             }
             Spacer()
+            // Trash icon to match `ProfileRow`'s delete affordance —
+            // the user's mental model is "remove this entry from
+            // the ignored list." Not marked `.destructive` because
+            // the side-effect (re-enabling the prompt next time
+            // these devices are attached) is benign; red would
+            // overstate the consequence.
             IconButton(
-                systemImage: "arrow.uturn.backward",
-                accessibilityLabel: "Un-ignore this location",
+                systemImage: "trash",
+                accessibilityLabel: "Remove from ignored list",
                 action: onUnignore
             )
         }
