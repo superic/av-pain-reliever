@@ -723,5 +723,19 @@
                        type="application/octet-stream"
                        sparkle:edSignature="8yE8oaXE3gmf22SJEoRbVMWNDHWfkBQ8VTHl7eF/9mDghgZA7gZrv72DjJKZmDIB7t2fE07P0IJ+yaETD/HMDQ==" length="3286552" />
         </item>
+        <item>
+            <title>Version 0.2.0.19</title>
+            <description><![CDATA[
+<p>Settings glow-up. The Profiles tab was the last screen in Settings still rendering with the plain-list look while General, Camera, and Stats had all moved to the rounded-card chrome that every modern Mac settings window uses. Felt out of place. Now it doesn't. Same buttons, same list, same edit and trash and add-profile affordances. New shell. Rounded cards, bold section headers, proper spacing, the works. Looks like it belongs in macOS. <strong>Money.</strong></p>
+<p>That's the whole release. Pure cosmetic. No new features, no settings to flip, no behavior changed. If you somehow loved the old plain-list look, our condolences.</p>
+]]></description>
+            <pubDate>Mon, 18 May 2026 02:44:42 +0000</pubDate>
+            <sparkle:version>0.2.0.19</sparkle:version>
+            <sparkle:shortVersionString>0.2.0.19</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/superic/av-pain-reliever/releases/download/v0.2.0.19/AVPainReliever.app.zip"
+                       type="application/octet-stream"
+                       sparkle:edSignature="qkdfuKj9aJslCEnJO8v4O3Q4B9UbHHWgKwuBnEHEFHU6yPqcUpr9koULki2VKOx1wz8dqx28LF6v4wJfJlVODA==" length="3281656" />
+        </item>
     </channel>
 </rss>
